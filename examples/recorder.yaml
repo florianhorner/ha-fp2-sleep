@@ -1,0 +1,12 @@
+# Optional Recorder include example.
+#
+# If your Recorder config uses include globs, add the MQTT discovery entities
+# created by this add-on.
+
+include:
+  entities:
+    - sensor.aqara_fp2_sleep_heart_rate
+    - sensor.aqara_fp2_sleep_respiration_rate
+    - sensor.aqara_fp2_sleep_sleep_state
+    - sensor.aqara_fp2_sleep_body_movement
+    - sensor.aqara_fp2_sleep_illuminance

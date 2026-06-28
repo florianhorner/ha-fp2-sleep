@@ -1,0 +1,127 @@
+# Optional Lovelace view for SleepRadar.
+#
+# Requirements:
+# - Mushroom cards
+# - ApexCharts Card
+# - card-mod
+#
+# Replace every PLACEHOLDER_* value before use.
+
+- title: Sleep
+  path: sleep
+  icon: mdi:sleep
+  type: sections
+  max_columns: 3
+  sections:
+    - type: grid
+      column_span: 1
+      cards:
+        - type: heading
+          heading: Now
+          heading_style: title
+          icon: mdi:sleep
+
+        - type: custom:mushroom-template-card
+          entity: PLACEHOLDER_SLEEP_PHASE_ENTITY
+          primary: "{{ states('PLACEHOLDER_SLEEP_PHASE_ENTITY') }}"
+          secondary: >-
+            Raw code {{ states('PLACEHOLDER_SLEEP_STATE_ENTITY') }}
+          icon: >-
+            {% set phase = states('PLACEHOLDER_SLEEP_PHASE_ENTITY') %}
+            {% set icons = {
+              'Deep sleep': 'mdi:sleep',
+              'Light sleep': 'mdi:power-sleep',
+              'REM': 'mdi:brain',
+              'Awake': 'mdi:eye',
+              'Out of bed': 'mdi:bed-empty'
+            } %}
+            {{ icons.get(phase, 'mdi:help-circle') }}
+          icon_color: >-
+            {% set phase = states('PLACEHOLDER_SLEEP_PHASE_ENTITY') %}
+            {% if phase in ['Deep sleep', 'Light sleep'] %}blue
+            {% elif phase == 'REM' %}purple
+            {% elif phase == 'Awake' %}amber
+            {% elif phase == 'Out of bed' %}grey
+            {% else %}disabled
+            {% endif %}
+          layout: horizontal
+          multiline_secondary: true
+
+        - type: horizontal-stack
+          cards:
+            - type: custom:mushroom-template-card
+              entity: PLACEHOLDER_HEART_RATE_ENTITY
+              primary: Heart rate
+              secondary: "{{ states('PLACEHOLDER_HEART_RATE_ENTITY') }} bpm"
+              icon: mdi:heart-pulse
+              icon_color: red
+            - type: custom:mushroom-template-card
+              entity: PLACEHOLDER_RESPIRATION_ENTITY
+              primary: Respiration
+              secondary: "{{ states('PLACEHOLDER_RESPIRATION_ENTITY') }} br/min"
+              icon: mdi:lungs
+              icon_color: blue
+
+    - type: grid
+      column_span: 2
+      cards:
+        - type: heading
+          heading: Last 12 Hours
+          heading_style: title
+          icon: mdi:chart-timeline-variant
+
+        - type: custom:apexcharts-card
+          header:
+            show: true
+            title: Sleep state
+            show_states: false
+          graph_span: 12h
+          span:
+            end: minute
+          apex_config:
+            chart:
+              height: 280
+              toolbar:
+                show: false
+            stroke:
+              curve: stepline
+              width: 3
+            markers:
+              size: 0
+            yaxis:
+              min: 2
+              max: 5
+              tickAmount: 3
+              reversed: true
+              labels:
+                formatter: |
+                  EVAL:function(value) {
+                    const phases = { 2: "Awake", 3: "REM", 4: "Light", 5: "Deep" };
+                    return phases[Math.round(value)] ?? "";
+                  }
+          series:
+            - entity: PLACEHOLDER_SLEEP_STATE_ENTITY
+              name: Sleep state
+              type: line
+              stroke_width: 3
+              color: '#f5a623'
+              # Out of bed (0) becomes a gap; codes 1 and 2 both read as Awake.
+              transform: "return x === null ? null : (Number(x) === 0 ? null : (Number(x) <= 2 ? 2 : Number(x)));"
+
+    - type: grid
+      column_span: 3
+      cards:
+        - type: heading
+          heading: Cross-check
+          heading_style: title
+          icon: mdi:check-decagram-outline
+
+        - type: custom:mushroom-template-card
+          entity: PLACEHOLDER_BED_STATUS_ENTITY
+          primary: FP2 vs bed status
+          secondary: >-
+            FP2: {{ states('PLACEHOLDER_SLEEP_PHASE_ENTITY') }} ·
+            Bed: {{ states('PLACEHOLDER_BED_STATUS_ENTITY') }}
+          icon: mdi:bed-clock
+          icon_color: blue
+          multiline_secondary: true

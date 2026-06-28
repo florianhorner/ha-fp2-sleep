@@ -1,0 +1,69 @@
+# Optional example automations for SleepRadar.
+#
+# These show what becomes possible once sleep data is real Home Assistant
+# entities: the room reacts to raw, measured data instead of a statistical
+# guess about whether someone is asleep.
+#
+# They use binary_sensor.fp2_asleep and sensor.fp2_sleep_phase from
+# sleep_tracking.yaml. "Asleep" means the sensor reports REM, light, or deep
+# sleep. Stage scoring is the device's best guess, so pair a stage condition
+# with a time window if you want it more robust.
+#
+# Replace every PLACEHOLDER_* value with your own entity IDs.
+
+- alias: "Cap light brightness while asleep"
+  description: >-
+    When a bedroom light turns on while someone is asleep, hold it to a low
+    brightness instead of full. 2026-06-28: example for the OSS add-on.
+  trigger:
+    - platform: state
+      entity_id: PLACEHOLDER_BEDROOM_LIGHT
+      to: "on"
+  condition:
+    - condition: state
+      entity_id: binary_sensor.fp2_asleep
+      state: "on"
+  action:
+    - alias: "Dim the light to 20 percent"
+      service: light.turn_on
+      target:
+        entity_id: PLACEHOLDER_BEDROOM_LIGHT
+      data:
+        brightness_pct: 20
+  mode: single
+
+- alias: "Hold the vacuum until awake"
+  description: >-
+    If the robot vacuum starts cleaning while someone is asleep, send it back
+    to the dock. 2026-06-28: example for the OSS add-on.
+  trigger:
+    - platform: state
+      entity_id: PLACEHOLDER_VACUUM
+      to: "cleaning"
+  condition:
+    - condition: state
+      entity_id: binary_sensor.fp2_asleep
+      state: "on"
+  action:
+    - alias: "Return the vacuum to base"
+      service: vacuum.return_to_base
+      target:
+        entity_id: PLACEHOLDER_VACUUM
+  mode: single
+
+- alias: "Cool down during deep sleep"
+  description: >-
+    Nudge the bedroom thermostat down when deep sleep starts. Stage is the
+    sensor's best guess, so this is comfort, not safety. 2026-06-28: example.
+  trigger:
+    - platform: state
+      entity_id: sensor.fp2_sleep_phase
+      to: "Deep sleep"
+  action:
+    - alias: "Lower the target temperature"
+      service: climate.set_temperature
+      target:
+        entity_id: PLACEHOLDER_BEDROOM_THERMOSTAT
+      data:
+        temperature: 18
+  mode: single

@@ -1,0 +1,33 @@
+name: SleepRadar
+version: "1.0.0"
+slug: aqara_fp2_sleep
+description: Polls Aqara FP2 sleep telemetry and publishes it to Home Assistant over MQTT
+url: https://github.com/florianhorner/ha-fp2-sleep
+arch:
+  - aarch64
+  - amd64
+init: false
+startup: application
+boot: auto
+hassio_api: false
+homeassistant_api: false
+services:
+  - mqtt:need
+options:
+  aqara_username: ""
+  aqara_password: ""
+  aqara_area: "EU"
+  subject_id: ""
+  poll_interval: 60
+  log_level: info
+  device_name: "Aqara FP2 Sleep Monitor"
+  mqtt_node_id: "aqara_fp2_sleep"
+schema:
+  aqara_username: str
+  aqara_password: password
+  aqara_area: list(CN|EU|USA|RU|KR)
+  subject_id: str
+  poll_interval: int(15,3600)
+  log_level: list(trace|debug|info|notice|warning|error|fatal)
+  device_name: str
+  mqtt_node_id: str

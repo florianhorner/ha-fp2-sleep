@@ -1,0 +1,23 @@
+# gitleaks config for SleepRadar.
+#
+# The "appid" and "appkey" values embedded in
+# aqara_fp2_sleep/aqara_fp2_sleep_poller.py are the Aqara Home app's PUBLIC
+# built-in constants (one set per region: CN/EU/USA/RU/KR). They are NOT user
+# credentials. Each user enters their own Aqara account in the add-on options,
+# which default to blank and are stored by Supervisor, never in this repo. The
+# same public constants ship in the upstream sdavides/AqaraPOST project.
+#
+# We keep every default gitleaks rule active (useDefault = true) and allowlist
+# ONLY the appid/appkey constant lines, so a real leaked secret anywhere else
+# still blocks the commit.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Aqara public app constants (appid/appkey), not user secrets"
+regexTarget = "line"
+regexes = [
+  '''"appid":\s*"[A-Za-z0-9]+"''',
+  '''"appkey":\s*"[A-Za-z0-9]+"''',
+]
