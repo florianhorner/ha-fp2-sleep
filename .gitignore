@@ -4,6 +4,8 @@ __pycache__/
 .venv/
 .env
 *.log
+!.conductor/
+!.conductor/settings.toml
 
 # Internal handover / working notes — never published
 *.local.md
