@@ -1,0 +1,7 @@
+#:schema https://conductor.build/schemas/settings.repo.schema.json
+
+[scripts]
+setup = "python3 -m venv .venv && .venv/bin/python -m pip install --upgrade pip && .venv/bin/python -m pip install pyyaml==6.0.2 yamllint==1.35.1 paho-mqtt pycryptodome"
+run = ".venv/bin/yamllint -c .yamllint . && PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/validate_repository.py"
+archive = "true"
+run_mode = "concurrent"
