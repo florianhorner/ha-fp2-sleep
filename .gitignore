@@ -6,3 +6,6 @@ __pycache__/
 *.log
 !.conductor/
 !.conductor/settings.toml
+
+# Internal handover / working notes — never published
+*.local.md
