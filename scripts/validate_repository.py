@@ -164,10 +164,16 @@ def validate_discovery_payloads() -> None:
         fail("unexpected default device name")
 
     object_ids = []
+    default_entity_ids = []
     for sensor in module.SENSORS:
         payload = module.discovery_payload(*sensor)
         json.dumps(payload)
         object_ids.append(payload["object_id"])
+        if "default_entity_id" not in payload:
+            fail(
+                "discovery payload missing default_entity_id (required for HA ≥2026.4)"
+            )
+        default_entity_ids.append(payload["default_entity_id"])
         if "Schlafzimmer" in json.dumps(payload) or "Bett" in json.dumps(payload):
             fail("discovery payload contains private/local naming")
 
@@ -180,6 +186,9 @@ def validate_discovery_payloads() -> None:
     }
     if set(object_ids) != expected:
         fail(f"unexpected discovery object ids: {sorted(object_ids)}")
+    expected_entity_ids = {f"sensor.{oid}" for oid in expected}
+    if set(default_entity_ids) != expected_entity_ids:
+        fail(f"unexpected discovery default_entity_ids: {sorted(default_entity_ids)}")
 
 
 def install_import_stubs() -> None:

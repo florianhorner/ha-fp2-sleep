@@ -266,6 +266,7 @@ def discovery_payload(
         "name": name,
         "unique_id": f"{NODE}_{uid_suffix}",
         "object_id": object_id,
+        "default_entity_id": f"sensor.{object_id}",
         "state_topic": STATE_TOPIC,
         "value_template": "{{ value_json.%s | default('unknown') }}" % attr,
         "icon": icon,
