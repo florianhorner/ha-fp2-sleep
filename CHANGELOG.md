@@ -3,6 +3,8 @@
 ## Unreleased
 
 - Adds SleepRadar design language guidance and logo assets for public docs.
+- Adds an upfront README disclosure that the add-on relies on Aqara's private,
+  unofficial Home app API, which Aqara can change or restrict without notice.
 
 ## 1.0.0
 
