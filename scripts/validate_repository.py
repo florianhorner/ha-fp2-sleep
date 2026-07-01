@@ -43,7 +43,7 @@ TEXT_SUFFIXES = {
     ".Dockerfile",
 }
 
-SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", ".ruff_cache", ".venv"}
+SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", ".ruff_cache", ".venv", ".context"}
 
 
 def fail(message: str) -> None:

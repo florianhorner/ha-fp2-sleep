@@ -1,7 +1,11 @@
 #:schema https://conductor.build/schemas/settings.repo.schema.json
 
+# run.sh is bashio-only (real HA Supervisor + real MQTT broker + real Aqara
+# credentials) and cannot run standalone — never wire it into scripts.run.
+# The safe, useful local action is the same lint+validate loop CI and
+# CONTRIBUTING.md require before every PR.
+
 [scripts]
-setup = "python3 -m venv .venv && .venv/bin/python -m pip install --upgrade pip && .venv/bin/python -m pip install pyyaml==6.0.2 yamllint==1.35.1 paho-mqtt pycryptodome"
-run = ".venv/bin/yamllint -c .yamllint . && PYTHONDONTWRITEBYTECODE=1 .venv/bin/python scripts/validate_repository.py"
-archive = "true"
+setup = "python3 -m venv .venv && .venv/bin/python -m pip install pyyaml==6.0.2 yamllint==1.35.1 paho-mqtt pycryptodome"
+run = ".venv/bin/yamllint -c .yamllint . && .venv/bin/python scripts/validate_repository.py"
 run_mode = "concurrent"
