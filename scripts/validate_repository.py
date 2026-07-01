@@ -116,15 +116,37 @@ def validate_examples() -> None:
     examples = list((ROOT / "examples").glob("*.yaml"))
     if not examples:
         fail("no example YAML files found")
+    # recorder.yaml and sleep_tracking.yaml are pre-wired to the add-on's own
+    # default entity IDs on purpose and intentionally contain no PLACEHOLDER_
+    # tokens. The privacy-relevant check is the allowlist regex below, not
+    # this one — it just used to also gate on "looks templated".
+    fully_wired = {"recorder.yaml", "sleep_tracking.yaml"}
+    # Allow the add-on's own entities (aqara_fp2_sleep_*) and the example
+    # template helpers defined in sleep_tracking.yaml (fp2_*). Any other real
+    # entity ID in a common domain is a foreign/private entity that must be a
+    # PLACEHOLDER instead. Service calls (service: light.turn_on) share the
+    # domain.name shape, so lines invoking services are skipped.
+    entity_domains = (
+        "sensor|binary_sensor|light|switch|climate|vacuum|lock|cover|"
+        "media_player|camera|fan|humidifier|number|select|person|"
+        "device_tracker|input_[a-z]+"
+    )
+    foreign_entity = re.compile(
+        rf"\b(?:{entity_domains})\.(?!aqara_fp2_sleep_|fp2_)[a-z0-9_]+"
+    )
+    service_line = re.compile(r"^\s*(?:-\s*)?(?:service|action):")
     for path in examples:
         text = path.read_text()
-        if path.name != "recorder.yaml" and "PLACEHOLDER_" not in text:
+        if path.name not in fully_wired and "PLACEHOLDER_" not in text:
             fail(f"{path.relative_to(ROOT)} must use PLACEHOLDER_* entity IDs")
-        # Allow the add-on's own sensors (aqara_fp2_sleep_*) and the example
-        # template helpers defined in sleep_tracking.yaml (fp2_*). Anything else
-        # is a foreign/private entity that must be a PLACEHOLDER instead.
-        if re.search(r"sensor\.(?!aqara_fp2_sleep_|fp2_)[a-z0-9_]+", text):
-            fail(f"{path.relative_to(ROOT)} contains a non-placeholder sensor entity")
+        for line in text.splitlines():
+            if service_line.match(line):
+                continue
+            if foreign_entity.search(line):
+                fail(
+                    f"{path.relative_to(ROOT)} contains a non-placeholder "
+                    f"entity id: {line.strip()}"
+                )
 
 
 def validate_discovery_payloads() -> None:

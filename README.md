@@ -119,14 +119,20 @@ The add-on publishes raw data. The `examples/` folder contains optional Home
 Assistant YAML for nicer names and a simple sleep dashboard.
 
 - `examples/sleep_tracking.yaml` maps the raw sleep state into a readable
-  phase sensor.
+  phase sensor. Pre-wired to the add-on's default entities; load it as-is.
 - `examples/dashboard-sleep.yaml` is an optional Lovelace view. It uses
-  Mushroom cards, ApexCharts Card, and card-mod.
-- `examples/recorder.yaml` shows one way to keep the sleep sensors in Recorder.
+  Mushroom cards, ApexCharts Card, and card-mod. Load `sleep_tracking.yaml`
+  first; the view reads the phase sensor it creates.
+- `examples/recorder.yaml` shows one way to keep the sleep sensors in
+  Recorder. Pre-wired; load it as-is.
 - `examples/automations.yaml` shows example automations that act on the data.
+  These need your own light, vacuum, and thermostat entity IDs.
 
-Copy only what you need and replace every `PLACEHOLDER_*` value with your own
-entity IDs.
+If you kept the default `mqtt_node_id`, the only `PLACEHOLDER_*` values left
+to fill in are your own devices: the automations' light/vacuum/thermostat and
+the dashboard's optional bed-status cross-check card (delete that card if you
+have no separate bed sensor). If you changed `mqtt_node_id`, also update the
+`sensor.aqara_fp2_sleep_*` references to match your node id.
 
 ## What You Can Build
 
