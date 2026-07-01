@@ -311,6 +311,15 @@ def make_mqtt():
     return client
 
 
+def describe_poll_failure(res):
+    code = res.get("code")
+    if code is not None:
+        return f"Aqara API error (code={code}): {res.get('message') or 'no message returned'}"
+    if "result" in res:
+        return f"unexpected response shape from Aqara API (result was not a list): {json.dumps(res)[:200]}"
+    return f"unrecognized response from Aqara API: {json.dumps(res)[:200]}"
+
+
 _running = True
 
 
@@ -353,7 +362,7 @@ def main():
             log("debug", f"state={state}")
         if not ok:
             client.publish(AVAIL_TOPIC, "offline", qos=1, retain=True)
-            log("error", f"poll failed: {json.dumps(res)[:200]}")
+            log("error", f"poll failed: {describe_poll_failure(res)}")
 
         for _ in range(INTERVAL):
             if not _running:
