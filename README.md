@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/sleepradar-logo.svg" alt="SleepRadar logo" width="460">
+</p>
+
 # SleepRadar
 
 Contact-free sleep vitals (heart rate, breathing, and stages) from an Aqara FP2

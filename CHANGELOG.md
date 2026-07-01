@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Adds SleepRadar design language guidance and logo assets for public docs.
+
 ## 1.0.0
 
 - Initial public package for Aqara FP2 sleep telemetry in Home Assistant.
