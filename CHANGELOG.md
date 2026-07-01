@@ -8,6 +8,10 @@
 - Pre-wires `examples/sleep_tracking.yaml` and `examples/dashboard-sleep.yaml`
   to the add-on's own default entity IDs so both load with no editing beyond
   the dashboard's optional bed-status cross-check card.
+- Aligns the root README with the pre-wired examples, documents that
+  `sleep_tracking.yaml` must load before the dashboard, and widens the
+  example validator's foreign-entity guard from `sensor.` to all common
+  entity domains (service-call lines excluded).
 
 ## 1.0.0
 

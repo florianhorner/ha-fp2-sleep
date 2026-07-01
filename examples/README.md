@@ -14,7 +14,10 @@ Before using them:
    entity IDs (lights, vacuum, thermostat, or a separate bed-presence
    sensor) — replace those remaining `PLACEHOLDER_*` values, or delete the
    automation/card you don't need.
-4. Keep private entity IDs out of screenshots and issues.
+4. Load `sleep_tracking.yaml` before `dashboard-sleep.yaml`. The dashboard
+   reads `sensor.fp2_sleep_phase`, which `sleep_tracking.yaml` creates; the
+   phase card shows "unavailable" until that helper exists.
+5. Keep private entity IDs out of screenshots and issues.
 
 Files:
 
