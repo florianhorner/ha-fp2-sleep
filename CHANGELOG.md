@@ -5,6 +5,9 @@
 - Adds SleepRadar design language guidance and logo assets for public docs.
 - Adds an upfront README disclosure that the add-on relies on Aqara's private,
   unofficial Home app API, which Aqara can change or restrict without notice.
+- Pre-wires `examples/sleep_tracking.yaml` and `examples/dashboard-sleep.yaml`
+  to the add-on's own default entity IDs so both load with no editing beyond
+  the dashboard's optional bed-status cross-check card.
 
 ## 1.0.0
 

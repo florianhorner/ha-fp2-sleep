@@ -116,9 +116,14 @@ def validate_examples() -> None:
     examples = list((ROOT / "examples").glob("*.yaml"))
     if not examples:
         fail("no example YAML files found")
+    # recorder.yaml and sleep_tracking.yaml are pre-wired to the add-on's own
+    # default entity IDs on purpose and intentionally contain no PLACEHOLDER_
+    # tokens. The privacy-relevant check is the allowlist regex below, not
+    # this one — it just used to also gate on "looks templated".
+    fully_wired = {"recorder.yaml", "sleep_tracking.yaml"}
     for path in examples:
         text = path.read_text()
-        if path.name != "recorder.yaml" and "PLACEHOLDER_" not in text:
+        if path.name not in fully_wired and "PLACEHOLDER_" not in text:
             fail(f"{path.relative_to(ROOT)} must use PLACEHOLDER_* entity IDs")
         # Allow the add-on's own sensors (aqara_fp2_sleep_*) and the example
         # template helpers defined in sleep_tracking.yaml (fp2_*). Anything else

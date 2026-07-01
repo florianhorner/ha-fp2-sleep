@@ -5,7 +5,12 @@
 # - ApexCharts Card
 # - card-mod
 #
-# Replace every PLACEHOLDER_* value before use.
+# Pre-wired to the add-on's own default entities and the sleep_tracking.yaml
+# helpers (sensor.fp2_sleep_phase, etc.) — copy this in as-is once
+# sleep_tracking.yaml is loaded. Only PLACEHOLDER_BED_STATUS_ENTITY is left:
+# it drives the optional "Cross-check" card comparing the FP2 against a
+# separate bed-presence sensor of your own. Delete that whole grid section
+# below if you don't have an equivalent sensor.
 
 - title: Sleep
   path: sleep
@@ -22,12 +27,12 @@
           icon: mdi:sleep
 
         - type: custom:mushroom-template-card
-          entity: PLACEHOLDER_SLEEP_PHASE_ENTITY
-          primary: "{{ states('PLACEHOLDER_SLEEP_PHASE_ENTITY') }}"
+          entity: sensor.fp2_sleep_phase
+          primary: "{{ states('sensor.fp2_sleep_phase') }}"
           secondary: >-
-            Raw code {{ states('PLACEHOLDER_SLEEP_STATE_ENTITY') }}
+            Raw code {{ states('sensor.aqara_fp2_sleep_sleep_state') }}
           icon: >-
-            {% set phase = states('PLACEHOLDER_SLEEP_PHASE_ENTITY') %}
+            {% set phase = states('sensor.fp2_sleep_phase') %}
             {% set icons = {
               'Deep sleep': 'mdi:sleep',
               'Light sleep': 'mdi:power-sleep',
@@ -37,7 +42,7 @@
             } %}
             {{ icons.get(phase, 'mdi:help-circle') }}
           icon_color: >-
-            {% set phase = states('PLACEHOLDER_SLEEP_PHASE_ENTITY') %}
+            {% set phase = states('sensor.fp2_sleep_phase') %}
             {% if phase in ['Deep sleep', 'Light sleep'] %}blue
             {% elif phase == 'REM' %}purple
             {% elif phase == 'Awake' %}amber
@@ -50,15 +55,15 @@
         - type: horizontal-stack
           cards:
             - type: custom:mushroom-template-card
-              entity: PLACEHOLDER_HEART_RATE_ENTITY
+              entity: sensor.aqara_fp2_sleep_heart_rate
               primary: Heart rate
-              secondary: "{{ states('PLACEHOLDER_HEART_RATE_ENTITY') }} bpm"
+              secondary: "{{ states('sensor.aqara_fp2_sleep_heart_rate') }} bpm"
               icon: mdi:heart-pulse
               icon_color: red
             - type: custom:mushroom-template-card
-              entity: PLACEHOLDER_RESPIRATION_ENTITY
+              entity: sensor.aqara_fp2_sleep_respiration_rate
               primary: Respiration
-              secondary: "{{ states('PLACEHOLDER_RESPIRATION_ENTITY') }} br/min"
+              secondary: "{{ states('sensor.aqara_fp2_sleep_respiration_rate') }} br/min"
               icon: mdi:lungs
               icon_color: blue
 
@@ -100,7 +105,7 @@
                     return phases[Math.round(value)] ?? "";
                   }
           series:
-            - entity: PLACEHOLDER_SLEEP_STATE_ENTITY
+            - entity: sensor.aqara_fp2_sleep_sleep_state
               name: Sleep state
               type: line
               stroke_width: 3
@@ -111,6 +116,8 @@
     - type: grid
       column_span: 3
       cards:
+        # Optional: delete this whole grid section if you don't have a
+        # separate bed-presence/contact sensor to cross-check against.
         - type: heading
           heading: Cross-check
           heading_style: title
@@ -120,7 +127,7 @@
           entity: PLACEHOLDER_BED_STATUS_ENTITY
           primary: FP2 vs bed status
           secondary: >-
-            FP2: {{ states('PLACEHOLDER_SLEEP_PHASE_ENTITY') }} ·
+            FP2: {{ states('sensor.fp2_sleep_phase') }} ·
             Bed: {{ states('PLACEHOLDER_BED_STATUS_ENTITY') }}
           icon: mdi:bed-clock
           icon_color: blue

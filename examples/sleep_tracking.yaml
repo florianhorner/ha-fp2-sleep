@@ -1,9 +1,9 @@
 # Optional template helpers for SleepRadar.
 #
-# Replace the PLACEHOLDER_* values with your own entities. Defaults:
-#   PLACEHOLDER_SLEEP_STATE_ENTITY  -> sensor.aqara_fp2_sleep_sleep_state
-#   PLACEHOLDER_HEART_RATE_ENTITY   -> sensor.aqara_fp2_sleep_heart_rate
-#   PLACEHOLDER_RESPIRATION_ENTITY  -> sensor.aqara_fp2_sleep_respiration_rate
+# Pre-wired to the add-on's own default entity IDs (sensor.aqara_fp2_sleep_*).
+# Copy this in as-is unless you changed mqtt_node_id from the default
+# "aqara_fp2_sleep" in the add-on configuration — in that case, update the
+# three states('sensor.aqara_fp2_sleep_*') references below to match.
 
 - sensor:
     # Plain sleep stage. Aqara codes 1 and 2 are both "awake", so we show a
@@ -12,7 +12,7 @@
     - name: "FP2 Sleep Phase"
       unique_id: fp2_sleep_phase
       state: >
-        {% set code = states('PLACEHOLDER_SLEEP_STATE_ENTITY') | int(-1) %}
+        {% set code = states('sensor.aqara_fp2_sleep_sleep_state') | int(-1) %}
         {% set phases = {
           0: 'Out of bed',
           1: 'Awake',
@@ -32,9 +32,9 @@
         {% else %} mdi:help-circle-outline
         {% endif %}
       attributes:
-        raw_code: "{{ states('PLACEHOLDER_SLEEP_STATE_ENTITY') }}"
+        raw_code: "{{ states('sensor.aqara_fp2_sleep_sleep_state') }}"
       availability: >
-        {{ states('PLACEHOLDER_SLEEP_STATE_ENTITY')
+        {{ states('sensor.aqara_fp2_sleep_sleep_state')
            not in ['unavailable', 'unknown', 'none', none] }}
 
     # Plain-language live read: what the sensor sees right now, in one line.
@@ -42,9 +42,9 @@
     - name: "FP2 Sleep Now"
       unique_id: fp2_sleep_now
       state: >
-        {% set code = states('PLACEHOLDER_SLEEP_STATE_ENTITY') | int(-1) %}
-        {% set hr = states('PLACEHOLDER_HEART_RATE_ENTITY') %}
-        {% set br = states('PLACEHOLDER_RESPIRATION_ENTITY') %}
+        {% set code = states('sensor.aqara_fp2_sleep_sleep_state') | int(-1) %}
+        {% set hr = states('sensor.aqara_fp2_sleep_heart_rate') %}
+        {% set br = states('sensor.aqara_fp2_sleep_respiration_rate') %}
         {% set names = {
           0: 'Out of bed', 1: 'Awake in bed', 2: 'Awake in bed',
           3: 'REM', 4: 'Light sleep', 5: 'Deep sleep'
@@ -55,7 +55,7 @@
         {% else %}{{ phase }}{% endif %}
       icon: mdi:bed-clock
       availability: >
-        {{ states('PLACEHOLDER_SLEEP_STATE_ENTITY')
+        {{ states('sensor.aqara_fp2_sleep_sleep_state')
            not in ['unavailable', 'unknown', 'none', none] }}
 
 - binary_sensor:
@@ -63,10 +63,10 @@
     - name: "FP2 Asleep"
       unique_id: fp2_asleep
       state: >
-        {% set code = states('PLACEHOLDER_SLEEP_STATE_ENTITY') | int(-1) %}
+        {% set code = states('sensor.aqara_fp2_sleep_sleep_state') | int(-1) %}
         {{ code in [3, 4, 5] }}
       icon: >
         {{ 'mdi:sleep' if this.state == 'on' else 'mdi:sleep-off' }}
       availability: >
-        {{ states('PLACEHOLDER_SLEEP_STATE_ENTITY')
+        {{ states('sensor.aqara_fp2_sleep_sleep_state')
            not in ['unavailable', 'unknown', 'none', none] }}
