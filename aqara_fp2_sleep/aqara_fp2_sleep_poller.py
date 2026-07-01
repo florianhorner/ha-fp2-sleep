@@ -296,6 +296,10 @@ def publish_discovery(client):
     log("info", f"Published discovery for {len(SENSORS)} sensors")
 
 
+MQTT_CONNECT_RETRIES = 6
+MQTT_CONNECT_BACKOFF = 5  # seconds; doubles each attempt, capped at 60s
+
+
 def make_mqtt():
     try:
         client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=NODE)
@@ -306,7 +310,24 @@ def make_mqtt():
     if MQTT_SSL:
         client.tls_set()
     client.will_set(AVAIL_TOPIC, "offline", qos=1, retain=True)
-    client.connect(MQTT_HOST, MQTT_PORT, keepalive=max(60, INTERVAL * 2))
+
+    delay = MQTT_CONNECT_BACKOFF
+    for attempt in range(1, MQTT_CONNECT_RETRIES + 1):
+        try:
+            client.connect(MQTT_HOST, MQTT_PORT, keepalive=max(60, INTERVAL * 2))
+            break
+        except OSError as err:
+            if attempt == MQTT_CONNECT_RETRIES:
+                raise
+            log(
+                "warning",
+                f"MQTT connect to {MQTT_HOST}:{MQTT_PORT} failed "
+                f"(attempt {attempt}/{MQTT_CONNECT_RETRIES}): {err}; "
+                f"retrying in {delay}s",
+            )
+            time.sleep(delay)
+            delay = min(delay * 2, 60)
+
     client.loop_start()
     return client
 
