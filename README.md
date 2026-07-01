@@ -55,6 +55,11 @@ You need:
 This add-on talks to the Aqara Home app cloud API. It does not need a separate
 PC, Java service, Node-RED flow, or RocketMQ bridge.
 
+**API note:** this uses Aqara's private, unofficial Home app API, not a
+documented public one. Aqara can change or restrict it without notice. If
+that happens, the sensors stop updating — history already recorded in Home
+Assistant stays yours.
+
 ## Install
 
 1. In Home Assistant, open **Settings > Add-ons > Add-on Store**.
