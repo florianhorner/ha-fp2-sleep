@@ -15,21 +15,30 @@ integration does not expose.
 
 ## What It Looks Like
 
-**Now, live:**
+**Now, live — the SleepRadar card, installed as-is:**
 
 ![Live sleep readout: current stage, heart rate, and breathing](assets/now-live.png)
 
-**Last night, summary:**
+This is the SleepRadar Card (`card/sleepradar-card.js`). It ships with the
+repo, reads three of the five sensors below (sleep stage, heart rate,
+breathing), and needs no other cards or plugins. See
+[The SleepRadar Card](#the-sleepradar-card) to install it.
+
+**Last night — a preview of what's coming:**
 
 ![Last night summary: sleep duration, measured heart rate and breathing, stage timeline](assets/last-night.png)
+
+This is a mockup of a planned future SleepRadar Card release, not something
+you can build today. `examples/dashboard-sleep.yaml` (Mushroom cards,
+ApexCharts Card) gets you a live "Now" card plus a raw 12-hour sleep-state
+chart from the same sensors — it does not compute a session duration,
+averaged vitals, or the segmented stage timeline shown above. That
+sessionization is the next SleepRadar Card release.
 
 Heart rate and breathing are **measured** directly by the sensor. Sleep stages
 are the device's **best guess**, shown honestly as such. The point is not a
 prettier chart. It is that this data was hidden from Home Assistant entirely,
 and now it is five entities you can see, automate, and build on.
-
-(These are example readouts. The add-on gives you the raw entities; how you draw
-them is up to you. See `examples/` for a starting dashboard.)
 
 It creates five MQTT sensors in Home Assistant:
 
@@ -122,6 +131,61 @@ lumi1.xxxxxxxxxxxx
 
 Do not paste a full Supervisor options dump into an issue.
 
+## The SleepRadar Card
+
+Once the five sensors exist, install the card to see the "Now, live" view
+from the screenshot above. It is one file, has no dependencies, and needs no
+other Lovelace plugins.
+
+1. Download `card/sleepradar-card.js` from this repository.
+2. Copy it into your Home Assistant config's `www` folder, so it ends up at
+   `/config/www/sleepradar-card.js`.
+3. In Home Assistant, open **Settings > Dashboards**, then the three-dot menu
+   and choose **Resources**.
+4. Add a resource:
+
+   ```text
+   URL: /local/sleepradar-card.js
+   Resource type: JavaScript module
+   ```
+
+5. Edit a dashboard, add a card, and choose **Manual**. Use:
+
+   ```yaml
+   type: custom:sleepradar-card
+   ```
+
+That's it — the card defaults to the add-on's default entities
+(`sensor.aqara_fp2_sleep_*`). If you changed `mqtt_node_id`, set it on the
+card too:
+
+```yaml
+type: custom:sleepradar-card
+mqtt_node_id: your_custom_node_id
+```
+
+Or override individual entities:
+
+```yaml
+type: custom:sleepradar-card
+entities:
+  sleep_state: sensor.your_sleep_state_entity
+  heart_rate: sensor.your_heart_rate_entity
+  respiration_rate: sensor.your_respiration_rate_entity
+```
+
+The card shows "no data yet" honestly if the sleep state sensor is missing or
+unavailable, and a "stale" badge if a reading is older than three poll
+intervals — it does not paper over the sensor's state. The stale threshold
+assumes the add-on's default `poll_interval: 60`. If you changed
+`poll_interval` in the add-on's configuration, set the same value on the card
+so the "stale" badge stays accurate:
+
+```yaml
+type: custom:sleepradar-card
+poll_interval_seconds: 120
+```
+
 ## Optional Templates And Dashboard
 
 The add-on publishes raw data. The `examples/` folder contains optional Home
@@ -212,6 +276,17 @@ Check:
 - The FP2 is in Sleep Monitor mode.
 - `subject_id` points to the sleep FP2, not another Aqara device.
 - The Aqara Home app still shows current sleep data for that FP2.
+
+### The Card Shows "No Data Yet"
+
+Check:
+
+- `card/sleepradar-card.js` is registered as a Lovelace resource (see
+  [The SleepRadar Card](#the-sleepradar-card)) and the browser cache was
+  cleared or hard-refreshed after adding it.
+- The five sensors already exist in **Developer Tools > States**.
+- If you changed `mqtt_node_id`, the card's config was updated to match
+  (`mqtt_node_id:` or `entities:` in the card's YAML).
 
 ## Security And Privacy
 

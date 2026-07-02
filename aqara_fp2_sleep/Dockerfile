@@ -1,6 +1,6 @@
 FROM ghcr.io/home-assistant/base-python:3.13-alpine3.21
 
-ARG BUILD_VERSION=1.1.0
+ARG BUILD_VERSION=1.2.0
 
 RUN apk add --no-cache --virtual .build-deps gcc musl-dev python3-dev \
     && pip3 install --no-cache-dir pycryptodome paho-mqtt \

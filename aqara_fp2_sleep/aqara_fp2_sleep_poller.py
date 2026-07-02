@@ -279,6 +279,12 @@ def discovery_payload(
         "payload_available": "online",
         "payload_not_available": "offline",
         "expire_after": EXPIRE_AFTER,
+        # Without this, HA skips the state write (and last_updated stays
+        # frozen) whenever a poll republishes an unchanged value — e.g. a
+        # long stable deep-sleep reading — which would make the SleepRadar
+        # Card's last_updated-based "stale" badge false-positive during
+        # entirely normal operation.
+        "force_update": True,
         "origin": ORIGIN,
         "device": DEVICE,
     }

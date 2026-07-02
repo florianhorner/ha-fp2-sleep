@@ -39,6 +39,7 @@ TEXT_SUFFIXES = {
     ".yml",
     ".txt",
     ".json",
+    ".js",
     ".gitignore",
     ".Dockerfile",
 }
@@ -191,6 +192,12 @@ def validate_discovery_payloads() -> None:
         default_entity_ids.append(payload["default_entity_id"])
         if "Schlafzimmer" in json.dumps(payload) or "Bett" in json.dumps(payload):
             fail("discovery payload contains private/local naming")
+        if payload.get("force_update") is not True:
+            fail(
+                "discovery payload missing force_update: true (needed so the "
+                "SleepRadar Card's last_updated-based stale badge doesn't "
+                "false-positive on unchanged readings)"
+            )
 
     expected = {
         "aqara_fp2_sleep_heart_rate",
@@ -204,6 +211,44 @@ def validate_discovery_payloads() -> None:
     expected_entity_ids = {f"sensor.{oid}" for oid in expected}
     if set(default_entity_ids) != expected_entity_ids:
         fail(f"unexpected discovery default_entity_ids: {sorted(default_entity_ids)}")
+
+    validate_card_default_entities(module.NODE, expected_entity_ids)
+
+
+def validate_card_default_entities(poller_node_id, published_entity_ids) -> None:
+    """The card's default entities must be a subset of what the add-on
+    actually publishes, using the same default mqtt_node_id."""
+    card_path = ROOT / "card/sleepradar-card.js"
+    if not card_path.exists():
+        fail("card/sleepradar-card.js is missing")
+    text = card_path.read_text()
+
+    node_match = re.search(r'DEFAULT_NODE_ID\s*=\s*"([^"]+)"', text)
+    if not node_match:
+        fail("card/sleepradar-card.js: could not find DEFAULT_NODE_ID")
+    card_node_id = node_match.group(1)
+    if card_node_id != poller_node_id:
+        fail(
+            f"card DEFAULT_NODE_ID ({card_node_id!r}) does not match the "
+            f"add-on's default mqtt_node_id ({poller_node_id!r})"
+        )
+
+    suffixes_match = re.search(r"ENTITY_SUFFIXES\s*=\s*\{(.*?)\}", text, re.DOTALL)
+    if not suffixes_match:
+        fail("card/sleepradar-card.js: could not find ENTITY_SUFFIXES")
+    suffixes = re.findall(
+        r'["\']?([A-Za-z0-9_]+)["\']?\s*:\s*"([^"]+)"', suffixes_match.group(1)
+    )
+    if not suffixes:
+        fail("card/sleepradar-card.js: ENTITY_SUFFIXES has no entries")
+
+    card_entity_ids = {f"sensor.{card_node_id}_{suffix}" for _, suffix in suffixes}
+    unpublished = card_entity_ids - published_entity_ids
+    if unpublished:
+        fail(
+            "card/sleepradar-card.js references default entities the add-on "
+            f"does not publish: {sorted(unpublished)}"
+        )
 
 
 def install_import_stubs() -> None:
