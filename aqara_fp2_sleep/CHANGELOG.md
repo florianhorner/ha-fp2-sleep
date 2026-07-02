@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.2.0
+
+- Adds `card/sleepradar-card.js`, a dependency-free custom Lovelace card that
+  renders the "Now, live" README view (phase, heart rate, breathing) from
+  three of the add-on's default sensors, with honest unavailable/stale
+  states. Install is a manual dashboard resource. The "Last night"
+  screenshot is relabeled as built from the optional examples dashboard, not
+  the shipped card. The card sanitizes a custom `mqtt_node_id` the same way
+  the add-on does, and its `poll_interval_seconds` option keeps the "stale"
+  badge accurate if you changed the add-on's `poll_interval` from the
+  60-second default.
+- Adds `force_update: true` to the add-on's MQTT discovery payloads. Without
+  it, Home Assistant does not advance an entity's `last_updated` when a poll
+  republishes an unchanged value (e.g. a stable deep-sleep reading), which
+  would have made the SleepRadar Card's "stale" badge false-positive during
+  normal operation.
+- `scripts/validate_repository.py` now checks that the card's default
+  entities are a subset of what the add-on actually publishes, and that
+  every discovery payload sets `force_update: true`.
+
 ## 1.1.0
 
 - Adds `default_entity_id` to MQTT discovery payloads alongside the existing

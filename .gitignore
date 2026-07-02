@@ -4,6 +4,7 @@ __pycache__/
 .venv/
 .env
 *.log
+.playwright-mcp/
 !.conductor/
 !.conductor/settings.toml
 
