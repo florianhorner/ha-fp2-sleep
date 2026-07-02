@@ -19,6 +19,11 @@
 - `scripts/validate_repository.py` now checks that the card's default
   entities are a subset of what the add-on actually publishes, and that
   every discovery payload sets `force_update: true`.
+- The card now treats a `sleep_state` of `"None"`/`"none"` as unavailable.
+  The poller's `value_template` only guards Jinja's `Undefined`, not a
+  literal `null`, so a null Aqara reading renders as the literal text
+  "None" in Home Assistant — without this, the card showed a fabricated
+  "Unknown" live reading instead of the honest "no data yet" state.
 
 ## 1.1.0
 
