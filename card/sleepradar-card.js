@@ -33,7 +33,20 @@ const PHASES = {
   5: "Deep sleep",
 };
 
-const UNAVAILABLE_STATES = new Set(["unavailable", "unknown", "", undefined, null]);
+// "None"/"none" cover a real Home Assistant gotcha: the poller's
+// value_template is `{{ value_json.attr | default('unknown') }}`, and
+// Jinja's default() filter only replaces Undefined, not a literal null —
+// so a null value from the Aqara API (e.g. sleep_state during a data gap)
+// renders as the literal text "None" instead of "unknown".
+const UNAVAILABLE_STATES = new Set([
+  "unavailable",
+  "unknown",
+  "",
+  "None",
+  "none",
+  undefined,
+  null,
+]);
 
 function escapeHtml(value) {
   return String(value)
