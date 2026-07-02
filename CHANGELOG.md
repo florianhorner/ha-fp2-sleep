@@ -8,11 +8,11 @@
   renders the "Now, live" README view (phase, heart rate, breathing) from
   three of the add-on's default sensors, with honest unavailable/stale
   states. Install is a manual dashboard resource. The "Last night"
-  screenshot is relabeled as built from the optional examples dashboard, not
-  the shipped card. The card sanitizes a custom `mqtt_node_id` the same way
-  the add-on does, and its `poll_interval_seconds` option keeps the "stale"
-  badge accurate if you changed the add-on's `poll_interval` from the
-  60-second default.
+  screenshot is relabeled as a preview of a future release, since the
+  optional examples dashboard does not actually reproduce it (see below).
+  The card sanitizes a custom `mqtt_node_id` the same way the add-on does,
+  and its `poll_interval_seconds` option keeps the "stale" badge accurate
+  if you changed the add-on's `poll_interval` from the 60-second default.
 - Adds `force_update: true` to the add-on's MQTT discovery payloads. Without
   it, Home Assistant does not advance an entity's `last_updated` when a poll
   republishes an unchanged value (e.g. a stable deep-sleep reading), which
@@ -26,6 +26,11 @@
   literal `null`, so a null Aqara reading renders as the literal text
   "None" in Home Assistant — without this, the card showed a fabricated
   "Unknown" live reading instead of the honest "no data yet" state.
+- Corrects the README's "Last night" claim: `examples/dashboard-sleep.yaml`
+  only produces a live "Now" card plus a raw 12-hour sleep-state chart, not
+  the session duration, averaged vitals, or segmented stage timeline shown
+  in the screenshot — that sessionization is still a future release, not
+  something buildable today from the example.
 
 ## 1.1.0
 

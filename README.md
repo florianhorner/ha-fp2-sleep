@@ -24,14 +24,16 @@ repo, reads three of the five sensors below (sleep stage, heart rate,
 breathing), and needs no other cards or plugins. See
 [The SleepRadar Card](#the-sleepradar-card) to install it.
 
-**Last night, summary — built from the optional examples dashboard:**
+**Last night — a preview of what's coming:**
 
 ![Last night summary: sleep duration, measured heart rate and breathing, stage timeline](assets/last-night.png)
 
-This view is not part of the shipped card yet. It shows what you can build
-today from the raw sensors using `examples/dashboard-sleep.yaml` (Mushroom
-cards, ApexCharts Card) — sessionized "last night" duration and stage
-timeline are on the roadmap for a future SleepRadar Card release.
+This is a mockup of a planned future SleepRadar Card release, not something
+you can build today. `examples/dashboard-sleep.yaml` (Mushroom cards,
+ApexCharts Card) gets you a live "Now" card plus a raw 12-hour sleep-state
+chart from the same sensors — it does not compute a session duration,
+averaged vitals, or the segmented stage timeline shown above. That
+sessionization is the next SleepRadar Card release.
 
 Heart rate and breathing are **measured** directly by the sensor. Sleep stages
 are the device's **best guess**, shown honestly as such. The point is not a
