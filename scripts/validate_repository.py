@@ -111,6 +111,21 @@ def validate_addon_config() -> None:
     if options["mqtt_node_id"] != "aqara_fp2_sleep":
         fail("mqtt_node_id default changed unexpectedly")
 
+    # Supervisor reads the per-add-on CHANGELOG.md (not the repo-root one) to
+    # render the "what's new" changelog in the add-on store UI, and shows
+    # "no changelog found" if it's missing or doesn't cover the current
+    # version — see aqara_fp2_sleep/CHANGELOG.md.
+    addon_changelog = ROOT / "aqara_fp2_sleep/CHANGELOG.md"
+    if not addon_changelog.exists():
+        fail(
+            "aqara_fp2_sleep/CHANGELOG.md is missing (Supervisor reads this, not the repo-root CHANGELOG.md)"
+        )
+    version = config["version"]
+    if f"## {version}" not in addon_changelog.read_text():
+        fail(
+            f"aqara_fp2_sleep/CHANGELOG.md has no entry for the current version {version}"
+        )
+
 
 def validate_examples() -> None:
     examples = list((ROOT / "examples").glob("*.yaml"))

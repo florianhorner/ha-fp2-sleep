@@ -1,0 +1,37 @@
+# Changelog
+
+## 1.1.0
+
+- Adds `default_entity_id` to MQTT discovery payloads alongside the existing
+  `object_id`, so entity IDs are pinned correctly on Home Assistant ≥2026.4
+  where `object_id` was removed from the discovery schema.
+- Adds SleepRadar design language guidance and logo assets for public docs.
+- Adds an upfront README disclosure that the add-on relies on Aqara's private,
+  unofficial Home app API, which Aqara can change or restrict without notice.
+- Pre-wires `examples/sleep_tracking.yaml` and `examples/dashboard-sleep.yaml`
+  to the add-on's own default entity IDs so both load with no editing beyond
+  the dashboard's optional bed-status cross-check card.
+- Aligns the root README with the pre-wired examples, documents that
+  `sleep_tracking.yaml` must load before the dashboard, and widens the
+  example validator's foreign-entity guard from `sensor.` to all common
+  entity domains (service-call lines excluded).
+- Adds a one-click "Add repository to my Home Assistant" install badge and a
+  CI status badge to the README, and documents the full `aqara_area` region
+  list (`CN`, `EU`, `USA`, `RU`, `KR`) inline instead of only in the config
+  schema.
+- Poll failures now log a plain-English cause (the Aqara API error code and
+  message, or a clear description of an unexpected response) instead of a
+  raw JSON dump.
+- The add-on now retries the MQTT broker connection with backoff (up to
+  ~2 minutes) instead of exiting immediately if the broker is still starting
+  up — common right after a fresh install when both add-ons boot together —
+  and still responds promptly to add-on stop/restart during that retry
+  window.
+
+## 1.0.0
+
+- Initial public package for Aqara FP2 sleep telemetry in Home Assistant.
+- Adds a Home Assistant add-on that polls Aqara sleep resources and publishes
+  five MQTT discovery sensors.
+- Adds plain-language setup docs, placeholder-only examples, and a privacy
+  validator for release checks.
