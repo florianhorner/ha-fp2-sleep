@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.1.0
+
 - Adds `default_entity_id` to MQTT discovery payloads alongside the existing
   `object_id`, so entity IDs are pinned correctly on Home Assistant ≥2026.4
   where `object_id` was removed from the discovery schema.
