@@ -89,6 +89,11 @@ MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883") or "1883")
 MQTT_USER = os.environ.get("MQTT_USER", "")
 MQTT_PASS = os.environ.get("MQTT_PASS", "")
 MQTT_SSL = str(os.environ.get("MQTT_SSL", "false")).lower() in ("true", "1", "yes")
+MQTT_CONNECT_RETRIES = 6
+MQTT_CONNECT_BACKOFF = (
+    5  # seconds; doubles each attempt, capped at MQTT_CONNECT_BACKOFF_MAX
+)
+MQTT_CONNECT_BACKOFF_MAX = 60
 
 
 def sanitize_node_id(value):
@@ -306,9 +311,48 @@ def make_mqtt():
     if MQTT_SSL:
         client.tls_set()
     client.will_set(AVAIL_TOPIC, "offline", qos=1, retain=True)
-    client.connect(MQTT_HOST, MQTT_PORT, keepalive=max(60, INTERVAL * 2))
+
+    delay = MQTT_CONNECT_BACKOFF
+    for attempt in range(1, MQTT_CONNECT_RETRIES + 1):
+        if not _running:
+            log("info", "Shutdown requested during MQTT connect retry; exiting")
+            raise SystemExit(0)
+        try:
+            client.connect(MQTT_HOST, MQTT_PORT, keepalive=max(60, INTERVAL * 2))
+            break
+        except OSError as err:
+            if not _running:
+                log("info", "Shutdown requested during MQTT connect retry; exiting")
+                raise SystemExit(0) from None
+            if attempt == MQTT_CONNECT_RETRIES:
+                log(
+                    "fatal",
+                    f"MQTT connect to {MQTT_HOST}:{MQTT_PORT} failed after "
+                    f"{MQTT_CONNECT_RETRIES} attempts: {err}",
+                )
+                raise
+            log(
+                "warning",
+                f"MQTT connect to {MQTT_HOST}:{MQTT_PORT} failed "
+                f"(attempt {attempt}/{MQTT_CONNECT_RETRIES}): {err}; "
+                f"retrying in {delay}s",
+            )
+            if not interruptible_sleep(delay):
+                log("info", "Shutdown requested during MQTT connect retry; exiting")
+                raise SystemExit(0) from None
+            delay = min(delay * 2, MQTT_CONNECT_BACKOFF_MAX)
+
     client.loop_start()
     return client
+
+
+def describe_poll_failure(res):
+    code = res.get("code")
+    if code is not None and code != 0:
+        return f"Aqara API error (code={code}): {res.get('message') or 'no message returned'}"
+    if "result" in res:
+        return f"unexpected response shape from Aqara API (result was not a list): {json.dumps(res)[:200]}"
+    return f"unrecognized response from Aqara API: {json.dumps(res)[:200]}"
 
 
 _running = True
@@ -317,6 +361,14 @@ _running = True
 def _stop(*_):
     global _running
     _running = False
+
+
+def interruptible_sleep(seconds):
+    for _ in range(seconds):
+        if not _running:
+            return False
+        time.sleep(1)
+    return _running
 
 
 def main():
@@ -353,12 +405,9 @@ def main():
             log("debug", f"state={state}")
         if not ok:
             client.publish(AVAIL_TOPIC, "offline", qos=1, retain=True)
-            log("error", f"poll failed: {json.dumps(res)[:200]}")
+            log("error", f"poll failed: {describe_poll_failure(res)}")
 
-        for _ in range(INTERVAL):
-            if not _running:
-                break
-            time.sleep(1)
+        interruptible_sleep(INTERVAL)
 
     log("info", "Shutting down; marking offline.")
     client.publish(AVAIL_TOPIC, "offline", qos=1, retain=True)

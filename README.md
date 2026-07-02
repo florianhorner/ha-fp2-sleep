@@ -4,6 +4,8 @@
 
 # SleepRadar
 
+[![CI](https://github.com/florianhorner/ha-fp2-sleep/actions/workflows/ci.yml/badge.svg)](https://github.com/florianhorner/ha-fp2-sleep/actions/workflows/ci.yml)
+
 Contact-free sleep vitals (heart rate, breathing, and stages) from an Aqara FP2
 in Home Assistant. No wearable, no Docker bridge, no developer account.
 
@@ -62,6 +64,10 @@ Assistant stays yours.
 
 ## Install
 
+[![Add repository to my Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fflorianhorner%2Fha-fp2-sleep)
+
+Or add it by hand:
+
 1. In Home Assistant, open **Settings > Add-ons > Add-on Store**.
 2. Open the three-dot menu and choose **Repositories**.
 3. Add this repository URL:
@@ -83,6 +89,9 @@ Assistant stays yours.
    device_name: "Aqara FP2 Sleep Monitor"
    mqtt_node_id: "aqara_fp2_sleep"
    ```
+
+   `aqara_area` must match your Aqara account's region: `CN`, `EU`, `USA`,
+   `RU`, or `KR`. `EU` (the default) uses the Germany endpoint.
 
 6. Start the add-on.
 7. Open the log. A working setup shows:
@@ -189,6 +198,12 @@ Check:
 - The add-on log says `Published discovery for 5 sensors`.
 - MQTT discovery is enabled in Home Assistant.
 - `mqtt_node_id` is still `aqara_fp2_sleep`, unless you intentionally changed it.
+
+If the MQTT broker add-on is still starting up (common right after a fresh
+install, when both add-ons boot together), the log will show `MQTT connect
+... failed ... retrying in Ns` a few times — this is expected and resolves
+itself once the broker is up, for up to about 2 minutes. If it still fails
+after that, restart the add-on once the broker add-on shows as running.
 
 ### Values Stay Unknown
 
