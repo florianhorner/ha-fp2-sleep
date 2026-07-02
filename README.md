@@ -199,6 +199,12 @@ Check:
 - MQTT discovery is enabled in Home Assistant.
 - `mqtt_node_id` is still `aqara_fp2_sleep`, unless you intentionally changed it.
 
+If the MQTT broker add-on is still starting up (common right after a fresh
+install, when both add-ons boot together), the log will show `MQTT connect
+... failed ... retrying in Ns` a few times — this is expected and resolves
+itself once the broker is up, for up to about 2 minutes. If it still fails
+after that, restart the add-on once the broker add-on shows as running.
+
 ### Values Stay Unknown
 
 Check:

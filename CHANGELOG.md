@@ -16,6 +16,18 @@
   `sleep_tracking.yaml` must load before the dashboard, and widens the
   example validator's foreign-entity guard from `sensor.` to all common
   entity domains (service-call lines excluded).
+- Adds a one-click "Add repository to my Home Assistant" install badge and a
+  CI status badge to the README, and documents the full `aqara_area` region
+  list (`CN`, `EU`, `USA`, `RU`, `KR`) inline instead of only in the config
+  schema.
+- Poll failures now log a plain-English cause (the Aqara API error code and
+  message, or a clear description of an unexpected response) instead of a
+  raw JSON dump.
+- The add-on now retries the MQTT broker connection with backoff (up to
+  ~2 minutes) instead of exiting immediately if the broker is still starting
+  up — common right after a fresh install when both add-ons boot together —
+  and still responds promptly to add-on stop/restart during that retry
+  window.
 
 ## 1.0.0
 
