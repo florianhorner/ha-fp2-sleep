@@ -7,5 +7,5 @@
 
 [scripts]
 setup = "python3 -m venv .venv && .venv/bin/python -m pip install pyyaml==6.0.2 yamllint==1.35.1 paho-mqtt pycryptodome"
-run = ".venv/bin/yamllint -c .yamllint . && .venv/bin/python scripts/validate_repository.py"
+run = ".venv/bin/yamllint -c .yamllint . && .venv/bin/python scripts/validate_repository.py && node tests/sleepradar-card.test.js"
 run_mode = "concurrent"

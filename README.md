@@ -174,12 +174,17 @@ entities:
   respiration_rate: sensor.your_respiration_rate_entity
 ```
 
-The card shows "no data yet" honestly if the sleep state sensor is missing or
-unavailable, and a "stale" badge if a reading is older than three poll
-intervals — it does not paper over the sensor's state. The stale threshold
-assumes the add-on's default `poll_interval: 60`. If you changed
-`poll_interval` in the add-on's configuration, set the same value on the card
-so the "stale" badge stays accurate:
+The card behaves like a Home Assistant status card: current state first,
+freshness second, and vitals only when they are live enough to trust. It shows
+"no data yet" honestly if the sleep state sensor is missing or unavailable, a
+"not measuring" state when the bed is empty, and a "stale" badge if the sleep
+state is older than three poll intervals. When the bed is empty or the status
+is stale, the card hides retained heart-rate and breathing values instead of
+presenting the FP2's last in-bed numbers as live readings.
+
+The stale threshold assumes the add-on's default `poll_interval: 60`. If you
+changed `poll_interval` in the add-on's configuration, set the same value on
+the card so the "stale" badge stays accurate:
 
 ```yaml
 type: custom:sleepradar-card
