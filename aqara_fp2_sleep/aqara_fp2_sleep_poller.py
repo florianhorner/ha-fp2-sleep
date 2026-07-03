@@ -182,9 +182,7 @@ def md5(s):
 class Aqara:
     def __init__(self, area):
         if area not in AREAS:
-            raise SystemExit(
-                f"Unknown AQARA_AREA={area!r}; use one of {', '.join(AREAS)}"
-            )
+            fatal_startup(f"Unknown AQARA_AREA={area!r}; use one of {', '.join(AREAS)}")
         self.area = area
         self.cfg = AREAS[area]
         self.token = None
@@ -377,17 +375,37 @@ def interruptible_sleep(seconds):
     return _running
 
 
+# Cooldown before exiting on a permanent startup misconfiguration. With
+# `watchdog: true` in config.yaml, Supervisor restarts the container whenever the
+# process exits; the cooldown keeps a permanent misconfig (blank/typo'd config,
+# unknown area) from becoming a tight restart loop that burns CPU and floods logs.
+STARTUP_FAILURE_COOLDOWN = 30
+
+
+def fatal_startup(msg):
+    log("fatal", msg)
+    interruptible_sleep(STARTUP_FAILURE_COOLDOWN)
+    raise SystemExit(1)
+
+
 def main():
-    if not (USER and PASSWORD and SUBJECT):
-        raise SystemExit("Missing AQARA_USER / AQARA_PASS / SUBJECT_ID")
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT, _stop)
+
+    if not (USER and PASSWORD and SUBJECT):
+        fatal_startup("Missing AQARA_USER / AQARA_PASS / SUBJECT_ID")
 
     client = make_mqtt()
     publish_discovery(client)
 
     aqara = Aqara(AREA)
-    aqara.login()
+    if not aqara.login():
+        log(
+            "fatal",
+            "Aqara login failed at startup. Check aqara_username, aqara_password, "
+            "aqara_area, and subject_id. The add-on keeps retrying; the sensors "
+            "stay unavailable until login succeeds.",
+        )
 
     while _running:
         ok = False

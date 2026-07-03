@@ -14,6 +14,38 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# Canonical sleep-phase contract. This validator holds its own independent copy
+# of "what correct looks like" on purpose: the checks below cross-check every
+# hand-maintained copy in the repo (card, README, examples) against these
+# literals. Do NOT rewrite these to import from the poller or any shared module —
+# an independent literal is what makes the check catch drift instead of merely
+# proving a thing agrees with itself.
+CANONICAL_PHASES = {
+    0: "Out of bed",
+    1: "Awake",
+    2: "Awake",
+    3: "REM",
+    4: "Light sleep",
+    5: "Deep sleep",
+}
+IN_BED_CODES = frozenset({1, 2, 3, 4, 5})
+ASLEEP_CODES = frozenset({3, 4, 5})
+
+# The five sensor object IDs the add-on publishes, as an independent literal (see
+# the note above CANONICAL_PHASES for why this is not imported from the poller).
+EXPECTED_OBJECT_IDS = {
+    "aqara_fp2_sleep_heart_rate",
+    "aqara_fp2_sleep_respiration_rate",
+    "aqara_fp2_sleep_sleep_state",
+    "aqara_fp2_sleep_body_movement",
+    "aqara_fp2_sleep_illuminance",
+}
+
+
+class ValidationError(Exception):
+    """Raised by fail(); caught in main() so --self-test can assert failures."""
+
+
 PRIVATE_PATTERNS = {
     "private HA URL": re.compile(r"ha\.horner\.io", re.IGNORECASE),
     "mounted HA config path": re.compile(r"/Volumes/config"),
@@ -48,8 +80,7 @@ SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", ".ruff_cache", ".venv", ".c
 
 
 def fail(message: str) -> None:
-    print(f"ERROR: {message}")
-    sys.exit(1)
+    raise ValidationError(message)
 
 
 def iter_text_files():
@@ -199,13 +230,7 @@ def validate_discovery_payloads() -> None:
                 "false-positive on unchanged readings)"
             )
 
-    expected = {
-        "aqara_fp2_sleep_heart_rate",
-        "aqara_fp2_sleep_respiration_rate",
-        "aqara_fp2_sleep_sleep_state",
-        "aqara_fp2_sleep_body_movement",
-        "aqara_fp2_sleep_illuminance",
-    }
+    expected = EXPECTED_OBJECT_IDS
     if set(object_ids) != expected:
         fail(f"unexpected discovery object ids: {sorted(object_ids)}")
     expected_entity_ids = {f"sensor.{oid}" for oid in expected}
@@ -213,6 +238,9 @@ def validate_discovery_payloads() -> None:
         fail(f"unexpected discovery default_entity_ids: {sorted(default_entity_ids)}")
 
     validate_card_default_entities(module.NODE, expected_entity_ids)
+    check_recorder_entities(
+        (ROOT / "examples/recorder.yaml").read_text(), expected_entity_ids
+    )
 
 
 def validate_card_default_entities(poller_node_id, published_entity_ids) -> None:
@@ -285,12 +313,291 @@ def install_import_stubs() -> None:
         sys.modules["Crypto.Cipher.PKCS1_v1_5"] = crypto_pkcs
 
 
+# --- Sleep-phase drift guard -------------------------------------------------
+#
+# The phase-code map (0-5) and the in-bed/asleep code sets are hand-copied across
+# the card, the README, and the example YAML. None of those can import Python, so
+# these checks parse each copy out of its own file and compare it to the
+# CANONICAL_* literals above. Two divergences are intentional and are allowed on
+# purpose (see the checks): examples/sleep_tracking.yaml's narrative map says
+# "Awake in bed" for codes 1/2, and examples/dashboard-sleep.yaml's ApexCharts
+# tick formatter is a partial, abbreviated map (codes 2-5 only).
+
+
+def _code_label_pairs(block: str) -> dict:
+    """Parse `<int>: '<label>'` / `<int>: "<label>"` pairs out of a JS or Jinja
+    object-literal fragment."""
+    return {
+        int(code): label
+        for code, label in re.findall(r"(\d+)\s*:\s*['\"]([^'\"]+)['\"]", block)
+    }
+
+
+def _int_list(fragment: str) -> list:
+    return [int(n) for n in re.findall(r"\d+", fragment)]
+
+
+def check_card_phase_semantics(text: str) -> None:
+    block = re.search(r"const PHASES\s*=\s*\{(.*?)\}", text, re.DOTALL)
+    if not block:
+        fail("card/sleepradar-card.js: could not find the PHASES map")
+    phases = _code_label_pairs(block.group(1))
+    if phases != CANONICAL_PHASES:
+        fail(f"card/sleepradar-card.js PHASES drifted from canonical: {phases}")
+
+    in_bed = re.search(r"IN_BED_SLEEP_CODES\s*=\s*new Set\(\[([^\]]*)\]\)", text)
+    if not in_bed:
+        fail("card/sleepradar-card.js: could not find IN_BED_SLEEP_CODES")
+    if set(_int_list(in_bed.group(1))) != set(IN_BED_CODES):
+        fail(
+            "card/sleepradar-card.js IN_BED_SLEEP_CODES drifted: "
+            f"{sorted(_int_list(in_bed.group(1)))}"
+        )
+
+
+def check_readme_phase_table(text: str) -> None:
+    section = re.search(r"## Sleep State Codes(.*?)(?:\n## |\Z)", text, re.DOTALL)
+    if not section:
+        fail("README.md: could not find the '## Sleep State Codes' section")
+    parsed = {}
+    for line in section.group(1).splitlines():
+        if not line.strip().startswith("|"):
+            continue
+        codes = re.findall(r"`(\d+)`", line)
+        if not codes:
+            continue  # header / separator row
+        label = [c.strip() for c in line.strip().strip("|").split("|")][-1]
+        for code in codes:
+            parsed[int(code)] = label
+    if parsed != CANONICAL_PHASES:
+        fail(f"README.md Sleep State Codes table drifted from canonical: {parsed}")
+
+
+def check_sleep_tracking_maps(text: str) -> None:
+    phases_block = re.search(r"phases\s*=\s*\{(.*?)\}", text, re.DOTALL)
+    if not phases_block:
+        fail("examples/sleep_tracking.yaml: could not find the `phases` map")
+    phases = _code_label_pairs(phases_block.group(1))
+    if phases != CANONICAL_PHASES:
+        fail(f"examples/sleep_tracking.yaml `phases` map drifted: {phases}")
+
+    # The narrative `names` map intentionally reads "Awake in bed" for codes 1/2
+    # (it is a live-readout sentence fragment, not a plain label). Assert the
+    # code set and the 0/3/4/5 labels match canonical, and that 1/2 stay
+    # Awake-prefixed — do NOT require them to equal the plain labels.
+    names_block = re.search(r"names\s*=\s*\{(.*?)\}", text, re.DOTALL)
+    if not names_block:
+        fail("examples/sleep_tracking.yaml: could not find the `names` map")
+    names = _code_label_pairs(names_block.group(1))
+    if set(names) != set(CANONICAL_PHASES):
+        fail(
+            "examples/sleep_tracking.yaml `names` map has the wrong code set: "
+            f"{sorted(names)}"
+        )
+    for code, label in names.items():
+        if code in (1, 2):
+            if not label.startswith("Awake"):
+                fail(
+                    f"examples/sleep_tracking.yaml `names`[{code}] must start with "
+                    f"'Awake': {label!r}"
+                )
+        elif label != CANONICAL_PHASES[code]:
+            fail(f"examples/sleep_tracking.yaml `names`[{code}] drifted: {label!r}")
+
+    # Both `code in [...]` code sets (in-bed for the "Now" sentence, asleep for
+    # the binary_sensor) must be present verbatim.
+    lists = [set(_int_list(m)) for m in re.findall(r"code in \[([\d,\s]+)\]", text)]
+    if set(IN_BED_CODES) not in lists:
+        fail(
+            "examples/sleep_tracking.yaml is missing the in-bed code list "
+            f"{sorted(IN_BED_CODES)}; found {[sorted(s) for s in lists]}"
+        )
+    if set(ASLEEP_CODES) not in lists:
+        fail(
+            "examples/sleep_tracking.yaml is missing the asleep code list "
+            f"{sorted(ASLEEP_CODES)}; found {[sorted(s) for s in lists]}"
+        )
+
+
+def check_dashboard_maps(text: str) -> None:
+    icons = re.search(r"icons\s*=\s*\{(.*?)\}", text, re.DOTALL)
+    if not icons:
+        fail("examples/dashboard-sleep.yaml: could not find the `icons` map")
+    labels = set(re.findall(r"'([^']+)'\s*:\s*'mdi:", icons.group(1)))
+    if not labels:
+        fail("examples/dashboard-sleep.yaml: `icons` map has no entries")
+    unknown = labels - set(CANONICAL_PHASES.values())
+    if unknown:
+        fail(
+            "examples/dashboard-sleep.yaml icon map has non-canonical phase "
+            f"labels: {sorted(unknown)}"
+        )
+
+    # The ApexCharts tick formatter is a deliberately partial, abbreviated map:
+    # codes 0/1 are absent (the chart nulls 0 and folds 1 into 2) and labels are
+    # shortened ("Light" for "Light sleep"). Assert only that every code present
+    # is in {2,3,4,5} and each label is a prefix of the canonical label.
+    apex = re.search(r"const phases\s*=\s*\{([^}]*)\}", text)
+    if not apex:
+        fail("examples/dashboard-sleep.yaml: could not find the ApexCharts phases map")
+    apex_map = _code_label_pairs(apex.group(1))
+    if not apex_map or not set(apex_map).issubset({2, 3, 4, 5}):
+        fail(
+            "examples/dashboard-sleep.yaml ApexCharts map has unexpected codes: "
+            f"{sorted(apex_map)}"
+        )
+    for code, label in apex_map.items():
+        if not CANONICAL_PHASES[code].startswith(label):
+            fail(
+                f"examples/dashboard-sleep.yaml ApexCharts label for code {code} "
+                f"({label!r}) is not a prefix of canonical {CANONICAL_PHASES[code]!r}"
+            )
+
+
+def check_recorder_entities(text: str, expected_entity_ids) -> None:
+    data = yaml.safe_load(text) or {}
+    entities = set((data.get("include") or {}).get("entities") or [])
+    if entities != set(expected_entity_ids):
+        fail(
+            "examples/recorder.yaml include list drifted from the published "
+            f"entities. expected {sorted(expected_entity_ids)}, got {sorted(entities)}"
+        )
+
+
+def validate_phase_semantics() -> None:
+    check_card_phase_semantics((ROOT / "card/sleepradar-card.js").read_text())
+    check_readme_phase_table((ROOT / "README.md").read_text())
+    check_sleep_tracking_maps((ROOT / "examples/sleep_tracking.yaml").read_text())
+    check_dashboard_maps((ROOT / "examples/dashboard-sleep.yaml").read_text())
+
+
+def run_self_test() -> None:
+    """Prove every drift check catches a real regression: run each check against
+    the real files (must pass) and against a one-value mutation (must fail)."""
+    failures = []
+
+    def expect_pass(name, fn):
+        try:
+            fn()
+        except Exception as exc:  # noqa: BLE001 - self-test reports any failure
+            failures.append(f"{name}: unexpected {type(exc).__name__}: {exc}")
+
+    def expect_fail(name, fn):
+        try:
+            fn()
+        except ValidationError:
+            return
+        except Exception as exc:  # noqa: BLE001
+            failures.append(
+                f"{name}: raised {type(exc).__name__} instead of ValidationError ({exc})"
+            )
+            return
+        failures.append(f"{name}: expected ValidationError, none raised")
+
+    card = (ROOT / "card/sleepradar-card.js").read_text()
+    readme = (ROOT / "README.md").read_text()
+    tracking = (ROOT / "examples/sleep_tracking.yaml").read_text()
+    dashboard = (ROOT / "examples/dashboard-sleep.yaml").read_text()
+    recorder = (ROOT / "examples/recorder.yaml").read_text()
+    entity_ids = {f"sensor.{oid}" for oid in EXPECTED_OBJECT_IDS}
+
+    # Positive controls: the real files must all pass.
+    expect_pass("card real", lambda: check_card_phase_semantics(card))
+    expect_pass("readme real", lambda: check_readme_phase_table(readme))
+    expect_pass("sleep_tracking real", lambda: check_sleep_tracking_maps(tracking))
+    expect_pass("dashboard real", lambda: check_dashboard_maps(dashboard))
+    expect_pass("recorder real", lambda: check_recorder_entities(recorder, entity_ids))
+
+    # Negative controls: one deliberately-wrong mutation per check must be caught.
+    def mutate(text, old, new):
+        if old not in text:
+            failures.append(f"self-test anchor not found: {old!r}")
+        return text.replace(old, new)
+
+    expect_fail(
+        "card PHASES label",
+        lambda: check_card_phase_semantics(mutate(card, '3: "REM"', '3: "Deep sleep"')),
+    )
+    expect_fail(
+        "card in-bed set",
+        lambda: check_card_phase_semantics(
+            mutate(card, "new Set([1, 2, 3, 4, 5])", "new Set([2, 3, 4, 5])")
+        ),
+    )
+    expect_fail(
+        "readme label",
+        lambda: check_readme_phase_table(
+            mutate(readme, "| `3` | REM |", "| `3` | Light sleep |")
+        ),
+    )
+    expect_fail(
+        "sleep_tracking phases label",
+        lambda: check_sleep_tracking_maps(
+            mutate(tracking, "1: 'Awake',", "1: 'Sleepy',")
+        ),
+    )
+    expect_fail(
+        "sleep_tracking names awake-prefix",
+        lambda: check_sleep_tracking_maps(
+            mutate(tracking, "1: 'Awake in bed'", "1: 'Sleeping'")
+        ),
+    )
+    expect_fail(
+        "sleep_tracking asleep list",
+        lambda: check_sleep_tracking_maps(
+            mutate(tracking, "code in [3, 4, 5]", "code in [4, 5]")
+        ),
+    )
+    expect_fail(
+        "sleep_tracking in-bed list",
+        lambda: check_sleep_tracking_maps(
+            mutate(tracking, "code in [1, 2, 3, 4, 5]", "code in [2, 3, 4, 5]")
+        ),
+    )
+    expect_fail(
+        "dashboard icon label",
+        lambda: check_dashboard_maps(
+            mutate(dashboard, "'REM': 'mdi:brain'", "'Napping': 'mdi:brain'")
+        ),
+    )
+    expect_fail(
+        "dashboard apex label",
+        lambda: check_dashboard_maps(mutate(dashboard, '4: "Light"', '4: "Napping"')),
+    )
+    expect_fail(
+        "recorder entity",
+        lambda: check_recorder_entities(
+            mutate(
+                recorder,
+                "sensor.aqara_fp2_sleep_heart_rate",
+                "sensor.aqara_fp2_sleep_pulse",
+            ),
+            entity_ids,
+        ),
+    )
+
+    if failures:
+        print("VALIDATOR SELF-TEST FAILED:")
+        for line in failures:
+            print(f"  - {line}")
+        sys.exit(1)
+    print("SleepRadar validator self-test OK")
+
+
 def main() -> None:
-    validate_yaml()
-    validate_addon_config()
-    validate_examples()
-    validate_discovery_payloads()
-    scan_private_strings()
+    if "--self-test" in sys.argv:
+        run_self_test()
+        return
+    try:
+        validate_yaml()
+        validate_addon_config()
+        validate_examples()
+        validate_discovery_payloads()
+        validate_phase_semantics()
+        scan_private_strings()
+    except ValidationError as err:
+        print(f"ERROR: {err}")
+        sys.exit(1)
     print("SleepRadar package validation OK")
 
 

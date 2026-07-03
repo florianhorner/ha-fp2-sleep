@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Enables Supervisor's `watchdog`, so the add-on auto-restarts if it exits
+  (for example when the MQTT broker stays unreachable past the connect-retry
+  window). A permanent misconfiguration (blank or typo'd credentials, or an
+  unknown `aqara_area`) now logs a clear `[fatal]` line and cools down ~30s
+  before exiting, so watchdog restarts on a slow cadence instead of a tight
+  crash loop.
+- Logs a clear `[fatal]` line when the initial Aqara login fails, instead of
+  only per-poll warnings. The add-on keeps retrying and the sensors stay
+  unavailable until login succeeds.
 - Fixes the SleepRadar Card's out-of-bed state so retained FP2 heart-rate and
   breathing values are hidden instead of looking live after the bed is empty.
   The card now labels freshness in the header, shows per-vital status text,

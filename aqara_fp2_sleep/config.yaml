@@ -9,6 +9,7 @@ arch:
 init: false
 startup: application
 boot: auto
+watchdog: true
 hassio_api: false
 homeassistant_api: false
 services:

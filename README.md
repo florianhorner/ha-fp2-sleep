@@ -259,6 +259,11 @@ used for buying hardware is separate from the app account used by devices.
 Also check `aqara_area`. Accounts are region-bound. `EU` uses the Germany
 endpoint and is the default.
 
+If the login is rejected, the add-on log shows a `[fatal] Aqara login failed at
+startup` line naming the fields to check. The add-on keeps retrying and the
+sensors stay unavailable until the login succeeds, so fix the credentials and it
+recovers on its own.
+
 ### Sensors Do Not Appear
 
 Check:
@@ -272,7 +277,9 @@ If the MQTT broker add-on is still starting up (common right after a fresh
 install, when both add-ons boot together), the log will show `MQTT connect
 ... failed ... retrying in Ns` a few times — this is expected and resolves
 itself once the broker is up, for up to about 2 minutes. If it still fails
-after that, restart the add-on once the broker add-on shows as running.
+after that, restart the add-on once the broker add-on shows as running. The
+add-on runs with Supervisor's watchdog enabled, so it also auto-restarts on its
+own if it exits after the broker stays unreachable past that window.
 
 ### Values Stay Unknown
 
