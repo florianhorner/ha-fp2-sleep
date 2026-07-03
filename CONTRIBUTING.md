@@ -28,9 +28,24 @@ Do not commit:
 - private Home Assistant URLs
 - screenshots with private dashboard state
 
-Run the validator before opening a PR:
+## Local Setup
+
+Use the same Python dependency versions as CI:
 
 ```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python3 -m pip install --upgrade pip
+python3 -m pip install pyyaml==6.0.2 yamllint==1.35.1 paho-mqtt pycryptodome
+```
+
+Node.js is only needed for the SleepRadar Card test. There is no `npm install`
+step because the test uses Node's built-in modules.
+
+Run these checks before opening a PR:
+
+```bash
+yamllint -c .yamllint .
 python3 scripts/validate_repository.py
 node tests/sleepradar-card.test.js
 ```
