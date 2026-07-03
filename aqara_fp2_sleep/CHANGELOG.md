@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.1
 
 - Fixes the SleepRadar Card's out-of-bed state so retained FP2 heart-rate and
   breathing values are hidden instead of looking live after the bed is empty.
