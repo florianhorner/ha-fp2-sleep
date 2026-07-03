@@ -40,6 +40,7 @@ EXPECTED_OBJECT_IDS = {
     "aqara_fp2_sleep_body_movement",
     "aqara_fp2_sleep_illuminance",
 }
+WATCHDOG_URL_PATTERN = re.compile(r"^(?:https?|tcp)://")
 
 
 class ValidationError(Exception):
@@ -124,12 +125,21 @@ def validate_yaml() -> None:
             yaml.safe_load(handle)
 
 
-def validate_addon_config() -> None:
-    config = yaml.safe_load((ROOT / "aqara_fp2_sleep/config.yaml").read_text())
+def validate_addon_config(config=None) -> None:
+    if config is None:
+        config = yaml.safe_load((ROOT / "aqara_fp2_sleep/config.yaml").read_text())
     required = {"name", "version", "slug", "description", "arch", "options", "schema"}
     missing = sorted(required - set(config))
     if missing:
         fail(f"add-on config missing required keys: {', '.join(missing)}")
+
+    watchdog = config.get("watchdog")
+    if watchdog is not None:
+        if not isinstance(watchdog, str) or not WATCHDOG_URL_PATTERN.match(watchdog):
+            fail(
+                "add-on watchdog must be a health-check URL string, not a "
+                "boolean restart toggle"
+            )
 
     options = config["options"]
     schema = config["schema"]
@@ -157,6 +167,22 @@ def validate_addon_config() -> None:
         fail(
             f"aqara_fp2_sleep/CHANGELOG.md has no entry for the current version {version}"
         )
+
+
+def validate_run_script(text=None) -> None:
+    if text is None:
+        text = (ROOT / "aqara_fp2_sleep/run.sh").read_text()
+    if "bashio::exit.nok" in text:
+        fail("aqara_fp2_sleep/run.sh must slow-exit via startup_failure(), not bashio::exit.nok")
+    if "startup_failure()" not in text or "sleep \"${STARTUP_FAILURE_COOLDOWN}\"" not in text:
+        fail("aqara_fp2_sleep/run.sh is missing the startup_failure cooldown helper")
+    for message in [
+        "No MQTT service available",
+        "aqara_username and aqara_password are required.",
+        "subject_id is required.",
+    ]:
+        if f"startup_failure \"{message}" not in text:
+            fail(f"aqara_fp2_sleep/run.sh does not slow-exit for: {message}")
 
 
 def validate_examples() -> None:
@@ -499,9 +525,19 @@ def run_self_test() -> None:
     tracking = (ROOT / "examples/sleep_tracking.yaml").read_text()
     dashboard = (ROOT / "examples/dashboard-sleep.yaml").read_text()
     recorder = (ROOT / "examples/recorder.yaml").read_text()
+    run_script = (ROOT / "aqara_fp2_sleep/run.sh").read_text()
+    addon_config = yaml.safe_load((ROOT / "aqara_fp2_sleep/config.yaml").read_text())
     entity_ids = {f"sensor.{oid}" for oid in EXPECTED_OBJECT_IDS}
 
     # Positive controls: the real files must all pass.
+    expect_pass("addon config real", lambda: validate_addon_config(addon_config))
+    expect_pass(
+        "addon config URL watchdog",
+        lambda: validate_addon_config(
+            dict(addon_config, watchdog="http://[HOST]:[PORT:8080]/health")
+        ),
+    )
+    expect_pass("run script real", lambda: validate_run_script(run_script))
     expect_pass("card real", lambda: check_card_phase_semantics(card))
     expect_pass("readme real", lambda: check_readme_phase_table(readme))
     expect_pass("sleep_tracking real", lambda: check_sleep_tracking_maps(tracking))
@@ -514,6 +550,24 @@ def run_self_test() -> None:
             failures.append(f"self-test anchor not found: {old!r}")
         return text.replace(old, new)
 
+    expect_fail(
+        "addon config boolean watchdog",
+        lambda: validate_addon_config(dict(addon_config, watchdog=True)),
+    )
+    expect_fail(
+        "addon config non-URL watchdog",
+        lambda: validate_addon_config(dict(addon_config, watchdog="true")),
+    )
+    expect_fail(
+        "run script direct exit",
+        lambda: validate_run_script(
+            mutate(
+                run_script,
+                'startup_failure "aqara_username and aqara_password are required."',
+                'bashio::exit.nok "aqara_username and aqara_password are required."',
+            )
+        ),
+    )
     expect_fail(
         "card PHASES label",
         lambda: check_card_phase_semantics(mutate(card, '3: "REM"', '3: "Deep sleep"')),
@@ -591,6 +645,7 @@ def main() -> None:
     try:
         validate_yaml()
         validate_addon_config()
+        validate_run_script()
         validate_examples()
         validate_discovery_payloads()
         validate_phase_semantics()

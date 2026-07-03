@@ -2,12 +2,16 @@
 
 ## Unreleased
 
-- Enables Supervisor's `watchdog`, so the add-on auto-restarts if it exits
-  (for example when the MQTT broker stays unreachable past the connect-retry
-  window). A permanent misconfiguration (blank or typo'd credentials, or an
-  unknown `aqara_area`) now logs a clear `[fatal]` line and cools down ~30s
-  before exiting, so watchdog restarts on a slow cadence instead of a tight
-  crash loop.
+## 1.2.2
+
+- Removes the invalid boolean `watchdog` add-on config and adds a validator
+  guard so `watchdog`, if ever used, must be a health-check URL string instead
+  of a restart-toggle boolean.
+- Permanent startup failures now slow-exit before returning an error: the
+  wrapper waits ~30s for missing MQTT service or required Aqara config, and the
+  Python poller does the same for direct-run missing config or unknown
+  `aqara_area`. This prevents rapid loops when an external Supervisor watchdog
+  is enabled.
 - Logs a clear `[fatal]` line when the initial Aqara login fails, instead of
   only per-poll warnings. The add-on keeps retrying and the sensors stay
   unavailable until login succeeds.

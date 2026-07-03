@@ -268,6 +268,9 @@ startup` line naming the fields to check. The add-on keeps retrying and the
 sensors stay unavailable until the login succeeds, so fix the credentials and it
 recovers on its own.
 
+If required fields are blank, the add-on logs the missing field and waits about
+30 seconds before exiting. Fill in the options and start it again.
+
 ### Sensors Do Not Appear
 
 Check:
@@ -281,9 +284,10 @@ If the MQTT broker add-on is still starting up (common right after a fresh
 install, when both add-ons boot together), the log will show `MQTT connect
 ... failed ... retrying in Ns` a few times — this is expected and resolves
 itself once the broker is up, for up to about 2 minutes. If it still fails
-after that, restart the add-on once the broker add-on shows as running. The
-add-on runs with Supervisor's watchdog enabled, so it also auto-restarts on its
-own if it exits after the broker stays unreachable past that window.
+after that, restart the add-on once the broker add-on shows as running. If you
+enable Home Assistant's Watchdog setting yourself, startup failure paths still
+slow-exit first so a permanent misconfiguration does not turn into a rapid
+restart loop.
 
 ### Values Stay Unknown
 

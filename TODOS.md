@@ -2,27 +2,26 @@
 
 ## Poller
 
-### Add `watchdog: true` to config.yaml
+### Revisit Supervisor watchdog support with a health endpoint
 
-**What:** Configure the add-on's Supervisor watchdog so it auto-restarts on crash.
+**What:** If SleepRadar needs first-class Supervisor watchdog support later, add
+a real health endpoint and set `watchdog` to that URL. Do not use
+`watchdog: true` in `config.yaml`: Home Assistant's add-on config uses that key
+for a health-check URL, not a repo-side restart-toggle boolean.
 
-**Why:** The MQTT connect retry/backoff in `make_mqtt()` (added in the "first-install friction" PR) widens the window where the broker can come up before giving up, but after 6 attempts (~135s) it still raises and the process exits. Without `watchdog: true` in `config.yaml`, Supervisor won't restart it — the underlying race (add-on starts before the broker is ready) isn't structurally closed, just made less likely to matter.
+**Why:** The MQTT connect retry/backoff in `make_mqtt()` widens the window where
+the broker can come up before giving up, but after 6 attempts (~135s) it still
+raises and the process exits. The current repo can reduce restart-loop harm by
+slow-exiting permanent startup failures, but forcing Supervisor restart policy is
+not solved by a boolean `watchdog` key.
 
-**Context:** Flagged by adversarial review during the poller-fixes ship (2026-07-02). Deliberately left out of that PR since it's a `config.yaml` behavior change (auto-restart policy), not a doc/logging fix — needs its own review of restart-loop implications (e.g. crash-looping on a genuinely bad `AQARA_USER`/`PASS` config).
+**Update (2026-07-03, /plan-eng-review):** removed the invalid boolean
+`watchdog` config, added validator coverage to reject it if it returns, and
+slowed wrapper-level permanent startup exits before returning failure. A real
+health endpoint remains separate follow-up work.
 
-**Update (2026-07-03, /autoplan review):** the "crash-loop on bad credentials"
-worry does not hold once you trace the code — `main()` ignores the startup
-`aqara.login()` return (`aqara_fp2_sleep_poller.py:390`) and the poll loop keeps
-re-trying login every cycle, marking entities offline, so bad credentials never
-exit the process (no crash-loop; instead a green-looking add-on producing no
-data). The real restart-loop risk from watchdog is the **missing-config /
-unknown-area `SystemExit`** path, which exits *before* the MQTT backoff and would
-tight-loop. Scoped and implemented in Part 1 (watchdog + cooldown guard on the
-tight-loop startup exits via `fatal_startup()` + one clear startup auth-failure
-log line).
-
-**Effort:** S
-**Priority:** P2
+**Effort:** M
+**Priority:** P3
 **Depends on:** None
 
 ## Validation

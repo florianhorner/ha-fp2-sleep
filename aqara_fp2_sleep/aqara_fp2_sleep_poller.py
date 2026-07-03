@@ -375,10 +375,9 @@ def interruptible_sleep(seconds):
     return _running
 
 
-# Cooldown before exiting on a permanent startup misconfiguration. With
-# `watchdog: true` in config.yaml, Supervisor restarts the container whenever the
-# process exits; the cooldown keeps a permanent misconfig (blank/typo'd config,
-# unknown area) from becoming a tight restart loop that burns CPU and floods logs.
+# Cooldown before exiting on a permanent startup misconfiguration. If the process
+# is supervised by an external watchdog, this keeps blank/typo'd config or an
+# unknown area from becoming a tight restart loop that burns CPU and floods logs.
 STARTUP_FAILURE_COOLDOWN = 30
 
 

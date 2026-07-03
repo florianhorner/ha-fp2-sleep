@@ -1,6 +1,15 @@
 #!/usr/bin/with-contenv bashio
 set -e
 
+STARTUP_FAILURE_COOLDOWN="${STARTUP_FAILURE_COOLDOWN:-30}"
+
+startup_failure() {
+    bashio::log.error "$1"
+    bashio::log.error "Sleeping ${STARTUP_FAILURE_COOLDOWN}s before exit to avoid rapid restart loops."
+    sleep "${STARTUP_FAILURE_COOLDOWN}"
+    exit 1
+}
+
 bashio::log.info "Starting SleepRadar..."
 
 if bashio::services.available "mqtt"; then
@@ -11,7 +20,7 @@ if bashio::services.available "mqtt"; then
     export MQTT_SSL="$(bashio::services mqtt 'ssl')"
     bashio::log.info "Using injected MQTT broker at ${MQTT_HOST}:${MQTT_PORT} (ssl=${MQTT_SSL})"
 else
-    bashio::exit.nok "No MQTT service available. Install and start an MQTT broker add-on."
+    startup_failure "No MQTT service available. Install and start an MQTT broker add-on."
 fi
 
 export AQARA_USER="$(bashio::config 'aqara_username')"
@@ -24,11 +33,11 @@ export DEVICE_NAME="$(bashio::config 'device_name')"
 export MQTT_NODE_ID="$(bashio::config 'mqtt_node_id')"
 
 if bashio::var.is_empty "${AQARA_USER}" || bashio::var.is_empty "${AQARA_PASS}"; then
-    bashio::exit.nok "aqara_username and aqara_password are required."
+    startup_failure "aqara_username and aqara_password are required."
 fi
 
 if bashio::var.is_empty "${SUBJECT_ID}"; then
-    bashio::exit.nok "subject_id is required. Get it from the FP2 device information in the Aqara Home app."
+    startup_failure "subject_id is required. Get it from the FP2 device information in the Aqara Home app."
 fi
 
 bashio::log.info "Polling configured FP2 in area ${AQARA_AREA} every ${POLL_INTERVAL}s"
