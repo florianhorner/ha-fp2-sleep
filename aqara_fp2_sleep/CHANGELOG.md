@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Fixes the SleepRadar Card's out-of-bed state so retained FP2 heart-rate and
+  breathing values are hidden instead of looking live after the bed is empty.
+  The card now labels freshness in the header, shows per-vital status text,
+  and only renders live vitals when the sleep state is fresh and in-bed.
+
 ## 1.2.0
 
 - Adds `card/sleepradar-card.js`, a dependency-free custom Lovelace card that

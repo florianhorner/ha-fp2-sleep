@@ -32,4 +32,5 @@ Run the validator before opening a PR:
 
 ```bash
 python3 scripts/validate_repository.py
+node tests/sleepradar-card.test.js
 ```

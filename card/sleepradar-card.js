@@ -33,6 +33,8 @@ const PHASES = {
   5: "Deep sleep",
 };
 
+const IN_BED_SLEEP_CODES = new Set([1, 2, 3, 4, 5]);
+
 // "None"/"none" cover a real Home Assistant gotcha: the poller's
 // value_template is `{{ value_json.attr | default('unknown') }}`, and
 // Jinja's default() filter only replaces Undefined, not a literal null —
@@ -78,9 +80,74 @@ function sanitizeNodeId(value) {
   return node || DEFAULT_NODE_ID;
 }
 
-function describeNow(phase, code, hr, br) {
-  if (code === 0) return "Not in bed right now.";
-  const haveVitals = hr !== null && br !== null;
+function isInBedCode(code) {
+  return IN_BED_SLEEP_CODES.has(code);
+}
+
+function formatAge(ageMs) {
+  if (!Number.isFinite(ageMs) || ageMs < 0) return "";
+  const seconds = Math.floor(ageMs / 1000);
+  if (seconds < 10) return "just now";
+  if (seconds < 60) return `${seconds} sec ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} d ago`;
+}
+
+function describeFreshness(ageMs, isStale) {
+  const age = formatAge(ageMs);
+  if (!age) return "Freshness unknown";
+  return `${isStale ? "Stale" : "Updated"} ${age}`;
+}
+
+function describeVitalStatus(code, isFresh, isStale, value) {
+  if (isInBedCode(code) && isFresh && value !== null) return "Live now";
+  if (isInBedCode(code) && isFresh) return "No value reported";
+  if (isStale) return "Status stale";
+  if (!isFresh) return "Freshness unknown";
+  if (code === 0) return "Paused out of bed";
+  return "Sleep state unknown";
+}
+
+function describeFooter(code, isFresh, isStale) {
+  if (isStale) {
+    return "Status is stale. Check the add-on and MQTT before trusting live vitals.";
+  }
+  if (!isFresh) {
+    return "SleepRadar needs a fresh sleep-state timestamp before showing live vitals.";
+  }
+  if (code === 0) {
+    return (
+      "Heart rate and breathing are hidden while the bed is empty because " +
+      "the FP2 can retain its last in-bed values."
+    );
+  }
+  if (!isInBedCode(code)) {
+    return "SleepRadar needs a mapped in-bed sleep state before showing live vitals.";
+  }
+  return (
+    "Heart rate and breathing are measured directly by the sensor. " +
+    "Sleep stage is the device's best guess."
+  );
+}
+
+function describeNow(phase, code, hr, br, canShowLiveVitals, isFresh, isStale) {
+  if (isStale) {
+    return `${phase}. Status is stale, so vitals are not shown as live.`;
+  }
+  if (!isFresh) {
+    return `${phase}. Waiting for a fresh status timestamp before showing live vitals.`;
+  }
+  if (code === 0) {
+    return "Out of bed. Heart rate and breathing are not currently measured.";
+  }
+  if (!isInBedCode(code)) {
+    return "SleepRadar cannot map this sleep state yet.";
+  }
+  const haveVitals = canShowLiveVitals && hr !== null && br !== null;
   if (code === 1 || code === 2) {
     return haveVitals
       ? `Awake in bed — heart ${hr} bpm, breathing ${br} br/min.`
@@ -198,42 +265,66 @@ class SleepradarCard extends HTMLElement {
     const br = numericStateOrNull(brObj);
 
     const ageMs = Date.now() - parseTimestampMs(stateObj.last_updated);
+    const hasUsableFreshness = Number.isFinite(ageMs) && ageMs >= 0;
     const staleAfterMs = this._pollIntervalSeconds * 1000 * 3;
-    const isStale = Number.isFinite(ageMs) && ageMs > staleAfterMs;
+    const isStale = hasUsableFreshness && ageMs > staleAfterMs;
+    const isFresh = hasUsableFreshness && !isStale;
+    const canShowLiveVitals = isInBedCode(code) && isFresh;
+    const shownHr = canShowLiveVitals ? hr : null;
+    const shownBr = canShowLiveVitals ? br : null;
 
+    const freshness = describeFreshness(ageMs, isStale);
     const time = formatTime(stateObj.last_updated);
-    const readout = describeNow(phase, code, hr, br);
+    const readout = describeNow(phase, code, hr, br, canShowLiveVitals, isFresh, isStale);
+    const badge = isStale ? "stale" : code === 0 ? "not measuring" : "";
+    const badgeClass = badge === "not measuring" ? " sr-badge-neutral" : "";
+    const phaseCaption =
+      !isFresh
+        ? "last reported"
+        : code === 0
+          ? "bed empty"
+          : isInBedCode(code)
+            ? "the sensor's best guess"
+            : "unmapped code";
+    const footer = describeFooter(code, isFresh, isStale);
 
     this.shadowRoot.innerHTML = this._styles() + `
       <ha-card>
         <div class="sr-card">
           <div class="sr-header">
             <div class="sr-header-left">
-              <div class="sr-eyebrow">READING NOW${time ? ` · ${escapeHtml(time)}` : ""}</div>
+              <div class="sr-eyebrow">CURRENT STATUS · ${escapeHtml(freshness)}${
+                time ? ` · ${escapeHtml(time)}` : ""
+              }</div>
               <div class="sr-phase">${escapeHtml(phase)}
-                <span class="sr-caption">the sensor's best guess</span>
+                <span class="sr-caption">${escapeHtml(phaseCaption)}</span>
               </div>
             </div>
-            ${isStale ? '<div class="sr-badge">stale</div>' : ""}
+            ${badge ? `<div class="sr-badge${badgeClass}">${badge}</div>` : ""}
           </div>
           <div class="sr-readout">${escapeHtml(readout)}</div>
           <div class="sr-stats">
             <div class="sr-stat">
               <div class="sr-stat-label">Heart rate</div>
-              <div class="sr-stat-value">${hr !== null ? escapeHtml(hr) : "—"}
+              <div class="sr-stat-value">${shownHr !== null ? escapeHtml(shownHr) : "—"}
                 <span class="sr-unit">bpm</span>
               </div>
+              <div class="sr-stat-status">${escapeHtml(
+                describeVitalStatus(code, isFresh, isStale, shownHr)
+              )}</div>
             </div>
             <div class="sr-stat">
               <div class="sr-stat-label">Breathing</div>
-              <div class="sr-stat-value">${br !== null ? escapeHtml(br) : "—"}
+              <div class="sr-stat-value">${shownBr !== null ? escapeHtml(shownBr) : "—"}
                 <span class="sr-unit">br/min</span>
               </div>
+              <div class="sr-stat-status">${escapeHtml(
+                describeVitalStatus(code, isFresh, isStale, shownBr)
+              )}</div>
             </div>
           </div>
           <div class="sr-footer">
-            Heart rate and breathing are measured directly by the sensor.
-            Sleep stage is the device's best guess.
+            ${escapeHtml(footer)}
           </div>
         </div>
       </ha-card>`;
@@ -261,6 +352,10 @@ class SleepradarCard extends HTMLElement {
         color: var(--warning-color, #f0ad4e); border: 1px solid var(--warning-color, #f0ad4e);
         border-radius: 4px; padding: 2px 6px; height: fit-content;
       }
+      .sr-badge-neutral {
+        color: var(--secondary-text-color);
+        border-color: var(--divider-color);
+      }
       .sr-readout { color: var(--primary-text-color); }
       .sr-stats { display: flex; gap: 12px; }
       .sr-stat {
@@ -270,6 +365,9 @@ class SleepradarCard extends HTMLElement {
       .sr-stat-label { font-size: 0.8rem; color: var(--secondary-text-color); }
       .sr-stat-value { font-size: 1.4rem; font-weight: 600; color: var(--primary-text-color); }
       .sr-unit { font-size: 0.85rem; font-weight: 400; color: var(--secondary-text-color); }
+      .sr-stat-status {
+        font-size: 0.75rem; color: var(--secondary-text-color); margin-top: 2px;
+      }
       .sr-footer { font-size: 0.75rem; color: var(--secondary-text-color); }
       .sr-empty-title { font-weight: 600; color: var(--primary-text-color); margin-bottom: 6px; }
       .sr-empty-body { font-size: 0.85rem; color: var(--secondary-text-color); }
