@@ -1,0 +1,114 @@
+name: Bug report
+description: Report a SleepRadar install, startup, sensor, or card problem.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a SleepRadar issue. Keep credentials, Home Assistant
+        tokens, private URLs, full Supervisor option dumps, and full FP2
+        `subject_id` values out of the issue.
+
+  - type: dropdown
+    id: ha_install_type
+    attributes:
+      label: Home Assistant installation type
+      description: SleepRadar is packaged as a Home Assistant add-on.
+      options:
+        - Home Assistant OS
+        - Home Assistant Supervised
+        - Other or not sure
+    validations:
+      required: true
+
+  - type: input
+    id: addon_version
+    attributes:
+      label: SleepRadar add-on version
+      description: Find this on the add-on info page.
+      placeholder: "1.2.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: aqara_region
+    attributes:
+      label: Aqara account region
+      description: This must match the region used by your Aqara Home app account.
+      options:
+        - CN
+        - EU
+        - USA
+        - RU
+        - KR
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: sleep_monitor_mode
+    attributes:
+      label: FP2 Sleep Monitor mode
+      description: The FP2 must be in Sleep Monitor mode for sleep telemetry.
+      options:
+        - "Yes"
+        - "No"
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mqtt_broker
+    attributes:
+      label: MQTT broker status
+      description: SleepRadar publishes MQTT discovery sensors.
+      options:
+        - Mosquitto broker add-on is installed and running
+        - Another MQTT broker is available to add-ons
+        - MQTT broker is not running
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: failing_step
+    attributes:
+      label: Failing setup step
+      description: Tell us the first step that did not match the README.
+      placeholder: |
+        Example:
+        - Added repository successfully.
+        - Installed SleepRadar.
+        - Started add-on.
+        - Expected five sensors, but none appeared.
+    validations:
+      required: true
+
+  - type: textarea
+    id: redacted_logs
+    attributes:
+      label: Redacted add-on logs
+      description: Paste only the relevant log lines. Redact credentials, tokens, private URLs, and full subject IDs.
+      placeholder: |
+        [info] Starting SleepRadar...
+        [error] paste redacted error lines here
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_actual
+    attributes:
+      label: Expected vs actual result
+      description: What did you expect to happen, and what happened instead?
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed Aqara credentials, Home Assistant tokens, MQTT credentials, private URLs, and full Supervisor option dumps.
+          required: true
+        - label: I redacted my FP2 subject ID, for example `lumi1.xxxxxxxxxxxx`.
+          required: true

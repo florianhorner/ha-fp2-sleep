@@ -75,6 +75,10 @@ Assistant stays yours.
 
 [![Add repository to my Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fflorianhorner%2Fha-fp2-sleep)
 
+If the button opens My Home Assistant and asks for your Home Assistant URL,
+enter it there once, or skip the button and use the manual repository URL
+below. The manual path works the same way.
+
 Or add it by hand:
 
 1. In Home Assistant, open **Settings > Add-ons > Add-on Store**.
@@ -299,6 +303,15 @@ Check:
 - The five sensors already exist in **Developer Tools > States**.
 - If you changed `mqtt_node_id`, the card's config was updated to match
   (`mqtt_node_id:` or `entities:` in the card's YAML).
+
+Home Assistant pins an entity's id the first time it creates that entity, and
+does not rename it later — not when you change `mqtt_node_id`, and not when
+you upgrade the add-on. If you installed before v1.1.0, or your entities
+already existed the first time you upgraded, your real entity ids may not
+match the card's `sensor.aqara_fp2_sleep_*` defaults even today. Check
+**Developer Tools > States** for the actual ids and set them explicitly with
+the card's `entities:` option (see [The SleepRadar Card](#the-sleepradar-card))
+rather than relying on `mqtt_node_id` alone.
 
 ## Security And Privacy
 

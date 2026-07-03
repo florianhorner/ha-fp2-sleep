@@ -1,5 +1,5 @@
 name: SleepRadar
-version: "1.2.0"
+version: "1.2.1"
 slug: aqara_fp2_sleep
 description: Polls Aqara FP2 sleep telemetry and publishes it to Home Assistant over MQTT
 url: https://github.com/florianhorner/ha-fp2-sleep

@@ -250,6 +250,11 @@ class SleepradarCard extends HTMLElement {
             <div class="sr-empty-body">
               No data from ${escapeHtml(this._entityIds.sleep_state)} yet.
               Check that the SleepRadar add-on is running and the sensor exists.
+              If the add-on is running but this entity id is wrong, Home
+              Assistant pins entity ids when it first creates them and will
+              not rename them later if you change mqtt_node_id or upgrade the
+              add-on — check Developer Tools &gt; States for the real id and
+              set it with this card's entities: option (see README).
             </div>
           </div>
         </ha-card>`;

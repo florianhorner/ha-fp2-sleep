@@ -11,6 +11,18 @@
 - Logs a clear `[fatal]` line when the initial Aqara login fails, instead of
   only per-poll warnings. The add-on keeps retrying and the sensors stay
   unavailable until login succeeds.
+- Clarifies in the README and the SleepRadar Card's "no data" message that
+  Home Assistant pins an entity's id the first time it creates that entity
+  and never renames it afterward — so upgrading past v1.1.0 (which added
+  `default_entity_id` to pin new entities correctly) does not retroactively
+  fix entity ids for installs where the entities already existed. Found by
+  dogfooding the card on a live instance whose sensors predated that fix and
+  still don't match the card's `sensor.aqara_fp2_sleep_*` defaults; the card
+  now points users at Developer Tools > States and the `entities:` override
+  instead of implying the add-on itself is broken.
+
+## 1.2.1
+
 - Fixes the SleepRadar Card's out-of-bed state so retained FP2 heart-rate and
   breathing values are hidden instead of looking live after the bed is empty.
   The card now labels freshness in the header, shows per-vital status text,

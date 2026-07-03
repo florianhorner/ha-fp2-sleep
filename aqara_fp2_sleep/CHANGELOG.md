@@ -11,6 +11,9 @@
 - Logs a clear `[fatal]` line when the initial Aqara login fails, instead of
   only per-poll warnings. The add-on keeps retrying and the sensors stay
   unavailable until login succeeds.
+
+## 1.2.1
+
 - Fixes the SleepRadar Card's out-of-bed state so retained FP2 heart-rate and
   breathing values are hidden instead of looking live after the bed is empty.
   The card now labels freshness in the header, shows per-vital status text,

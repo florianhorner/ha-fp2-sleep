@@ -70,6 +70,11 @@ function defaultStates({ sleepState, heartRate = "54", respirationRate = "11", u
   };
 }
 
+const noData = render({});
+assert.match(noData, /No data from sensor\.aqara_fp2_sleep_sleep_state yet/);
+assert.match(noData, /Home\s+Assistant pins entity ids when it first creates them/);
+assert.match(noData, /entities: option/);
+
 const freshOutOfBed = render(
   defaultStates({
     sleepState: "0",
