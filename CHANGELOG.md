@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Clarifies in the README and the SleepRadar Card's "no data" message that
+  Home Assistant pins an entity's id the first time it creates that entity
+  and never renames it afterward — so upgrading past v1.1.0 (which added
+  `default_entity_id` to pin new entities correctly) does not retroactively
+  fix entity ids for installs where the entities already existed. Found by
+  dogfooding the card on a live instance whose sensors predated that fix and
+  still don't match the card's `sensor.aqara_fp2_sleep_*` defaults; the card
+  now points users at Developer Tools > States and the `entities:` override
+  instead of implying the add-on itself is broken.
+
 ## 1.2.1
 
 - Fixes the SleepRadar Card's out-of-bed state so retained FP2 heart-rate and

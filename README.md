@@ -297,6 +297,15 @@ Check:
 - If you changed `mqtt_node_id`, the card's config was updated to match
   (`mqtt_node_id:` or `entities:` in the card's YAML).
 
+Home Assistant pins an entity's id the first time it creates that entity, and
+does not rename it later — not when you change `mqtt_node_id`, and not when
+you upgrade the add-on. If you installed before v1.1.0, or your entities
+already existed the first time you upgraded, your real entity ids may not
+match the card's `sensor.aqara_fp2_sleep_*` defaults even today. Check
+**Developer Tools > States** for the actual ids and set them explicitly with
+the card's `entities:` option (see [The SleepRadar Card](#the-sleepradar-card))
+rather than relying on `mqtt_node_id` alone.
+
 ## Security And Privacy
 
 Your Aqara username and password stay in the add-on options managed by
