@@ -52,12 +52,15 @@ SleepRadar creates five MQTT sensors in Home Assistant:
 You need:
 
 - Home Assistant OS or Home Assistant Supervised.
-- The Mosquitto Broker app, or another MQTT broker accessible to apps.
+- The Mosquitto broker app, or another MQTT broker accessible to apps.
 - MQTT discovery enabled in Home Assistant.
 - An Aqara FP2 in Sleep Monitor mode.
 - Your Aqara Home app account credentials. This is the mobile app login, not
   the Aqara webshop account — they are separate.
 - The FP2 `subject_id` from the Aqara Home app.
+
+Tested with Home Assistant 2026.6. Older versions may still label this area as
+Add-ons instead of Apps.
 
 ## Install
 
@@ -245,7 +248,7 @@ account. Check `aqara_area` because accounts are region-bound.
 
 ### Sensors Do Not Appear
 
-- Mosquitto Broker app is installed and running.
+- Mosquitto broker app is installed and running.
 - SleepRadar log shows `Published discovery for 5 sensors`.
 - MQTT discovery is enabled in Home Assistant.
 - `mqtt_node_id` is `aqara_fp2_sleep` unless you changed it.
