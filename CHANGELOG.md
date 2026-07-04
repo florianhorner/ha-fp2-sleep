@@ -7,10 +7,7 @@
   action is **Settings > Apps > Install app**), while the developer and API
   surface keeps "add-on". Swaps the two rot-prone navigation paths (entity
   states, dashboard resources) to My Home Assistant redirect links that Home
-  Assistant maintains, so they can't silently drift on the next UI rename. A
-  forum reader flagged the stale "Settings > Add-ons > Add-on Store" wording
-  within hours of launch; an interim fix mis-labeled the path as "App store"
-  before this correction.
+  Assistant maintains, so they can't silently drift on the next UI rename.
 
 - Clarifies in the README and the SleepRadar Card's "no data" message that
   Home Assistant pins an entity's id the first time it creates that entity
