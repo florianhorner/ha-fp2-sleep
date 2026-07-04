@@ -83,8 +83,9 @@ Or add it by hand:
 
 1. In Home Assistant, open **Settings > Apps > Install app**. (Older guides
    and screenshots may still say "Add-ons" or "Add-on Store.")
-2. Open the three-dot menu (top right) and choose **Repositories**.
-3. Add this repository URL, then click **Add**:
+2. Open the three-dot menu (top right), choose **Repositories**, then click
+   **Add** (bottom right). This opens an "Add repository" box.
+3. Paste this repository URL in the box, then click **Add**:
 
    ```text
    https://github.com/florianhorner/ha-fp2-sleep
