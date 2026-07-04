@@ -1,7 +1,7 @@
-// SleepRadar Card — the "Now" readout from the add-on's own MQTT sensors.
+// SleepRadar Card — the "Now" readout from the app's own MQTT sensors.
 //
 // Zero dependencies, no build step. Reads the three sensors that already
-// exist once the SleepRadar add-on is running:
+// exist once the SleepRadar app is running:
 //   sensor.<node>_sleep_state
 //   sensor.<node>_heart_rate
 //   sensor.<node>_respiration_rate
@@ -13,7 +13,7 @@
 
 const DEFAULT_NODE_ID = "aqara_fp2_sleep";
 
-// Suffixes match the add-on's own discovery object ids
+// Suffixes match the app's own discovery object ids
 // (aqara_fp2_sleep/aqara_fp2_sleep_poller.py). Keep these three in sync with
 // the poller's SENSORS list; scripts/validate_repository.py checks this.
 const ENTITY_SUFFIXES = {
@@ -66,9 +66,9 @@ function defaultEntities(nodeId) {
   };
 }
 
-// Mirrors the add-on's own sanitize_node_id() (aqara_fp2_sleep_poller.py) so
+// Mirrors the app's own sanitize_node_id() (aqara_fp2_sleep_poller.py) so
 // a card config pasted straight from mqtt_node_id (e.g. "Bedroom FP2") maps
-// to the same entity ids the add-on actually publishes, instead of a
+// to the same entity ids the app actually publishes, instead of a
 // literal, never-matching sensor.Bedroom FP2_sleep_state.
 function sanitizeNodeId(value) {
   const node = String(value || "")
@@ -114,7 +114,7 @@ function describeVitalStatus(code, isFresh, isStale, value) {
 
 function describeFooter(code, isFresh, isStale) {
   if (isStale) {
-    return "Status is stale. Check the add-on and MQTT before trusting live vitals.";
+    return "Status is stale. Check the app and MQTT before trusting live vitals.";
   }
   if (!isFresh) {
     return "SleepRadar needs a fresh sleep-state timestamp before showing live vitals.";
@@ -205,7 +205,7 @@ class SleepradarCard extends HTMLElement {
 
   connectedCallback() {
     // Staleness depends on wall-clock time, not just entity state — without
-    // this, a card whose watched entities stop updating (add-on hung, still
+    // this, a card whose watched entities stop updating (app hung, still
     // connected to MQTT) would never re-evaluate the "stale" badge, since
     // _render()'s cheap re-render guard only fires on entity state changes.
     this._staleCheckTimer = setInterval(() => {
@@ -249,11 +249,11 @@ class SleepradarCard extends HTMLElement {
             <div class="sr-empty-title">SleepRadar</div>
             <div class="sr-empty-body">
               No data from ${escapeHtml(this._entityIds.sleep_state)} yet.
-              Check that the SleepRadar add-on is running and the sensor exists.
-              If the add-on is running but this entity id is wrong, Home
+              Check that the SleepRadar app is running and the sensor exists.
+              If the app is running but this entity id is wrong, Home
               Assistant pins entity ids when it first creates them and will
               not rename them later if you change mqtt_node_id or upgrade the
-              add-on — check Developer Tools &gt; States for the real id and
+              app — check Developer Tools &gt; States for the real id and
               set it with this card's entities: option (see README).
             </div>
           </div>
@@ -386,5 +386,5 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "sleepradar-card",
   name: "SleepRadar Card",
-  description: "Live sleep phase, heart rate, and breathing from the SleepRadar add-on.",
+  description: "Live sleep phase, heart rate, and breathing from the SleepRadar app.",
 });

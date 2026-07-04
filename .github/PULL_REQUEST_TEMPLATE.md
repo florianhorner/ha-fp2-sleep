@@ -4,9 +4,9 @@ Describe the user-facing issue this fixes or the documentation gap this closes.
 
 ## Scope
 
-- [ ] This does not touch the running Home Assistant add-on.
+- [ ] This does not touch the running Home Assistant app.
 - [ ] This does not add private entity IDs, credentials, tokens, or full FP2 subject IDs.
-- [ ] This stays within the small SleepRadar add-on package scope.
+- [ ] This stays within the small SleepRadar app package scope.
 
 ## Notes
 

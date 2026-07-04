@@ -5,7 +5,7 @@
 # - ApexCharts Card
 # - card-mod
 #
-# Pre-wired to the add-on's own default entities and the sleep_tracking.yaml
+# Pre-wired to the app's own default entities and the sleep_tracking.yaml
 # helpers (sensor.fp2_sleep_phase, etc.) — copy this in as-is once
 # sleep_tracking.yaml is loaded. Only PLACEHOLDER_BED_STATUS_ENTITY is left:
 # it drives the optional "Cross-check" card comparing the FP2 against a
