@@ -6,14 +6,14 @@ available in Home Assistant with the least moving parts possible.
 ## Good Contributions
 
 - Clear bug reports with redacted logs.
-- Fixes for add-on install or startup problems.
+- Fixes for app install or startup problems.
 - Documentation improvements that make setup easier.
 - Region-specific notes that are tested with a real account.
 
 ## Keep Out Of Scope
 
 - Auto-posting, marketing automation, or unrelated launch tooling.
-- Replacing this add-on with a full custom integration.
+- Replacing this app with a full custom integration.
 - Adding dashboards that require private entity IDs.
 - Large rewrites without a concrete user-facing failure.
 
