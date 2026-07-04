@@ -17,6 +17,20 @@ available in Home Assistant with the least moving parts possible.
 - Adding dashboards that require private entity IDs.
 - Large rewrites without a concrete user-facing failure.
 
+## Home Assistant UI Labels
+
+Home Assistant renames menus and buttons between releases (Add-ons became Apps;
+the install action is now "Install app"). When docs need to point at a Home
+Assistant screen:
+
+- Prefer a [My Home Assistant](https://my.home-assistant.io/) redirect link or
+  badge. Home Assistant maintains the target, so it cannot go stale.
+- Otherwise, link Home Assistant's own official docs for that screen.
+- Only as a last resort, write the literal label, and verify it against a live
+  Home Assistant instance (a screenshot or the actual UI). A summary from a web
+  search or fetch is not acceptable evidence. Paraphrased UI labels are how the
+  install steps went stale in the first place.
+
 ## Privacy Rules
 
 Do not commit:

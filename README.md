@@ -9,7 +9,7 @@
 Contact-free sleep vitals (heart rate, breathing, and stages) from an Aqara FP2
 in Home Assistant. No wearable, no Docker bridge, no developer account.
 
-This is a small Home Assistant add-on for people who use an Aqara FP2 in
+This is a small Home Assistant app for people who use an Aqara FP2 in
 Sleep Monitor mode and want the sleep data that the local HomeKit or Matter
 integration does not expose.
 
@@ -50,7 +50,7 @@ It creates five MQTT sensors in Home Assistant:
 | `sensor.aqara_fp2_sleep_body_movement` | Body movement value | measured |
 | `sensor.aqara_fp2_sleep_illuminance` | Illuminance in lux | measured |
 
-The short version: install the add-on, enter your Aqara Home app account and
+The short version: install SleepRadar, enter your Aqara Home app account and
 your FP2 device id, start it, then check that the five sensors appear.
 
 ## Before You Start
@@ -58,12 +58,12 @@ your FP2 device id, start it, then check that the five sensors appear.
 You need:
 
 - Home Assistant OS or Home Assistant Supervised.
-- The Mosquitto broker add-on, or another MQTT broker exposed to add-ons.
+- The Mosquitto broker app, or another MQTT broker exposed to apps.
 - An Aqara FP2 in Sleep Monitor mode.
 - Your Aqara Home app account. This is not the Aqara store login.
 - The FP2 `subject_id` from the Aqara app.
 
-This add-on talks to the Aqara Home app cloud API. It does not need a separate
+SleepRadar talks to the Aqara Home app cloud API. It does not need a separate
 PC, Java service, Node-RED flow, or RocketMQ bridge.
 
 **API note:** this uses Aqara's private, unofficial Home app API, not a
@@ -81,7 +81,7 @@ below. The manual path works the same way.
 
 Or add it by hand:
 
-1. In Home Assistant, open **Settings > Apps > Install App**. (Older guides
+1. In Home Assistant, open **Settings > Apps > Install app**. (Older guides
    and screenshots may still say "Add-ons" or "Add-on Store.")
 2. Open the three-dot menu (top right) and choose **Repositories**.
 3. Add this repository URL, then click **Add**:
@@ -107,7 +107,7 @@ Or add it by hand:
    `aqara_area` must match your Aqara account's region: `CN`, `EU`, `USA`,
    `RU`, or `KR`. `EU` (the default) uses the Germany endpoint.
 
-6. Start the add-on.
+6. Start the app.
 7. Open the log. A working setup shows:
 
    ```text
@@ -115,8 +115,9 @@ Or add it by hand:
    Published discovery for 5 sensors
    ```
 
-8. In Home Assistant, check **Developer Tools > States** for the five
-   `sensor.aqara_fp2_sleep_*` sensors.
+8. Check for the five `sensor.aqara_fp2_sleep_*` sensors in [your entity
+   states](https://my.home-assistant.io/redirect/developer_states/) (Developer
+   Tools, then States).
 
 The first useful success moment is simple: the sensors exist, and
 `sensor.aqara_fp2_sleep_sleep_state` changes when the FP2 reports a bed or
@@ -145,8 +146,8 @@ other Lovelace plugins.
 1. Download `card/sleepradar-card.js` from this repository.
 2. Copy it into your Home Assistant config's `www` folder, so it ends up at
    `/config/www/sleepradar-card.js`.
-3. In Home Assistant, open **Settings > Dashboards**, then the three-dot menu
-   and choose **Resources**.
+3. Open [your dashboard resources](https://my.home-assistant.io/redirect/lovelace_resources/)
+   (Settings > Dashboards, three-dot menu, then **Resources**).
 4. Add a resource:
 
    ```text
@@ -160,7 +161,7 @@ other Lovelace plugins.
    type: custom:sleepradar-card
    ```
 
-That's it — the card defaults to the add-on's default entities
+That's it — the card defaults to the app's default entities
 (`sensor.aqara_fp2_sleep_*`). If you changed `mqtt_node_id`, set it on the
 card too:
 
@@ -187,8 +188,8 @@ state is older than three poll intervals. When the bed is empty or the status
 is stale, the card hides retained heart-rate and breathing values instead of
 presenting the FP2's last in-bed numbers as live readings.
 
-The stale threshold assumes the add-on's default `poll_interval: 60`. If you
-changed `poll_interval` in the add-on's configuration, set the same value on
+The stale threshold assumes the app's default `poll_interval: 60`. If you
+changed `poll_interval` in the app's configuration, set the same value on
 the card so the "stale" badge stays accurate:
 
 ```yaml
@@ -198,11 +199,11 @@ poll_interval_seconds: 120
 
 ## Optional Templates And Dashboard
 
-The add-on publishes raw data. The `examples/` folder contains optional Home
+The app publishes raw data. The `examples/` folder contains optional Home
 Assistant YAML for nicer names and a simple sleep dashboard.
 
 - `examples/sleep_tracking.yaml` maps the raw sleep state into a readable
-  phase sensor. Pre-wired to the add-on's default entities; load it as-is.
+  phase sensor. Pre-wired to the app's default entities; load it as-is.
 - `examples/dashboard-sleep.yaml` is an optional Lovelace view. It uses
   Mushroom cards, ApexCharts Card, and card-mod. Load `sleep_tracking.yaml`
   first; the view reads the phase sensor it creates.
@@ -268,16 +269,16 @@ endpoint and is the default.
 
 Check:
 
-- MQTT broker add-on is installed and running.
-- The add-on log says `Published discovery for 5 sensors`.
+- MQTT broker app is installed and running.
+- SleepRadar's log says `Published discovery for 5 sensors`.
 - MQTT discovery is enabled in Home Assistant.
 - `mqtt_node_id` is still `aqara_fp2_sleep`, unless you intentionally changed it.
 
-If the MQTT broker add-on is still starting up (common right after a fresh
-install, when both add-ons boot together), the log will show `MQTT connect
+If the MQTT broker app is still starting up (common right after a fresh
+install, when both apps boot together), the log will show `MQTT connect
 ... failed ... retrying in Ns` a few times — this is expected and resolves
 itself once the broker is up, for up to about 2 minutes. If it still fails
-after that, restart the add-on once the broker add-on shows as running.
+after that, restart SleepRadar once the broker app shows as running.
 
 ### Values Stay Unknown
 
@@ -294,28 +295,28 @@ Check:
 - `card/sleepradar-card.js` is registered as a Lovelace resource (see
   [The SleepRadar Card](#the-sleepradar-card)) and the browser cache was
   cleared or hard-refreshed after adding it.
-- The five sensors already exist in **Developer Tools > States**.
+- The five sensors already exist in [your entity states](https://my.home-assistant.io/redirect/developer_states/).
 - If you changed `mqtt_node_id`, the card's config was updated to match
   (`mqtt_node_id:` or `entities:` in the card's YAML).
 
 Home Assistant pins an entity's id the first time it creates that entity, and
 does not rename it later — not when you change `mqtt_node_id`, and not when
-you upgrade the add-on. If you installed before v1.1.0, or your entities
+you upgrade the app. If you installed before v1.1.0, or your entities
 already existed the first time you upgraded, your real entity ids may not
-match the card's `sensor.aqara_fp2_sleep_*` defaults even today. Check
-**Developer Tools > States** for the actual ids and set them explicitly with
+match the card's `sensor.aqara_fp2_sleep_*` defaults even today. Check [your
+entity states](https://my.home-assistant.io/redirect/developer_states/) for the actual ids and set them explicitly with
 the card's `entities:` option (see [The SleepRadar Card](#the-sleepradar-card))
 rather than relying on `mqtt_node_id` alone.
 
 ## Security And Privacy
 
-Your Aqara username and password stay in the add-on options managed by
+Your Aqara username and password stay in the app options managed by
 Supervisor. They are not stored in YAML by this repository.
 
 The `appid`, `appkey`, and RSA public key in the source are public constants
 from the Aqara Home app. They are not user credentials.
 
-This add-on uses a private Aqara app API. Aqara can change it. The add-on will
+SleepRadar uses a private Aqara app API. Aqara can change it. SleepRadar will
 try to log in again when the app token expires, but it cannot promise that the
 private API will keep working forever.
 
