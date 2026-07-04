@@ -1,4 +1,4 @@
-# SleepRadar Add-on
+# SleepRadar App
 
 Install SleepRadar from Home Assistant's Install app screen (Settings > Apps >
 Install app) after adding the repository URL.

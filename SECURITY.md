@@ -20,7 +20,7 @@ Do not share:
 - your Aqara Home app password
 - your `subject_id` without redaction
 - Home Assistant long-lived access tokens
-- Supervisor options dumps
+- Home Assistant app options dumps
 - MQTT credentials
 - private Home Assistant URLs or screenshots with private dashboard state
 
@@ -38,15 +38,15 @@ way to access another user's data.
 For normal bugs, open an issue with:
 
 - Home Assistant installation type
-- add-on version
+- app version
 - Aqara region
 - redacted logs
 - whether the FP2 is in Sleep Monitor mode
 
-Never paste your full add-on configuration into an issue.
+Never paste your full app configuration into an issue.
 
 ## Private API Caveat
 
-This add-on uses the Aqara Home app cloud API. Aqara can change or block this
+This app uses the Aqara Home app cloud API. Aqara can change or block this
 API. Token refresh is handled by logging in again, but API compatibility is not
 guaranteed.

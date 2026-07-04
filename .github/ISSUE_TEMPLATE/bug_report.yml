@@ -6,14 +6,14 @@ body:
     attributes:
       value: |
         Thanks for reporting a SleepRadar issue. Keep credentials, Home Assistant
-        tokens, private URLs, full Supervisor option dumps, and full FP2
+        tokens, private URLs, full app options dumps, and full FP2
         `subject_id` values out of the issue.
 
   - type: dropdown
     id: ha_install_type
     attributes:
       label: Home Assistant installation type
-      description: SleepRadar is packaged as a Home Assistant add-on.
+      description: SleepRadar is packaged as a Home Assistant app.
       options:
         - Home Assistant OS
         - Home Assistant Supervised
@@ -22,10 +22,10 @@ body:
       required: true
 
   - type: input
-    id: addon_version
+    id: app_version
     attributes:
-      label: SleepRadar add-on version
-      description: Find this on the add-on info page.
+      label: SleepRadar app version
+      description: Find this on the app info page.
       placeholder: "1.2.0"
     validations:
       required: true
@@ -63,8 +63,8 @@ body:
       label: MQTT broker status
       description: SleepRadar publishes MQTT discovery sensors.
       options:
-        - Mosquitto broker add-on is installed and running
-        - Another MQTT broker is available to add-ons
+        - Mosquitto Broker app is installed and running
+        - Another MQTT broker is available to apps
         - MQTT broker is not running
         - Not sure
     validations:
@@ -79,7 +79,7 @@ body:
         Example:
         - Added repository successfully.
         - Installed SleepRadar.
-        - Started add-on.
+        - Started app.
         - Expected five sensors, but none appeared.
     validations:
       required: true
@@ -87,7 +87,7 @@ body:
   - type: textarea
     id: redacted_logs
     attributes:
-      label: Redacted add-on logs
+      label: Redacted app logs
       description: Paste only the relevant log lines. Redact credentials, tokens, private URLs, and full subject IDs.
       placeholder: |
         [info] Starting SleepRadar...
@@ -108,7 +108,7 @@ body:
     attributes:
       label: Privacy check
       options:
-        - label: I removed Aqara credentials, Home Assistant tokens, MQTT credentials, private URLs, and full Supervisor option dumps.
+        - label: I removed Aqara credentials, Home Assistant tokens, MQTT credentials, private URLs, and full app options dumps.
           required: true
         - label: I redacted my FP2 subject ID, for example `lumi1.xxxxxxxxxxxx`.
           required: true

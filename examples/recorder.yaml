@@ -1,7 +1,7 @@
 # Optional Recorder include example.
 #
 # If your Recorder config uses include globs, add the MQTT discovery entities
-# created by this add-on.
+# created by this app.
 
 include:
   entities:

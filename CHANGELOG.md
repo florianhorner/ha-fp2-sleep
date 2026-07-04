@@ -4,10 +4,12 @@
 
 - Aligns the docs to Home Assistant's current terminology. User-facing text
   now says **app / Apps** (Home Assistant renamed Add-ons to Apps; the install
-  action is **Settings > Apps > Install app**), while the developer and API
-  surface keeps "add-on". Swaps the two rot-prone navigation paths (entity
-  states, dashboard resources) to My Home Assistant redirect links that Home
-  Assistant maintains, so they can't silently drift on the next UI rename.
+  action is **Settings > Apps > Install app**), while historical changelog
+  entries and package internals keep "add-on" where that is still the
+  underlying Home Assistant packaging term. Swaps the two rot-prone navigation
+  paths (entity states, dashboard resources) to My Home Assistant redirect links
+  that Home Assistant maintains, so they can't silently drift on the next UI
+  rename.
 
 - Clarifies in the README and the SleepRadar Card's "no data" message that
   Home Assistant pins an entity's id the first time it creates that entity
@@ -17,7 +19,7 @@
   dogfooding the card on a live instance whose sensors predated that fix and
   still don't match the card's `sensor.aqara_fp2_sleep_*` defaults; the card
   now points users at Developer Tools > States and the `entities:` override
-  instead of implying the add-on itself is broken.
+  instead of implying the app itself is broken.
 
 ## 1.2.1
 

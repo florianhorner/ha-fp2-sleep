@@ -14,7 +14,7 @@
 - alias: "Cap light brightness while asleep"
   description: >-
     When a bedroom light turns on while someone is asleep, hold it to a low
-    brightness instead of full. 2026-06-28: example for the OSS add-on.
+    brightness instead of full. 2026-06-28: example for the OSS app.
   trigger:
     - platform: state
       entity_id: PLACEHOLDER_BEDROOM_LIGHT
@@ -35,7 +35,7 @@
 - alias: "Hold the vacuum until awake"
   description: >-
     If the robot vacuum starts cleaning while someone is asleep, send it back
-    to the dock. 2026-06-28: example for the OSS add-on.
+    to the dock. 2026-06-28: example for the OSS app.
   trigger:
     - platform: state
       entity_id: PLACEHOLDER_VACUUM
