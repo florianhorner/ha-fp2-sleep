@@ -24,17 +24,6 @@ repo, reads three of the five sensors below (sleep stage, heart rate,
 breathing), and needs no other cards or plugins. See
 [The SleepRadar Card](#the-sleepradar-card) to install it.
 
-**Last night — a preview of what's coming:**
-
-![Last night summary: sleep duration, measured heart rate and breathing, stage timeline](assets/last-night.png)
-
-This is a mockup of a planned future SleepRadar Card release, not something
-you can build today. `examples/dashboard-sleep.yaml` (Mushroom cards,
-ApexCharts Card) gets you a live "Now" card plus a raw 12-hour sleep-state
-chart from the same sensors — it does not compute a session duration,
-averaged vitals, or the segmented stage timeline shown above. That
-sessionization is the next SleepRadar Card release.
-
 Heart rate and breathing are **measured** directly by the sensor. Sleep stages
 are the device's **best guess**, shown honestly as such. The point is not a
 prettier chart. It is that this data was hidden from Home Assistant entirely,
@@ -231,6 +220,18 @@ asleep. A few starting points (see `examples/automations.yaml`):
 
 This is the part the local integration cannot give you: the bedroom reacting to
 what the sensor actually reads.
+
+## What's Next
+
+**A preview of what's coming, not something you can build today:**
+
+![Last night summary: sleep duration, measured heart rate and breathing, stage timeline](assets/last-night.png)
+
+This is a mockup of a planned future SleepRadar Card release. Today,
+`examples/dashboard-sleep.yaml` (Mushroom cards, ApexCharts Card) gets you a
+live "Now" card plus a raw 12-hour sleep-state chart from the same sensors. It
+does not compute a session duration, averaged vitals, or the segmented stage
+timeline shown above. That sessionization is the next SleepRadar Card release.
 
 ## Sleep State Codes
 
