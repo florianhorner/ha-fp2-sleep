@@ -81,11 +81,10 @@ below. The manual path works the same way.
 
 Or add it by hand:
 
-1. In Home Assistant, open **Settings > Apps > App store**. (Home Assistant
-   renamed Add-ons to Apps in the 2026.6 release; older guides and
-   screenshots may still say "Add-ons" or "Add-on Store.")
-2. Open the three-dot menu and choose **Repositories**.
-3. Add this repository URL:
+1. In Home Assistant, open **Settings > Apps > Install App**. (Older guides
+   and screenshots may still say "Add-ons" or "Add-on Store.")
+2. Open the three-dot menu (top right) and choose **Repositories**.
+3. Add this repository URL, then click **Add**:
 
    ```text
    https://github.com/florianhorner/ha-fp2-sleep
