@@ -81,7 +81,9 @@ below. The manual path works the same way.
 
 Or add it by hand:
 
-1. In Home Assistant, open **Settings > Add-ons > Add-on Store**.
+1. In Home Assistant, open **Settings > Apps > App store**. (Home Assistant
+   renamed Add-ons to Apps in the 2026.6 release; older guides and
+   screenshots may still say "Add-ons" or "Add-on Store.")
 2. Open the three-dot menu and choose **Repositories**.
 3. Add this repository URL:
 
