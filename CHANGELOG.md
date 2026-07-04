@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Updates the install steps in the root README and the add-on's own README
+  to Home Assistant's current navigation (Settings > Apps > App store).
+  Home Assistant renamed Add-ons to Apps in the 2026.6 release; the docs
+  still said Settings > Add-ons > Add-on Store. Found by a forum reader
+  within hours of launch.
+
 - Clarifies in the README and the SleepRadar Card's "no data" message that
   Home Assistant pins an entity's id the first time it creates that entity
   and never renames it afterward — so upgrading past v1.1.0 (which added

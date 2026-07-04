@@ -1,7 +1,7 @@
 # SleepRadar Add-on
 
-Install this add-on from the Home Assistant Add-on Store after adding the
-repository URL.
+Install this add-on from Home Assistant's App store (Settings > Apps > App
+store) after adding the repository URL.
 
 Set your Aqara Home app account, region, and FP2 `subject_id`, then start the
 add-on. The add-on publishes five MQTT discovery sensors under the configured
