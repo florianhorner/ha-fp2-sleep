@@ -50,16 +50,37 @@ Use the same Python dependency versions as CI:
 python3 -m venv .venv
 . .venv/bin/activate
 python3 -m pip install --upgrade pip
-python3 -m pip install pyyaml==6.0.2 yamllint==1.35.1 paho-mqtt pycryptodome
+python3 -m pip install -r requirements-ci.txt
 ```
 
 Node.js is only needed for the SleepRadar Card test. There is no `npm install`
 step because the test uses Node's built-in modules.
 
+`pip-audit` is intentionally not in `requirements-ci.txt` because it is audit
+tooling, not a repo dependency. CI installs `pip-audit==2.10.1` under Python
+3.12. For local audit proof, install it separately with Python 3.10 or newer:
+
+```bash
+python3 -m pip install pip-audit==2.10.1
+```
+
 Run these checks before opening a PR:
 
 ```bash
+python3 -m py_compile aqara_fp2_sleep/aqara_fp2_sleep_poller.py scripts/validate_repository.py
 yamllint -c .yamllint .
 python3 scripts/validate_repository.py
 node tests/sleepradar-card.test.js
+bash -n aqara_fp2_sleep/run.sh
+pip-audit -r aqara_fp2_sleep/requirements.txt --progress-spinner off
+gitleaks dir --no-banner --redact --verbose .
 ```
+
+CI also runs a Docker build with the add-on directory as the build context:
+
+```bash
+docker build --build-arg BUILD_VERSION=ci aqara_fp2_sleep
+```
+
+If Docker or Gitleaks is not installed locally, note that in the PR proof and
+rely on CI for that specific check.
