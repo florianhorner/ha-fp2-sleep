@@ -14,6 +14,27 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 
+EXPECTED_RUNTIME_REQUIREMENTS = [
+    "paho-mqtt==2.1.0",
+    "pycryptodome==3.23.0",
+]
+EXPECTED_CI_REQUIREMENTS = [
+    "-r aqara_fp2_sleep/requirements.txt",
+    "PyYAML==6.0.3",
+    "yamllint==1.37.1",
+]
+CHECKOUT_ACTION = "actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10"
+SETUP_PYTHON_ACTION = (
+    "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1"
+)
+PYTHON_VERSION = "3.12"
+PIP_AUDIT_VERSION = "2.10.1"
+GITLEAKS_VERSION = "8.30.0"
+GITLEAKS_LINUX_X64_SHA256 = (
+    "79a3ab579b53f71efd634f3aaf7e04a0fa0cf206b7ed434638d1547a2470a66e"
+)
+SHA_PINNED_ACTION = re.compile(r"^[^@\s]+@[0-9a-f]{40}$")
+
 PRIVATE_PATTERNS = {
     "private HA URL": re.compile(r"ha\.horner\.io", re.IGNORECASE),
     "mounted HA config path": re.compile(r"/Volumes/config"),
@@ -50,6 +71,230 @@ SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", ".ruff_cache", ".venv", ".c
 def fail(message: str) -> None:
     print(f"ERROR: {message}")
     sys.exit(1)
+
+
+def read_effective_requirement_lines(rel: str) -> list[str]:
+    path = ROOT / rel
+    if not path.exists():
+        fail(f"{rel} is missing")
+    lines = []
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if line and not line.startswith("#"):
+            lines.append(line)
+    return lines
+
+
+def validate_requirements() -> None:
+    runtime = read_effective_requirement_lines("aqara_fp2_sleep/requirements.txt")
+    if runtime != EXPECTED_RUNTIME_REQUIREMENTS:
+        fail(
+            "aqara_fp2_sleep/requirements.txt must contain exactly: "
+            + ", ".join(EXPECTED_RUNTIME_REQUIREMENTS)
+        )
+
+    ci = read_effective_requirement_lines("requirements-ci.txt")
+    if ci != EXPECTED_CI_REQUIREMENTS:
+        fail(
+            "requirements-ci.txt must contain exactly: "
+            + ", ".join(EXPECTED_CI_REQUIREMENTS)
+        )
+
+
+def dockerfile_instructions(path: Path) -> list[str]:
+    instructions = []
+    current = ""
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        current = f"{current} {stripped}" if current else stripped
+        if current.endswith("\\"):
+            current = current[:-1].rstrip()
+            continue
+        instructions.append(re.sub(r"\s+", " ", current))
+        current = ""
+    if current:
+        instructions.append(re.sub(r"\s+", " ", current))
+    return instructions
+
+
+def validate_dockerfile() -> None:
+    path = ROOT / "aqara_fp2_sleep/Dockerfile"
+    instructions = dockerfile_instructions(path)
+    copy_index = None
+    pip_install_index = None
+    for index, instruction in enumerate(instructions):
+        upper = instruction.upper()
+        if upper.startswith("COPY ") and re.search(
+            r"\brequirements\.txt\s+/requirements\.txt\b", instruction
+        ):
+            copy_index = index
+        if upper.startswith("RUN ") and "pip3 install" in instruction:
+            if "-r /requirements.txt" in instruction:
+                pip_install_index = index
+            if re.search(r"\b(paho-mqtt|pycryptodome)\b", instruction):
+                fail(
+                    "aqara_fp2_sleep/Dockerfile must install runtime packages "
+                    "through requirements.txt, not inline package names"
+                )
+
+    if copy_index is None:
+        fail("aqara_fp2_sleep/Dockerfile must copy requirements.txt")
+    if pip_install_index is None:
+        fail(
+            "aqara_fp2_sleep/Dockerfile must install with "
+            "pip3 install --no-cache-dir -r /requirements.txt"
+        )
+    if copy_index > pip_install_index:
+        fail(
+            "aqara_fp2_sleep/Dockerfile must copy requirements.txt before "
+            "the pip install layer"
+        )
+
+
+def workflow_steps() -> list[dict]:
+    path = ROOT / ".github/workflows/ci.yml"
+    with path.open(encoding="utf-8") as handle:
+        workflow = yaml.safe_load(handle)
+    if not isinstance(workflow, dict):
+        fail(".github/workflows/ci.yml must parse as a YAML mapping")
+
+    if workflow.get("permissions") != {"contents": "read"}:
+        fail(".github/workflows/ci.yml must set permissions: contents: read")
+
+    jobs = workflow.get("jobs")
+    if not isinstance(jobs, dict) or "validate" not in jobs:
+        fail(".github/workflows/ci.yml must define jobs.validate")
+    validate_job = jobs["validate"]
+    if not isinstance(validate_job, dict):
+        fail(".github/workflows/ci.yml jobs.validate must be a mapping")
+    steps = validate_job.get("steps")
+    if not isinstance(steps, list):
+        fail(".github/workflows/ci.yml jobs.validate.steps must be a list")
+    for step in steps:
+        if not isinstance(step, dict):
+            fail(".github/workflows/ci.yml steps must be mappings")
+    return steps
+
+
+def step_by_name(steps: list[dict], name: str) -> dict:
+    for step in steps:
+        if step.get("name") == name:
+            return step
+    fail(f".github/workflows/ci.yml is missing step: {name}")
+
+
+def step_run(steps: list[dict], name: str) -> str:
+    step = step_by_name(steps, name)
+    run = step.get("run")
+    if not isinstance(run, str):
+        fail(f".github/workflows/ci.yml step {name!r} must have a run script")
+    return run
+
+
+def require_run_pattern(steps: list[dict], name: str, pattern: str, description: str) -> None:
+    if not re.search(pattern, step_run(steps, name), re.MULTILINE):
+        fail(f".github/workflows/ci.yml step {name!r} must {description}")
+
+
+def validate_workflow() -> None:
+    steps = workflow_steps()
+    uses = [step.get("uses") for step in steps if "uses" in step]
+    if CHECKOUT_ACTION not in uses:
+        fail(".github/workflows/ci.yml must use the SHA-pinned checkout action")
+    if SETUP_PYTHON_ACTION not in uses:
+        fail(".github/workflows/ci.yml must use the SHA-pinned setup-python action")
+    for action in uses:
+        if not isinstance(action, str) or not SHA_PINNED_ACTION.match(action):
+            fail(f".github/workflows/ci.yml action is not SHA-pinned: {action}")
+
+    setup_step = next(step for step in steps if step.get("uses") == SETUP_PYTHON_ACTION)
+    if setup_step.get("with", {}).get("python-version") != PYTHON_VERSION:
+        fail(
+            ".github/workflows/ci.yml setup-python must use "
+            f"Python {PYTHON_VERSION}"
+        )
+
+    install_run = step_run(steps, "Install dependencies")
+    if not re.search(r"\bpython3?\s+-m\s+pip\s+install\s+-r\s+requirements-ci\.txt\b", install_run):
+        fail(".github/workflows/ci.yml must install requirements-ci.txt")
+
+    require_run_pattern(
+        steps,
+        "Lint YAML",
+        r"\byamllint\s+-c\s+\.yamllint\s+\.",
+        "lint YAML with the repo config",
+    )
+    require_run_pattern(
+        steps,
+        "Validate add-on package",
+        r"\bpython3?\s+scripts/validate_repository\.py\b",
+        "run the repository validator",
+    )
+    require_run_pattern(
+        steps,
+        "Test SleepRadar card",
+        r"\bnode\s+tests/sleepradar-card\.test\.js\b",
+        "run the SleepRadar card test",
+    )
+    require_run_pattern(
+        steps,
+        "Check run script syntax",
+        r"\bbash\s+-n\s+aqara_fp2_sleep/run\.sh\b",
+        "check the add-on run script syntax",
+    )
+    require_run_pattern(
+        steps,
+        "Build add-on image",
+        r"\bdocker\s+build\s+--build-arg\s+BUILD_VERSION=ci\s+aqara_fp2_sleep\b",
+        "build the add-on image with the add-on directory as context",
+    )
+
+    audit_run = step_run(steps, "Audit runtime Python dependencies")
+    if not re.search(
+        rf"\bpython3?\s+-m\s+pip\s+install\s+pip-audit=={re.escape(PIP_AUDIT_VERSION)}\b",
+        audit_run,
+    ):
+        fail(f".github/workflows/ci.yml must install pip-audit=={PIP_AUDIT_VERSION}")
+    if not re.search(
+        r"\bpip-audit\s+-r\s+aqara_fp2_sleep/requirements\.txt\s+--progress-spinner\s+off\b",
+        audit_run,
+    ):
+        fail(".github/workflows/ci.yml must audit runtime requirements only")
+
+    gitleaks_step = step_by_name(steps, "Install Gitleaks")
+    env = gitleaks_step.get("env")
+    if not isinstance(env, dict):
+        fail(".github/workflows/ci.yml Install Gitleaks step must define env")
+    if env.get("GITLEAKS_VERSION") != GITLEAKS_VERSION:
+        fail(f".github/workflows/ci.yml must install Gitleaks {GITLEAKS_VERSION}")
+    if env.get("GITLEAKS_SHA256") != GITLEAKS_LINUX_X64_SHA256:
+        fail(".github/workflows/ci.yml has the wrong Gitleaks Linux x64 SHA256")
+    install_gitleaks_run = step_run(steps, "Install Gitleaks")
+    if (
+        "sha256sum -c -" not in install_gitleaks_run
+        or "gitleaks version" not in install_gitleaks_run
+    ):
+        fail(".github/workflows/ci.yml must verify and print the Gitleaks binary")
+
+    self_test_run = step_run(steps, "Self-test secret scanner")
+    for required in [
+        "mktemp -d",
+        "api_key",
+        'gitleaks dir --no-banner --redact "$scan_dir"',
+        "exit 1",
+    ]:
+        if required not in self_test_run:
+            fail(
+                ".github/workflows/ci.yml secret scanner self-test must assert "
+                f"detection with: {required}"
+            )
+
+    scan_run = step_run(steps, "Scan current tree for secrets")
+    if "gitleaks dir --no-banner --redact --verbose ." not in scan_run:
+        fail(".github/workflows/ci.yml must scan the current worktree with Gitleaks")
 
 
 def iter_text_files():
@@ -286,6 +531,9 @@ def install_import_stubs() -> None:
 
 
 def main() -> None:
+    validate_requirements()
+    validate_dockerfile()
+    validate_workflow()
     validate_yaml()
     validate_addon_config()
     validate_examples()
