@@ -2,17 +2,27 @@
 
 ## Poller
 
-### Add `watchdog: true` to config.yaml
+### Review add-on startup failure handling
 
-**What:** Configure the add-on's Supervisor watchdog so it auto-restarts on crash.
+**What:** Replace the old `watchdog: true` idea with a repo-backed startup
+strategy for failures that happen in `aqara_fp2_sleep/run.sh`, before Python
+starts. The follow-up should cover missing MQTT service and missing required
+add-on options, plus validator coverage that prevents reintroducing an invalid
+watchdog shape.
 
-**Why:** The MQTT connect retry/backoff in `make_mqtt()` (added in the "first-install friction" PR) widens the window where the broker can come up before giving up, but after 6 attempts (~135s) it still raises and the process exits. Without `watchdog: true` in `config.yaml`, Supervisor won't restart it — the underlying race (add-on starts before the broker is ready) isn't structurally closed, just made less likely to matter.
+**Why:** The fragile startup paths exit in `run.sh` before
+`aqara_fp2_sleep_poller.py` starts, so Python retry/backoff cannot fix them.
+Home Assistant add-on `watchdog` is not a boolean restart toggle, and tracking
+that as the next fix would send future work toward the wrong boundary.
 
-**Context:** Flagged by adversarial review during the poller-fixes ship (2026-07-02). Deliberately left out of that PR since it's a `config.yaml` behavior change (auto-restart policy), not a doc/logging fix — needs its own review of restart-loop implications (e.g. crash-looping on a genuinely bad `AQARA_USER`/`PASS` config).
+**Context:** Flagged during the poller-fixes/startup review work and corrected
+here because this hardening PR already updates the repo's tracking surface.
+Keep the actual runtime behavior change out of this supply-chain PR unless it
+gets separate Home Assistant Supervisor runtime proof.
 
 **Effort:** S
 **Priority:** P2
-**Depends on:** None
+**Depends on:** HA Supervisor runtime proof
 
 ## Supply Chain
 
