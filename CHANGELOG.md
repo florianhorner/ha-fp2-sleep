@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Pins the add-on's runtime Python dependencies in
+  `aqara_fp2_sleep/requirements.txt`, installs the Docker image from that
+  contract, and mirrors the supply-chain checks across CI, repository
+  validation, contributor docs, and Conductor setup. CI now audits only runtime
+  dependencies, verifies Gitleaks before scanning the current tree, and builds
+  the add-on image as a smoke test.
+
 - Aligns the docs to Home Assistant's current terminology. User-facing text
   now says **app / Apps** (Home Assistant renamed Add-ons to Apps; the install
   action is **Settings > Apps > Install app**), while historical changelog
