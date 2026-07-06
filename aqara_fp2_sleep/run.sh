@@ -1,12 +1,17 @@
 #!/usr/bin/with-contenv bashio
 set -e
 
-STARTUP_FAILURE_COOLDOWN="${STARTUP_FAILURE_COOLDOWN:-30}"
+export STARTUP_FAILURE_COOLDOWN="${STARTUP_FAILURE_COOLDOWN:-30}"
 
 startup_failure() {
+    local sleep_pid
     bashio::log.error "$1"
     bashio::log.error "Sleeping ${STARTUP_FAILURE_COOLDOWN}s before exit to avoid rapid restart loops."
-    sleep "${STARTUP_FAILURE_COOLDOWN}"
+    sleep "${STARTUP_FAILURE_COOLDOWN}" &
+    sleep_pid="$!"
+    trap 'kill "${sleep_pid}" 2>/dev/null' TERM INT
+    wait "${sleep_pid}"
+    trap - TERM INT
     exit 1
 }
 

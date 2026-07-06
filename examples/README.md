@@ -5,10 +5,10 @@ sensors into a clearer Home Assistant view.
 
 Before using them:
 
-1. Install and start the add-on.
+1. Install and start the app.
 2. Confirm the five `sensor.aqara_fp2_sleep_*` entities exist.
 3. `sleep_tracking.yaml`, `dashboard-sleep.yaml`, and `recorder.yaml` are
-   pre-wired to the add-on's own default entity IDs — copy them in as-is
+   pre-wired to the app's own default entity IDs — copy them in as-is
    unless you changed `mqtt_node_id` from the default. `automations.yaml`
    and the dashboard's optional "Cross-check" card still need your own
    entity IDs (lights, vacuum, thermostat, or a separate bed-presence

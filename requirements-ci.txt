@@ -1,0 +1,3 @@
+-r aqara_fp2_sleep/requirements.txt
+PyYAML==6.0.3
+yamllint==1.37.1

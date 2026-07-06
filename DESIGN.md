@@ -1,6 +1,6 @@
 # SleepRadar Design Language
 
-SleepRadar is a small Home Assistant add-on, not a wellness platform. The
+SleepRadar is a small Home Assistant app, not a wellness platform. The
 design language should feel calm, technical, and honest: contact-free sleep
 telemetry from an Aqara FP2, exposed as normal Home Assistant entities.
 
@@ -14,7 +14,7 @@ telemetry from an Aqara FP2, exposed as normal Home Assistant entities.
   stage is the device's best guess.
 - Treat privacy as part of the product. Never show real credentials, full
   `subject_id` values, private Home Assistant URLs, or personal dashboard state.
-- Avoid medical, diagnostic, or coaching language. The add-on reports data; it
+- Avoid medical, diagnostic, or coaching language. The app reports data; it
   does not interpret health.
 
 ## Visual System

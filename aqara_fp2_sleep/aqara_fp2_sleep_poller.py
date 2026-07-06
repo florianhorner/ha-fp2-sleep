@@ -378,7 +378,7 @@ def interruptible_sleep(seconds):
 # Cooldown before exiting on a permanent startup misconfiguration. If the process
 # is supervised by an external watchdog, this keeps blank/typo'd config or an
 # unknown area from becoming a tight restart loop that burns CPU and floods logs.
-STARTUP_FAILURE_COOLDOWN = 30
+STARTUP_FAILURE_COOLDOWN = int(os.getenv("STARTUP_FAILURE_COOLDOWN", "30"))
 
 
 def fatal_startup(msg):

@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+- Pins the add-on's runtime Python dependencies in
+  `aqara_fp2_sleep/requirements.txt`, installs the Docker image from that
+  contract, and mirrors the supply-chain checks across CI, repository
+  validation, contributor docs, and Conductor setup. CI now audits only runtime
+  dependencies, verifies Gitleaks before scanning the current tree, and builds
+  the add-on image as a smoke test.
+
+- Aligns the docs to Home Assistant's current terminology. User-facing text
+  now says **app / Apps** (Home Assistant renamed Add-ons to Apps; the install
+  action is **Settings > Apps > Install app**), while historical changelog
+  entries and package internals keep "add-on" where that is still the
+  underlying Home Assistant packaging term. Swaps the two rot-prone navigation
+  paths (entity states, dashboard resources) to My Home Assistant redirect links
+  that Home Assistant maintains, so they can't silently drift on the next UI
+  rename.
+
+- Clarifies in the README and the SleepRadar Card's "no data" message that
+  Home Assistant pins an entity's id the first time it creates that entity
+  and never renames it afterward — so upgrading past v1.1.0 (which added
+  `default_entity_id` to pin new entities correctly) does not retroactively
+  fix entity ids for installs where the entities already existed. Found by
+  dogfooding the card on a live instance whose sensors predated that fix and
+  still don't match the card's `sensor.aqara_fp2_sleep_*` defaults; the card
+  now points users at Developer Tools > States and the `entities:` override
+  instead of implying the app itself is broken.
+
 ## 1.2.2
 
 - Removes the invalid boolean `watchdog` add-on config and adds a validator
@@ -13,17 +39,8 @@
   `aqara_area`. This prevents rapid loops when an external Supervisor watchdog
   is enabled.
 - Logs a clear `[fatal]` line when the initial Aqara login fails, instead of
-  only per-poll warnings. The add-on keeps retrying and the sensors stay
+  only per-poll warnings. The app keeps retrying and the sensors stay
   unavailable until login succeeds.
-- Clarifies in the README and the SleepRadar Card's "no data" message that
-  Home Assistant pins an entity's id the first time it creates that entity
-  and never renames it afterward — so upgrading past v1.1.0 (which added
-  `default_entity_id` to pin new entities correctly) does not retroactively
-  fix entity ids for installs where the entities already existed. Found by
-  dogfooding the card on a live instance whose sensors predated that fix and
-  still don't match the card's `sensor.aqara_fp2_sleep_*` defaults; the card
-  now points users at Developer Tools > States and the `entities:` override
-  instead of implying the add-on itself is broken.
 
 ## 1.2.1
 

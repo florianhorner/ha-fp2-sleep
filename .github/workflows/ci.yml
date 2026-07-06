@@ -7,25 +7,67 @@ on:
       - main
       - master
 
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.12"
 
       - name: Install dependencies
         run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install pyyaml==6.0.2 yamllint==1.35.1 paho-mqtt pycryptodome
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-ci.txt
 
       - name: Lint YAML
         run: yamllint -c .yamllint .
 
       - name: Validate add-on package
-        run: python3 scripts/validate_repository.py
+        run: python scripts/validate_repository.py
 
       - name: Validator drift self-test
         run: python3 scripts/validate_repository.py --self-test
 
       - name: Test SleepRadar card
         run: node tests/sleepradar-card.test.js
+
+      - name: Check run script syntax
+        run: bash -n aqara_fp2_sleep/run.sh
+
+      - name: Audit runtime Python dependencies
+        run: |
+          python -m pip install pip-audit==2.10.1
+          pip-audit -r aqara_fp2_sleep/requirements.txt --progress-spinner off
+
+      - name: Install Gitleaks
+        env:
+          GITLEAKS_VERSION: "8.30.0"
+          GITLEAKS_SHA256: "79a3ab579b53f71efd634f3aaf7e04a0fa0cf206b7ed434638d1547a2470a66e"
+        run: |
+          curl -fsSLo /tmp/gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          sudo install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Self-test secret scanner
+        run: |
+          scan_dir="$(mktemp -d)"
+          trap 'rm -rf "$scan_dir"' EXIT
+          printf 'api_key = "%s%s"\n' 'abcd1234efgh5678ijkl9012mnop3456' 'qrst7890uvwx' > "$scan_dir/fake-secret.txt"
+          if gitleaks dir --no-banner --redact "$scan_dir"; then
+            echo "Gitleaks self-test failed: fake secret was not detected" >&2
+            exit 1
+          fi
+
+      - name: Scan current tree for secrets
+        run: gitleaks dir --no-banner --redact --verbose .
+
+      - name: Build add-on image
+        run: docker build --build-arg BUILD_VERSION=ci aqara_fp2_sleep

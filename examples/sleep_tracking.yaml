@@ -1,8 +1,8 @@
 # Optional template helpers for SleepRadar.
 #
-# Pre-wired to the add-on's own default entity IDs (sensor.aqara_fp2_sleep_*).
+# Pre-wired to the app's own default entity IDs (sensor.aqara_fp2_sleep_*).
 # Copy this in as-is unless you changed mqtt_node_id from the default
-# "aqara_fp2_sleep" in the add-on configuration — in that case, update the
+# "aqara_fp2_sleep" in the app configuration — in that case, update the
 # three states('sensor.aqara_fp2_sleep_*') references below to match.
 
 - sensor:
