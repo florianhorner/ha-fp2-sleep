@@ -726,6 +726,70 @@ def validate_phase_semantics() -> None:
     check_dashboard_maps((ROOT / "examples/dashboard-sleep.yaml").read_text())
 
 
+def check_login_failure_falls_through_to_retry_loop() -> None:
+    install_import_stubs()
+    module_path = ROOT / "aqara_fp2_sleep/aqara_fp2_sleep_poller.py"
+    spec = importlib.util.spec_from_file_location("poller_login_self_test", module_path)
+    if spec is None or spec.loader is None:
+        fail("could not load poller module for login failure self-test")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    events = []
+
+    class FakeClient:
+        def publish(self, *args, **kwargs):
+            events.append(("publish", args, kwargs))
+
+        def loop_stop(self):
+            events.append(("loop_stop",))
+
+        def disconnect(self):
+            events.append(("disconnect",))
+
+    class FakeAqara:
+        def __init__(self, area):
+            events.append(("aqara", area))
+
+        def login(self):
+            events.append(("login",))
+            return False
+
+        def res_query(self, did, options):
+            events.append(("res_query", did, tuple(options)))
+            return {"code": 401, "message": "bad credentials"}
+
+    def fake_sleep(seconds):
+        events.append(("sleep", seconds))
+        module._running = False
+        return False
+
+    module.make_mqtt = lambda: FakeClient()
+    module.publish_discovery = lambda client: events.append(("discovery",))
+    module.Aqara = FakeAqara
+    module.interruptible_sleep = fake_sleep
+    module.log = lambda level, msg: events.append(("log", level, msg))
+    module.USER = "user"
+    module.PASSWORD = "password"
+    module.SUBJECT = "did"
+    module._running = True
+
+    try:
+        module.main()
+    except SystemExit as exc:
+        fail(f"startup login failure must not exit immediately: {exc}")
+
+    if not any(
+        event[0] == "log"
+        and event[1] == "fatal"
+        and "Aqara login failed at startup" in event[2]
+        for event in events
+    ):
+        fail("startup login failure did not log the fatal startup hint")
+    if not any(event[0] == "res_query" for event in events):
+        fail("startup login failure did not fall through to the retry poll loop")
+
+
 def run_self_test() -> None:
     failures = []
 
@@ -769,6 +833,10 @@ def run_self_test() -> None:
     expect_pass("sleep_tracking real", lambda: check_sleep_tracking_maps(tracking))
     expect_pass("dashboard real", lambda: check_dashboard_maps(dashboard))
     expect_pass("recorder real", lambda: check_recorder_entities(recorder, entity_ids))
+    expect_pass(
+        "login failure retry loop",
+        check_login_failure_falls_through_to_retry_loop,
+    )
 
     def mutate(text, old, new):
         if old not in text:
