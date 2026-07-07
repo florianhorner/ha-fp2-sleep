@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fixes the SleepRadar add-on store card so the icon has transparent rounded
+  corners and the summary fits cleanly in the Home Assistant app list.
+
 - Pins the add-on's runtime Python dependencies in
   `aqara_fp2_sleep/requirements.txt`, installs the Docker image from that
   contract, and mirrors the supply-chain checks across CI, repository
