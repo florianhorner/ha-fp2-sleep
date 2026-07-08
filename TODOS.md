@@ -2,26 +2,28 @@
 
 ## Poller
 
-### Review add-on startup failure handling
+### Revisit Supervisor watchdog support with a health endpoint
 
-**What:** Replace the old `watchdog: true` idea with a repo-backed startup
-strategy for failures that happen in `aqara_fp2_sleep/run.sh`, before Python
-starts. The follow-up should cover missing MQTT service and missing required
-add-on options, plus validator coverage that prevents reintroducing an invalid
-watchdog shape.
+**What:** If SleepRadar needs first-class Supervisor watchdog support later, add
+a real health endpoint and set `watchdog` to that URL. Do not use
+`watchdog: true` in `config.yaml`: Home Assistant's add-on config uses that key
+for a health-check URL, not a repo-side restart-toggle boolean.
 
-**Why:** The fragile startup paths exit in `run.sh` before
-`aqara_fp2_sleep_poller.py` starts, so Python retry/backoff cannot fix them.
-Home Assistant add-on `watchdog` is not a boolean restart toggle, and tracking
-that as the next fix would send future work toward the wrong boundary.
+**Why:** The MQTT connect retry/backoff in `make_mqtt()` widens the window where
+the broker can come up before giving up, but after 6 attempts (~135s) it still
+raises and the process exits. The current repo can reduce restart-loop harm by
+slow-exiting permanent startup failures, but forcing Supervisor restart policy is
+not solved by a boolean `watchdog` key.
 
-**Context:** Flagged during the poller-fixes/startup review work and corrected
-here because this hardening PR already updates the repo's tracking surface.
-Keep the actual runtime behavior change out of this supply-chain PR unless it
-gets separate Home Assistant Supervisor runtime proof.
+**Update (2026-07-07, review fix):** removed the invalid boolean `watchdog`
+config, slowed wrapper-level permanent startup exits before returning failure,
+made the shell cooldown interruptible, shared the cooldown with Python through
+`STARTUP_FAILURE_COOLDOWN`, and added validator coverage to reject the old shape
+and catch shell/Python cooldown drift. A real health endpoint remains separate
+follow-up work.
 
-**Effort:** S
-**Priority:** P2
+**Effort:** M
+**Priority:** P3
 **Depends on:** HA Supervisor runtime proof
 
 ## Supply Chain

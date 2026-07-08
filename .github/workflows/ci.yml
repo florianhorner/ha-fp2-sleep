@@ -15,6 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
@@ -25,17 +27,45 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-ci.txt
 
+      - name: Check whitespace
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          if [ -n "$BASE_SHA" ] \
+            && [ "$BASE_SHA" != "0000000000000000000000000000000000000000" ] \
+            && git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            git diff --check "$BASE_SHA...$HEAD_SHA"
+          else
+            git diff --check
+          fi
+
+      - name: Check Python syntax
+        run: python -m py_compile aqara_fp2_sleep/aqara_fp2_sleep_poller.py scripts/validate_repository.py
+
       - name: Lint YAML
         run: yamllint -c .yamllint .
 
       - name: Validate add-on package
         run: python scripts/validate_repository.py
 
+      - name: Validator drift self-test
+        run: python3 scripts/validate_repository.py --self-test
+
       - name: Test SleepRadar card
         run: node tests/sleepradar-card.test.js
 
       - name: Check run script syntax
         run: bash -n aqara_fp2_sleep/run.sh
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.12"
 
       - name: Audit runtime Python dependencies
         run: |
@@ -65,6 +95,11 @@ jobs:
 
       - name: Scan current tree for secrets
         run: gitleaks dir --no-banner --redact --verbose .
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
 
       - name: Build add-on image
         run: docker build --build-arg BUILD_VERSION=ci aqara_fp2_sleep

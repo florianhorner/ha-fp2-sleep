@@ -246,6 +246,14 @@ Treat stages as indicative, vitals as measured.
 Use the Aqara Home app account (mobile app email), not the Aqara webshop
 account. Check `aqara_area` because accounts are region-bound.
 
+If the login is rejected, the app log shows a `[fatal] Aqara login failed at
+startup` line naming the fields to check. SleepRadar keeps retrying and the
+sensors stay unavailable until the login succeeds, so fix the credentials and it
+recovers on its own.
+
+If required fields are blank, SleepRadar logs the missing field and waits about
+30 seconds before exiting. Fill in the options and start it again.
+
 ### Sensors Do Not Appear
 
 - Mosquitto broker app is installed and running.
@@ -256,7 +264,10 @@ account. Check `aqara_area` because accounts are region-bound.
 > **MQTT startup race.** If SleepRadar and the broker start at the same time
 > (for example, after a reboot), the log may show `MQTT connect failed —
 > retrying` for up to about 2 minutes. This is expected. If it still fails
-> after that, restart SleepRadar once the broker app shows as running.
+> after that, restart SleepRadar once the broker app shows as running. If you
+> enable Home Assistant's Watchdog setting yourself, startup failure paths still
+> slow-exit first so a permanent misconfiguration does not turn into a rapid
+> restart loop.
 
 ### Values Stay Unknown
 

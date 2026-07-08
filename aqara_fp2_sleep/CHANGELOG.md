@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+## 1.2.2
+
+- Removes the invalid boolean `watchdog` add-on config and adds a validator
+  guard so `watchdog`, if ever used, must be a health-check URL string instead
+  of a restart-toggle boolean.
+- Permanent startup failures now slow-exit before returning an error: the
+  wrapper waits ~30s for missing MQTT service or required Aqara config, and the
+  Python poller does the same for direct-run missing config or unknown
+  `aqara_area`. This prevents rapid loops when an external Supervisor watchdog
+  is enabled.
+- Logs a clear `[fatal]` line when the initial Aqara login fails, instead of
+  only per-poll warnings. The add-on keeps retrying and the sensors stay
+  unavailable until login succeeds.
+
 ## 1.2.1
 
 - Fixes the SleepRadar Card's out-of-bed state so retained FP2 heart-rate and
