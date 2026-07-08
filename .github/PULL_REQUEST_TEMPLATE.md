@@ -14,9 +14,11 @@ If a check was not run, explain why and what risk remains.
 
 ## Proof
 
+- [ ] whitespace: `git diff --check`
 - [ ] python compile: `python3 -m py_compile aqara_fp2_sleep/aqara_fp2_sleep_poller.py scripts/validate_repository.py`
 - [ ] yaml: `yamllint -c .yamllint .`
 - [ ] package: `python3 scripts/validate_repository.py`
+- [ ] validator self-test: `python3 scripts/validate_repository.py --self-test`
 - [ ] card: `node tests/sleepradar-card.test.js`
 - [ ] shell: `bash -n aqara_fp2_sleep/run.sh`
 - [ ] dependency audit: `pip-audit -r aqara_fp2_sleep/requirements.txt --progress-spinner off`

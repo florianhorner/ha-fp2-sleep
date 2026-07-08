@@ -175,7 +175,7 @@ def validate_dockerfile() -> None:
         )
 
 
-def workflow_steps() -> list[dict]:
+def workflow_jobs() -> dict:
     path = ROOT / ".github/workflows/ci.yml"
     with path.open(encoding="utf-8") as handle:
         workflow = yaml.safe_load(handle)
@@ -186,18 +186,31 @@ def workflow_steps() -> list[dict]:
         fail(".github/workflows/ci.yml must set permissions: contents: read")
 
     jobs = workflow.get("jobs")
-    if not isinstance(jobs, dict) or "validate" not in jobs:
-        fail(".github/workflows/ci.yml must define jobs.validate")
-    validate_job = jobs["validate"]
-    if not isinstance(validate_job, dict):
-        fail(".github/workflows/ci.yml jobs.validate must be a mapping")
-    steps = validate_job.get("steps")
+    if not isinstance(jobs, dict):
+        fail(".github/workflows/ci.yml must define jobs")
+    for name in ["validate", "security", "docker-build"]:
+        if name not in jobs:
+            fail(f".github/workflows/ci.yml must define jobs.{name}")
+        if not isinstance(jobs[name], dict):
+            fail(f".github/workflows/ci.yml jobs.{name} must be a mapping")
+    return jobs
+
+
+def job_steps(jobs: dict, name: str) -> list[dict]:
+    steps = jobs[name].get("steps")
     if not isinstance(steps, list):
-        fail(".github/workflows/ci.yml jobs.validate.steps must be a list")
+        fail(f".github/workflows/ci.yml jobs.{name}.steps must be a list")
     for step in steps:
         if not isinstance(step, dict):
-            fail(".github/workflows/ci.yml steps must be mappings")
+            fail(f".github/workflows/ci.yml jobs.{name}.steps must be mappings")
     return steps
+
+
+def require_action(steps: list[dict], action: str, job_name: str) -> dict:
+    for step in steps:
+        if step.get("uses") == action:
+            return step
+    fail(f".github/workflows/ci.yml jobs.{job_name} must use {action}")
 
 
 def step_by_name(steps: list[dict], name: str) -> dict:
@@ -221,59 +234,96 @@ def require_run_pattern(steps: list[dict], name: str, pattern: str, description:
 
 
 def validate_workflow() -> None:
-    steps = workflow_steps()
-    uses = [step.get("uses") for step in steps if "uses" in step]
-    if CHECKOUT_ACTION not in uses:
-        fail(".github/workflows/ci.yml must use the SHA-pinned checkout action")
-    if SETUP_PYTHON_ACTION not in uses:
-        fail(".github/workflows/ci.yml must use the SHA-pinned setup-python action")
+    jobs = workflow_jobs()
+    validate_steps = job_steps(jobs, "validate")
+    security_steps = job_steps(jobs, "security")
+    docker_steps = job_steps(jobs, "docker-build")
+    all_steps = validate_steps + security_steps + docker_steps
+
+    uses = [step.get("uses") for step in all_steps if "uses" in step]
     for action in uses:
         if not isinstance(action, str) or not SHA_PINNED_ACTION.match(action):
             fail(f".github/workflows/ci.yml action is not SHA-pinned: {action}")
 
-    setup_step = next(step for step in steps if step.get("uses") == SETUP_PYTHON_ACTION)
-    if setup_step.get("with", {}).get("python-version") != PYTHON_VERSION:
+    validate_checkout = require_action(validate_steps, CHECKOUT_ACTION, "validate")
+    if validate_checkout.get("with", {}).get("fetch-depth") not in (0, "0"):
         fail(
-            ".github/workflows/ci.yml setup-python must use "
-            f"Python {PYTHON_VERSION}"
+            ".github/workflows/ci.yml jobs.validate checkout must use "
+            "fetch-depth: 0 so diff checks compare against the base commit"
         )
+    require_action(security_steps, CHECKOUT_ACTION, "security")
+    require_action(docker_steps, CHECKOUT_ACTION, "docker-build")
 
-    install_run = step_run(steps, "Install dependencies")
+    for job_name, steps in [
+        ("validate", validate_steps),
+        ("security", security_steps),
+    ]:
+        setup_step = require_action(steps, SETUP_PYTHON_ACTION, job_name)
+        if setup_step.get("with", {}).get("python-version") != PYTHON_VERSION:
+            fail(
+                f".github/workflows/ci.yml jobs.{job_name} setup-python must use "
+                f"Python {PYTHON_VERSION}"
+            )
+
+    install_run = step_run(validate_steps, "Install dependencies")
     if not re.search(r"\bpython3?\s+-m\s+pip\s+install\s+-r\s+requirements-ci\.txt\b", install_run):
         fail(".github/workflows/ci.yml must install requirements-ci.txt")
 
+    whitespace_run = step_run(validate_steps, "Check whitespace")
+    for required in ["BASE_SHA", "HEAD_SHA", "git diff --check"]:
+        if required not in whitespace_run:
+            fail(
+                ".github/workflows/ci.yml Check whitespace step must compare "
+                f"the checked-out branch with git diff --check using {required}"
+            )
     require_run_pattern(
-        steps,
+        validate_steps,
+        "Check Python syntax",
+        (
+            r"\bpython3?\s+-m\s+py_compile\s+"
+            r"aqara_fp2_sleep/aqara_fp2_sleep_poller\.py\s+"
+            r"scripts/validate_repository\.py\b"
+        ),
+        "compile-check the Python entrypoints",
+    )
+    require_run_pattern(
+        validate_steps,
         "Lint YAML",
         r"\byamllint\s+-c\s+\.yamllint\s+\.",
         "lint YAML with the repo config",
     )
     require_run_pattern(
-        steps,
+        validate_steps,
         "Validate add-on package",
         r"\bpython3?\s+scripts/validate_repository\.py\b",
         "run the repository validator",
     )
     require_run_pattern(
-        steps,
+        validate_steps,
+        "Validator drift self-test",
+        r"\bpython3?\s+scripts/validate_repository\.py\s+--self-test\b",
+        "run the repository validator self-test",
+    )
+    require_run_pattern(
+        validate_steps,
         "Test SleepRadar card",
         r"\bnode\s+tests/sleepradar-card\.test\.js\b",
         "run the SleepRadar card test",
     )
     require_run_pattern(
-        steps,
+        validate_steps,
         "Check run script syntax",
         r"\bbash\s+-n\s+aqara_fp2_sleep/run\.sh\b",
         "check the add-on run script syntax",
     )
     require_run_pattern(
-        steps,
+        docker_steps,
         "Build add-on image",
         r"\bdocker\s+build\s+--build-arg\s+BUILD_VERSION=ci\s+aqara_fp2_sleep\b",
         "build the add-on image with the add-on directory as context",
     )
 
-    audit_run = step_run(steps, "Audit runtime Python dependencies")
+    audit_run = step_run(security_steps, "Audit runtime Python dependencies")
     if not re.search(
         rf"\bpython3?\s+-m\s+pip\s+install\s+pip-audit=={re.escape(PIP_AUDIT_VERSION)}\b",
         audit_run,
@@ -285,7 +335,7 @@ def validate_workflow() -> None:
     ):
         fail(".github/workflows/ci.yml must audit runtime requirements only")
 
-    gitleaks_step = step_by_name(steps, "Install Gitleaks")
+    gitleaks_step = step_by_name(security_steps, "Install Gitleaks")
     env = gitleaks_step.get("env")
     if not isinstance(env, dict):
         fail(".github/workflows/ci.yml Install Gitleaks step must define env")
@@ -293,14 +343,14 @@ def validate_workflow() -> None:
         fail(f".github/workflows/ci.yml must install Gitleaks {GITLEAKS_VERSION}")
     if env.get("GITLEAKS_SHA256") != GITLEAKS_LINUX_X64_SHA256:
         fail(".github/workflows/ci.yml has the wrong Gitleaks Linux x64 SHA256")
-    install_gitleaks_run = step_run(steps, "Install Gitleaks")
+    install_gitleaks_run = step_run(security_steps, "Install Gitleaks")
     if (
         "sha256sum -c -" not in install_gitleaks_run
         or "gitleaks version" not in install_gitleaks_run
     ):
         fail(".github/workflows/ci.yml must verify and print the Gitleaks binary")
 
-    self_test_run = step_run(steps, "Self-test secret scanner")
+    self_test_run = step_run(security_steps, "Self-test secret scanner")
     for required in [
         "mktemp -d",
         "api_key",
@@ -313,7 +363,7 @@ def validate_workflow() -> None:
                 f"detection with: {required}"
             )
 
-    scan_run = step_run(steps, "Scan current tree for secrets")
+    scan_run = step_run(security_steps, "Scan current tree for secrets")
     if "gitleaks dir --no-banner --redact --verbose ." not in scan_run:
         fail(".github/workflows/ci.yml must scan the current worktree with Gitleaks")
 

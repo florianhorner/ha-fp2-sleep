@@ -67,9 +67,11 @@ python3 -m pip install pip-audit==2.10.1
 Run these checks before opening a PR:
 
 ```bash
+git diff --check
 python3 -m py_compile aqara_fp2_sleep/aqara_fp2_sleep_poller.py scripts/validate_repository.py
 yamllint -c .yamllint .
 python3 scripts/validate_repository.py
+python3 scripts/validate_repository.py --self-test
 node tests/sleepradar-card.test.js
 bash -n aqara_fp2_sleep/run.sh
 pip-audit -r aqara_fp2_sleep/requirements.txt --progress-spinner off
