@@ -113,8 +113,10 @@
               name: Sleep state
               type: line
               stroke_width: 3
-              # Blue (colorblind-safe); heart rate is red, breathing is amber.
-              color: '#5b93ff'
+              # DESIGN.md tokens (colorblind-safe, no green): radar blue for
+              # sleep state and breathing, heart red for heart rate. Amber
+              # #f5a623 is reserved for REM timeline segments, so not used here.
+              color: '#5aa2ff'
               # Out of bed (0) becomes a gap; codes 1 and 2 both read as Awake.
               transform: "return x === null ? null : (Number(x) === 0 ? null : (Number(x) <= 2 ? 2 : Number(x)));"
 
@@ -144,7 +146,7 @@
               name: Heart rate
               type: line
               stroke_width: 2
-              color: '#ff6b6b'
+              color: '#ff4d57'
               unit: ' bpm'
 
         - type: custom:apexcharts-card
@@ -173,7 +175,7 @@
               name: Breathing
               type: line
               stroke_width: 2
-              color: '#f5a623'
+              color: '#5aa2ff'
               unit: ' br/min'
 
         # Native markdown card (no dependency): keep the honesty caption the
