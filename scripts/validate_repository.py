@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import types
+import xml.etree.ElementTree as ET
 from pathlib import Path
 import re
 import sys
@@ -50,6 +51,9 @@ GITLEAKS_VERSION = "8.30.0"
 GITLEAKS_LINUX_X64_SHA256 = (
     "79a3ab579b53f71efd634f3aaf7e04a0fa0cf206b7ed434638d1547a2470a66e"
 )
+FAVICON_SOURCE = "assets/sleepradar-mark.svg"
+FAVICON_PATH = "favicon.svg"
+FAVICON_VIEW_BOX = "0 0 128 128"
 SHA_PINNED_ACTION = re.compile(r"^[^@\s]+@[0-9a-f]{40}$")
 WATCHDOG_URL_PATTERN = re.compile(r"^(?:https?|tcp)://")
 
@@ -407,6 +411,47 @@ def validate_yaml() -> None:
         path = ROOT / rel
         with path.open() as handle:
             yaml.safe_load(handle)
+
+
+def check_favicon(source: bytes, favicon: bytes) -> None:
+    if favicon != source:
+        fail(f"{FAVICON_PATH} must match {FAVICON_SOURCE} exactly")
+
+    try:
+        root = ET.fromstring(favicon)
+    except ET.ParseError as exc:
+        fail(f"{FAVICON_PATH} must be valid SVG XML: {exc}")
+
+    if root.tag != "{http://www.w3.org/2000/svg}svg":
+        fail(f"{FAVICON_PATH} must use the SVG root element")
+    if root.get("viewBox") != FAVICON_VIEW_BOX:
+        fail(f"{FAVICON_PATH} must use viewBox {FAVICON_VIEW_BOX!r}")
+
+    favicon_text = favicon.decode("utf-8")
+    if "@import" in favicon_text:
+        fail(f"{FAVICON_PATH} must not load external styles or assets")
+    for reference in re.findall(r"url\(\s*['\"]?([^'\")\s]+)", favicon_text):
+        if not reference.startswith("#"):
+            fail(f"{FAVICON_PATH} must not load external styles or assets")
+
+    for element in root.iter():
+        tag = element.tag.rsplit("}", 1)[-1]
+        if tag in {"image", "script", "foreignObject"}:
+            fail(f"{FAVICON_PATH} must not embed external content")
+        for attribute, value in element.attrib.items():
+            name = attribute.rsplit("}", 1)[-1]
+            if name in {"href", "src"} and not value.startswith("#"):
+                fail(f"{FAVICON_PATH} must not reference external assets")
+
+
+def validate_favicon() -> None:
+    source_path = ROOT / FAVICON_SOURCE
+    favicon_path = ROOT / FAVICON_PATH
+    if not source_path.is_file():
+        fail(f"{FAVICON_SOURCE} is missing")
+    if not favicon_path.is_file():
+        fail(f"{FAVICON_PATH} is missing")
+    check_favicon(source_path.read_bytes(), favicon_path.read_bytes())
 
 
 def validate_addon_config(config=None) -> None:
@@ -868,8 +913,11 @@ def run_self_test() -> None:
     recorder = (ROOT / "examples/recorder.yaml").read_text()
     run_script = (ROOT / "aqara_fp2_sleep/run.sh").read_text()
     addon_config = yaml.safe_load((ROOT / "aqara_fp2_sleep/config.yaml").read_text())
+    favicon_source = (ROOT / FAVICON_SOURCE).read_bytes()
+    favicon = (ROOT / FAVICON_PATH).read_bytes()
     entity_ids = {f"sensor.{oid}" for oid in EXPECTED_OBJECT_IDS}
 
+    expect_pass("favicon real", lambda: check_favicon(favicon_source, favicon))
     expect_pass("addon config real", lambda: validate_addon_config(addon_config))
     expect_pass(
         "addon config URL watchdog",
@@ -900,6 +948,18 @@ def run_self_test() -> None:
     expect_fail(
         "addon config non-URL watchdog",
         lambda: validate_addon_config(dict(addon_config, watchdog="true")),
+    )
+    expect_fail(
+        "favicon drift",
+        lambda: check_favicon(favicon_source, favicon.replace(b"#5aa2ff", b"#ffffff")),
+    )
+    external_favicon = (
+        b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">'
+        b'<image href="https://example.com/logo.png" /></svg>'
+    )
+    expect_fail(
+        "favicon external asset",
+        lambda: check_favicon(external_favicon, external_favicon),
     )
     expect_fail(
         "run script direct exit",
@@ -1007,6 +1067,7 @@ def main() -> None:
     validate_dockerfile()
     validate_workflow()
     validate_yaml()
+    validate_favicon()
     validate_addon_config()
     validate_run_script()
     validate_examples()

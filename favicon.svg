@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">SleepRadar mark</title>
+  <desc id="desc">A calm blue radar ring with a central sleep sensor dot.</desc>
+  <defs>
+    <linearGradient id="ring" x1="26" y1="18" x2="102" y2="110" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#77b6ff"/>
+      <stop offset="1" stop-color="#2758d8"/>
+    </linearGradient>
+    <linearGradient id="dot" x1="52" y1="46" x2="76" y2="82" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7fc0ff"/>
+      <stop offset="1" stop-color="#5aa2ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="#101112"/>
+  <circle cx="64" cy="64" r="42" fill="none" stroke="url(#ring)" stroke-width="6"/>
+  <path d="M64 22a42 42 0 0 1 39.1 26.7" fill="none" stroke="#9dccff" stroke-width="3" stroke-linecap="round" opacity=".68"/>
+  <path d="M38.2 97.2A42 42 0 0 1 22 64" fill="none" stroke="#5aa2ff" stroke-width="3" stroke-linecap="round" opacity=".52"/>
+  <circle cx="64" cy="64" r="12" fill="url(#dot)"/>
+  <circle cx="64" cy="64" r="4" fill="#101112" opacity=".34"/>
+  <path d="M84 47h17M88 57h13M92 67h9" fill="none" stroke="#c7dcff" stroke-width="4.5" stroke-linecap="round" opacity=".78"/>
+</svg>
