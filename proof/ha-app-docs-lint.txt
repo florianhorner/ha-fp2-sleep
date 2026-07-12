@@ -1,0 +1,6 @@
+ha-app-docs-lint adoption proof
+2026-07-12T21:10:13Z
+--- ha-app-docs-lint README.md --profile addon ---
+ha-app-docs-lint: scanned 1 file(s), 0 missing, 0 changelog(s) skipped
+ha-app-docs-lint OK
+exit=0
