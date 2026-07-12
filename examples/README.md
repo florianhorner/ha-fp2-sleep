@@ -29,6 +29,10 @@ Files:
   own light/vacuum/thermostat entity IDs.
 - `dashboard-sleep.yaml`: optional Lovelace view. Requires Mushroom cards,
   ApexCharts Card, and card-mod. Pre-wired except the optional "Cross-check"
-  card.
+  card. Two sections: a live "Now" card, and a "Last night" view charting
+  sleep stage, heart rate, and breathing over the previous night (needs one
+  night of Recorder history for the three entities; `recorder.yaml` keeps
+  them). Sleep stage is Aqara's estimate; heart rate and breathing are
+  measured.
 - `recorder.yaml`: example Recorder include for long-term history. Pre-wired,
   load as-is.
