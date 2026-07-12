@@ -57,7 +57,11 @@ the sensor reading now.
 
 Use:
 
-- `assets/sleepradar-mark.svg` for square contexts, icons, and compact badges.
+- `assets/sleepradar-mark.svg` as the canonical source for square contexts,
+  icons, and compact badges.
+- `favicon.svg` as the byte-identical browser/Conductor repository-icon copy of
+  that mark. Update it with the canonical source; repository validation keeps
+  the two in sync.
 - `assets/sleepradar-logo.svg` for README, docs, and wider public surfaces.
 
 Do not add medical crosses, wearable shapes, moon mascots, generic calendar
