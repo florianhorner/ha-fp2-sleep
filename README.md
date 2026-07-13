@@ -215,10 +215,11 @@ measured data. A few starting points (see `examples/automations.yaml`):
 
 ![Planned: last-night summary with sleep duration, averaged vitals, and stage timeline](assets/last-night.png)
 
-Today, `examples/dashboard-sleep.yaml` gives you a live "Now" card plus a raw
-12-hour sleep-state chart. It does not compute session duration, averaged
-vitals, or the segmented stage timeline shown above. That sessionization is the
-next planned SleepRadar Card release.
+Today, `examples/dashboard-sleep.yaml` gives you a live "Now" card plus a
+"Last night" view that charts sleep stage, heart rate, and breathing over the
+previous night. It does not compute session duration, averaged vitals, or the
+segmented stage timeline shown above. That sessionization is the next planned
+SleepRadar Card release.
 
 ## Sleep State Codes
 

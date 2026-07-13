@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Adds a "Last night" section to `examples/dashboard-sleep.yaml`: sleep stage,
+  heart rate, and breathing charted over the previous night, replacing the raw
+  rolling 12-hour sleep-state chart. The window anchors to the prior night
+  instead of the last 12 hours, and the palette is colorblind-safe. Sleep stage
+  stays labeled as Aqara's estimate; the planned sessionization summary (session
+  duration, averaged vitals, segmented timeline) is unchanged and still a mockup.
+
 - Fixes the SleepRadar add-on store card so the icon has transparent rounded
   corners and the summary fits cleanly in the Home Assistant app list.
 

@@ -1,0 +1,19 @@
+# Proof — last-night dashboard view
+Captured: 2026-07-12T23:20:42Z | commit: ac856e2 | branch: florianhorner/last-night-card
+Local validation gate (mirrors CI jobs in .github/workflows/ci.yml):
+
+$ git diff --check
+  -> OK (no whitespace errors)
+$ python -m py_compile <entrypoints>
+  -> OK
+$ yamllint -c .yamllint .
+  -> OK
+$ python scripts/validate_repository.py
+SleepRadar package validation OK
+$ python scripts/validate_repository.py --self-test
+SleepRadar validator self-test OK
+$ node tests/sleepradar-card.test.js
+
+Scope: examples + docs only. No add-on runtime/MQTT/config change; no version bump.
+Not verified here: live ApexCharts 'last night' span render (needs a live HA + apexcharts-card;
+documented in the PR as a follow-up eyeball, fallback span noted in the example comment).

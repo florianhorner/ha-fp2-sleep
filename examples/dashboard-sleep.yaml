@@ -71,10 +71,13 @@
       column_span: 2
       cards:
         - type: heading
-          heading: Last 12 Hours
+          heading: Last night
           heading_style: title
           icon: mdi:chart-timeline-variant
 
+        # Window = the previous night. start: day anchors at local 00:00,
+        # offset -2h shifts to 22:00 the evening before, graph_span 12h ends at
+        # 10:00 — so this shows last night's session all day, not a rolling 12h.
         - type: custom:apexcharts-card
           header:
             show: true
@@ -82,10 +85,11 @@
             show_states: false
           graph_span: 12h
           span:
-            end: minute
+            start: day
+            offset: '-2h'
           apex_config:
             chart:
-              height: 280
+              height: 240
               toolbar:
                 show: false
             stroke:
@@ -109,9 +113,78 @@
               name: Sleep state
               type: line
               stroke_width: 3
-              color: '#f5a623'
+              # DESIGN.md tokens (colorblind-safe, no green): radar blue for
+              # sleep state and breathing, heart red for heart rate. Amber
+              # #f5a623 is reserved for REM timeline segments, so not used here.
+              color: '#5aa2ff'
               # Out of bed (0) becomes a gap; codes 1 and 2 both read as Awake.
               transform: "return x === null ? null : (Number(x) === 0 ? null : (Number(x) <= 2 ? 2 : Number(x)));"
+
+        - type: custom:apexcharts-card
+          header:
+            show: true
+            title: Heart rate
+            show_states: false
+          graph_span: 12h
+          span:
+            start: day
+            offset: '-2h'
+          apex_config:
+            chart:
+              height: 200
+              toolbar:
+                show: false
+            stroke:
+              curve: smooth
+              width: 2
+            markers:
+              size: 0
+            yaxis:
+              decimalsInFloat: 0
+          series:
+            - entity: sensor.aqara_fp2_sleep_heart_rate
+              name: Heart rate
+              type: line
+              stroke_width: 2
+              color: '#ff4d57'
+              unit: ' bpm'
+
+        - type: custom:apexcharts-card
+          header:
+            show: true
+            title: Breathing
+            show_states: false
+          graph_span: 12h
+          span:
+            start: day
+            offset: '-2h'
+          apex_config:
+            chart:
+              height: 200
+              toolbar:
+                show: false
+            stroke:
+              curve: smooth
+              width: 2
+            markers:
+              size: 0
+            yaxis:
+              decimalsInFloat: 0
+          series:
+            - entity: sensor.aqara_fp2_sleep_respiration_rate
+              name: Breathing
+              type: line
+              stroke_width: 2
+              color: '#5aa2ff'
+              unit: ' br/min'
+
+        # Native markdown card (no dependency): keep the honesty caption the
+        # SleepRadar Card ships with — measured vs estimated.
+        - type: markdown
+          content: >-
+            Heart rate and breathing are measured directly by the FP2. Sleep
+            stage is Aqara's estimate. This view is Recorder history for the
+            previous night, so vitals read as retained while out of bed.
 
     - type: grid
       column_span: 3
