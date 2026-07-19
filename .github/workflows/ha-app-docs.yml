@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: florianhorner/engineering-standards/actions/ha-app-docs-lint@ha-docs-v1
         with:
           profile: addon
