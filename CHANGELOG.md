@@ -9,6 +9,10 @@
   stays labeled as Aqara's estimate; the planned sessionization summary (session
   duration, averaged vitals, segmented timeline) is unchanged and still a mockup.
 
+- Adds the short SleepRadar feature GIFs to the README: the shipped Live Now
+  card is now the primary visual proof, and the automation section shows the
+  sleep-aware lighting example.
+
 - Fixes the SleepRadar add-on store card so the icon has transparent rounded
   corners and the summary fits cleanly in the Home Assistant app list.
 

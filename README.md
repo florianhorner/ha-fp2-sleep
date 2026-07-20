@@ -26,7 +26,9 @@ five MQTT entities you can see, automate, and build on.
 
 **Now, live — the SleepRadar card, installed as-is:**
 
-![Live sleep readout: current stage, heart rate, and breathing](assets/now-live.png)
+<p align="center">
+  <img src="assets/feature-gifs/sleepradar-live-now-card.gif" alt="Animated SleepRadar card showing current stage, heart rate, and breathing" width="360">
+</p>
 
 This is the SleepRadar Card (`card/sleepradar-card.js`). It ships with the
 repo, reads three of the five sensors (sleep stage, heart rate, breathing),
@@ -204,6 +206,10 @@ update `sensor.aqara_fp2_sleep_*` references to match.
 
 Because these are normal Home Assistant entities, you can automate on raw
 measured data. A few starting points (see `examples/automations.yaml`):
+
+<p align="center">
+  <img src="assets/feature-gifs/sleepradar-sleep-aware-lighting.gif" alt="Animated Home Assistant automation capping light brightness while the FP2 reports sleep" width="360">
+</p>
 
 - Don't run lights at full brightness while someone is asleep.
 - Hold off the robot vacuum until the room is empty or awake.
