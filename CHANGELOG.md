@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Adds the "Last night" feature GIF to the README dashboard section and tracks
+  its reproducible production source in git: `videos/` now carries the frame
+  contract, style guide, production playbooks, per-episode projects, template,
+  and validators for the five managed projects, with a SHA-256 baseline locking
+  all six published binaries (the pilot GIF stays an unmanaged historical
+  reference). CI validates the GIF sources, the baseline, and the
+  validator self-tests without rendering; `scripts/validate_repository.py`
+  enforces that published GIF/MP4 pairs live under `assets/feature-gifs/` with
+  tracked source under `videos/` and that generated render output stays
+  untracked. Adds the repository social preview image
+  (`assets/sleepradar-social-preview.png` plus its editable SVG source) and a
+  repo-local `AGENTS.md` routing file for GIF authoring.
+
 - Adds a "Last night" section to `examples/dashboard-sleep.yaml`: sleep stage,
   heart rate, and breathing charted over the previous night, replacing the raw
   rolling 12-hour sleep-state chart. The window anchors to the prior night

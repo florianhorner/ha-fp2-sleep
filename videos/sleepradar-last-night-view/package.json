@@ -1,0 +1,12 @@
+{
+  "name": "sleepradar-last-night-view",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx --yes hyperframes@0.7.66 preview",
+    "lint": "npx --yes hyperframes@0.7.66 lint",
+    "check": "npx --yes hyperframes@0.7.66 check",
+    "render": "npx --yes hyperframes@0.7.66 render",
+    "publish": "npx --yes hyperframes@0.7.66 publish"
+  }
+}

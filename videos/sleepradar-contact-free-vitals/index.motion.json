@@ -1,0 +1,10 @@
+{
+  "duration": 6,
+  "assertions": [
+    { "kind": "appearsBy", "selector": "#hook", "bySec": 0.1 },
+    { "kind": "appearsBy", "selector": "#payoff", "bySec": 3.0 },
+    { "kind": "before", "a": "#hook", "b": "#payoff" },
+    { "kind": "staysInFrame", "selector": "#hero" },
+    { "kind": "keepsMoving", "withinSelector": "#hero", "maxStaticSec": 2.5 }
+  ]
+}

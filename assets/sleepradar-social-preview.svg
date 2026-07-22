@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
+  <title id="title">SleepRadar social preview</title>
+  <desc id="desc">SleepRadar brings five Aqara FP2 sleep signals into Home Assistant as MQTT entities.</desc>
+
+  <defs>
+    <linearGradient id="mark-ring" x1="26" y1="18" x2="102" y2="110" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#77b6ff"/>
+      <stop offset="1" stop-color="#2758d8"/>
+    </linearGradient>
+    <linearGradient id="mark-dot" x1="52" y1="46" x2="76" y2="82" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7fc0ff"/>
+      <stop offset="1" stop-color="#5aa2ff"/>
+    </linearGradient>
+    <clipPath id="right-panel-clip">
+      <rect x="806" y="54" width="418" height="532" rx="24"/>
+    </clipPath>
+  </defs>
+
+  <rect width="1280" height="640" fill="#101112"/>
+
+  <!-- A restrained radar field gives the right panel depth without implying data. -->
+  <g clip-path="url(#right-panel-clip)" fill="none" stroke="#5aa2ff" opacity="0.07">
+    <circle cx="1198" cy="82" r="92" stroke-width="2"/>
+    <circle cx="1198" cy="82" r="146" stroke-width="2"/>
+    <circle cx="1198" cy="82" r="202" stroke-width="2"/>
+    <path d="M1198 82L1048 218" stroke-width="2"/>
+  </g>
+
+  <!--
+    Self-contained snapshot of assets/sleepradar-mark.svg for reliable rasterization.
+    Canonical source SHA-256: eab90fb11741c47ddf9c4eb4983e22d5eb73c154d3440a6d4e4bc672e9416797
+  -->
+  <g transform="translate(72 54) scale(.625)">
+    <rect width="128" height="128" rx="28" fill="#101112"/>
+    <circle cx="64" cy="64" r="42" fill="none" stroke="url(#mark-ring)" stroke-width="6"/>
+    <path d="M64 22a42 42 0 0 1 39.1 26.7" fill="none" stroke="#9dccff" stroke-width="3" stroke-linecap="round" opacity=".68"/>
+    <path d="M38.2 97.2A42 42 0 0 1 22 64" fill="none" stroke="#5aa2ff" stroke-width="3" stroke-linecap="round" opacity=".52"/>
+    <circle cx="64" cy="64" r="12" fill="url(#mark-dot)"/>
+    <circle cx="64" cy="64" r="4" fill="#101112" opacity=".34"/>
+    <path d="M84 47h17M88 57h13M92 67h9" fill="none" stroke="#c7dcff" stroke-width="4.5" stroke-linecap="round" opacity=".78"/>
+  </g>
+
+  <g font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    <text x="174" y="105" fill="#e8e8ea" font-size="40" font-weight="700">SleepRadar</text>
+    <g transform="translate(429 69)">
+      <rect width="250" height="42" rx="21" fill="#1b1c1e" stroke="#2b2d31"/>
+      <circle cx="23" cy="21" r="5" fill="#5aa2ff"/>
+      <text x="39" y="27" fill="#b9c0ca" font-size="16" font-weight="600">AQARA FP2 · HOME ASSISTANT</text>
+    </g>
+
+    <text x="72" y="239" fill="#e8e8ea" font-size="66" font-weight="650">Same sensor.</text>
+    <text x="72" y="316" fill="#5aa2ff" font-size="66" font-weight="700">Now 5 sleep signals.</text>
+
+    <text x="75" y="384" fill="#b9bbc0" font-size="27" font-weight="400">Contact-free sleep telemetry, published as</text>
+    <text x="75" y="422" fill="#b9bbc0" font-size="27" font-weight="400">normal Home Assistant entities.</text>
+
+    <g transform="translate(75 486)">
+      <circle cx="7" cy="7" r="7" fill="#5aa2ff"/>
+      <text x="27" y="14" fill="#e8e8ea" font-size="19" font-weight="600">Heart rate &amp; breathing: measured</text>
+    </g>
+    <g transform="translate(75 528)">
+      <circle cx="7" cy="7" r="7" fill="#f5a623"/>
+      <text x="27" y="14" fill="#e8e8ea" font-size="19" font-weight="600">Sleep stage: Aqara estimate</text>
+    </g>
+
+    <rect x="806" y="54" width="418" height="532" rx="24" fill="#1b1c1e" stroke="#2b2d31" stroke-width="2"/>
+    <text x="838" y="103" fill="#9a9da3" font-size="15" font-weight="600">SLEEPRADAR · MQTT DISCOVERY</text>
+    <text x="838" y="148" fill="#e8e8ea" font-size="34" font-weight="700">5 Home Assistant entities</text>
+
+    <g transform="translate(832 176)">
+      <rect width="366" height="58" rx="11" fill="#151617" stroke="#2b2d31"/>
+      <circle cx="24" cy="29" r="7" fill="#ff4d57"/>
+      <text x="45" y="35" fill="#e8e8ea" font-size="20" font-weight="600">Heart rate</text>
+      <text x="340" y="34" fill="#9a9da3" font-size="15" text-anchor="end">measured</text>
+    </g>
+    <g transform="translate(832 242)">
+      <rect width="366" height="58" rx="11" fill="#151617" stroke="#2b2d31"/>
+      <circle cx="24" cy="29" r="7" fill="#5aa2ff"/>
+      <text x="45" y="35" fill="#e8e8ea" font-size="20" font-weight="600">Breathing</text>
+      <text x="340" y="34" fill="#9a9da3" font-size="15" text-anchor="end">measured</text>
+    </g>
+    <g transform="translate(832 308)">
+      <rect width="366" height="58" rx="11" fill="#151617" stroke="#2b2d31"/>
+      <circle cx="24" cy="29" r="7" fill="#f5a623"/>
+      <text x="45" y="35" fill="#e8e8ea" font-size="20" font-weight="600">Sleep stage</text>
+      <text x="340" y="34" fill="#f5a623" font-size="15" text-anchor="end">Aqara estimate</text>
+    </g>
+    <g transform="translate(832 374)">
+      <rect width="366" height="58" rx="11" fill="#151617" stroke="#2b2d31"/>
+      <circle cx="24" cy="29" r="7" fill="#5aa2ff"/>
+      <text x="45" y="35" fill="#e8e8ea" font-size="20" font-weight="600">Body movement</text>
+      <text x="340" y="34" fill="#9a9da3" font-size="15" text-anchor="end">measured</text>
+    </g>
+    <g transform="translate(832 440)">
+      <rect width="366" height="58" rx="11" fill="#151617" stroke="#2b2d31"/>
+      <circle cx="24" cy="29" r="7" fill="#5aa2ff"/>
+      <text x="45" y="35" fill="#e8e8ea" font-size="20" font-weight="600">Illuminance</text>
+      <text x="340" y="34" fill="#9a9da3" font-size="15" text-anchor="end">measured</text>
+    </g>
+
+    <path d="M838 529h354" stroke="#2b2d31"/>
+    <text x="838" y="558" fill="#9a9da3" font-size="16">No wearable · No Docker bridge</text>
+  </g>
+</svg>

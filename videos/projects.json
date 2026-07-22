@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "projects": [
+    {
+      "id": "sleepradar-live-now-card",
+      "adapter": "sleepradar-live-now-card/adapter.json",
+      "batch_default": true
+    },
+    {
+      "id": "sleepradar-contact-free-vitals",
+      "adapter": "sleepradar-contact-free-vitals/adapter.json",
+      "batch_default": true
+    },
+    {
+      "id": "sleepradar-honest-sleep-stages",
+      "adapter": "sleepradar-honest-sleep-stages/adapter.json",
+      "batch_default": true
+    },
+    {
+      "id": "sleepradar-sleep-aware-lighting",
+      "adapter": "sleepradar-sleep-aware-lighting/adapter.json",
+      "batch_default": true
+    },
+    {
+      "id": "sleepradar-last-night-view",
+      "adapter": "sleepradar-last-night-view/adapter.json",
+      "batch_default": false
+    }
+  ]
+}

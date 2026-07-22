@@ -1,0 +1,170 @@
+{
+  "category": "kinetic-type",
+  "duration_s": 6,
+  "fps": 30,
+  "canvas": {
+    "w": 720,
+    "h": 1280,
+    "aspect": "9:16"
+  },
+  "style": "Calm, technical, low-glare Home Assistant night readout. One faithful Live Now card uses solid surfaces, thin borders, direct Inter typography, explicit truth labels, and no decorative motion.",
+  "palette": [
+    "#101112",
+    "#1b1c1e",
+    "#2b2d31",
+    "#e8e8ea",
+    "#9a9da3",
+    "#5aa2ff",
+    "#2758d8",
+    "#ff4d57",
+    "#f5a623",
+    "#747982"
+  ],
+  "font": "Inter",
+  "export": "mp4",
+  "asset_needs": [],
+  "block": "caption-editorial-emphasis",
+  "shot_brief": "A frame-zero hook sits above the shipped card hierarchy in its honest Out of bed state. At 0.8 seconds the empty state yields in reading order to the public Light sleep fixture: 56 bpm and 13 br/min appear only after the live state arrives, while the best-guess qualifier and measured-versus-estimated footer remain attached. The complete card holds, then retraces the same sequence into exact empty-bed dashes for the loop seam.",
+  "customize": {
+    "hook": {
+      "line_1": "Three signals.",
+      "line_2": "One honest live card.",
+      "visible_at_s": 0,
+      "position": {
+        "top_px": 118,
+        "left_px": 56,
+        "width_px": 608
+      },
+      "type": {
+        "size_px": 56,
+        "weight": 650,
+        "line_height": 1.04,
+        "alignment": "center"
+      }
+    },
+    "opening_state": {
+      "sleep_stage": "Out of bed",
+      "heart_rate": "— bpm",
+      "breathing": "— br/min",
+      "badge": "not measuring",
+      "status": "Paused out of bed"
+    },
+    "payoff_state": {
+      "eyebrow": "READING NOW",
+      "sleep_stage": "Light sleep",
+      "qualifier": "the sensor's best guess",
+      "heart_rate": "56 bpm",
+      "breathing": "13 br/min",
+      "truth_note": "Heart rate and breathing are measured directly by the sensor. Sleep stage is the device's best guess."
+    },
+    "motion": {
+      "motif": "one ordered card-state crossfade",
+      "properties": [
+        "transform",
+        "opacity",
+        "borderColor"
+      ],
+      "ease": "power2.inOut",
+      "opening_hold_s": [
+        0,
+        0.8
+      ],
+      "payoff_complete_by_s": 3,
+      "payoff_hold_s": [
+        3,
+        5.25
+      ],
+      "reverse_s": [
+        5.25,
+        5.9
+      ],
+      "seam_hold_s": [
+        5.9,
+        6
+      ]
+    },
+    "timeline": [
+      {
+        "start_s": 0,
+        "end_s": 0.8,
+        "phase": "honest-empty-bed-hold",
+        "action": "Keep the locked hook and full Out of bed card motionless and readable. Vitals are dashes with Paused out of bed labels and the neutral not-measuring badge."
+      },
+      {
+        "start_s": 0.8,
+        "end_s": 1.45,
+        "phase": "live-context-arrives",
+        "action": "Begin exactly at 0.8 seconds. The card makes one restrained scale/border acknowledgment while the empty header yields to READING NOW and Light sleep with its attached best-guess qualifier."
+      },
+      {
+        "start_s": 1.45,
+        "end_s": 2.35,
+        "phase": "vitals-settle",
+        "action": "Settle the live readout, then Heart rate 56 bpm and Breathing 13 br/min in reading order. No number is visible before the live wrapper arrives."
+      },
+      {
+        "start_s": 2.35,
+        "end_s": 3,
+        "phase": "truth-note-lock",
+        "action": "Reveal the measured-vitals and best-guess-stage footer. Complete every live element by 2.9 seconds."
+      },
+      {
+        "start_s": 3,
+        "end_s": 5.25,
+        "phase": "readable-payoff-hold",
+        "action": "Hold the complete canonical fixture without ambient motion so the hierarchy and qualifiers can be read."
+      },
+      {
+        "start_s": 5.25,
+        "end_s": 5.9,
+        "phase": "exact-state-reverse",
+        "action": "Retrace the footer, vitals, readout, and header into the opening Out of bed card, restoring every transform, opacity, and border color."
+      },
+      {
+        "start_s": 5.9,
+        "end_s": 6,
+        "phase": "exact-opening-seam-hold",
+        "action": "Hold the exact CSS opening state: Out of bed, neutral not measuring, and both vital dashes."
+      }
+    ],
+    "constraints": [
+      "Silent; no audio or narration.",
+      "Only sleep stage, heart rate, and breathing appear.",
+      "Never show numeric vitals while Out of bed.",
+      "Keep the sleep-stage qualifier visible in the payoff.",
+      "Use no gradients, random sources, timers, live fetches, or infinite motion."
+    ]
+  },
+  "content": {
+    "scenes": [
+      {
+        "id": "opening",
+        "start": 0,
+        "end": 0.8,
+        "text": "Three signals. One honest live card.",
+        "motion": "Static frame-zero hook and Out of bed card."
+      },
+      {
+        "id": "resolve-live",
+        "start": 0.8,
+        "end": 3,
+        "text": "Light sleep. 56 bpm. 13 br/min.",
+        "motion": "One ordered transform/opacity state change inside the fixed card geometry."
+      },
+      {
+        "id": "payoff",
+        "start": 3,
+        "end": 5.25,
+        "text": "Measured vitals. Sleep stage best guess.",
+        "motion": "Deliberate readable hold."
+      },
+      {
+        "id": "loop",
+        "start": 5.25,
+        "end": 6,
+        "text": "Out of bed. — bpm. — br/min.",
+        "motion": "Exact reverse through 5.9 seconds, then a static seam hold."
+      }
+    ]
+  }
+}

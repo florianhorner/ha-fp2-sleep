@@ -1,0 +1,139 @@
+{
+  "category": "kinetic-type",
+  "duration_s": 6,
+  "fps": 30,
+  "canvas": {
+    "w": 720,
+    "h": 1280,
+    "aspect": "9:16"
+  },
+  "style": "Calm, technical Home Assistant night readout. The hook is the typographic hero; one current-stage card carries neutral stage labels and a fixed amber estimate qualifier. Solid surfaces, thin borders, no gradients, no decorative motion.",
+  "palette": [
+    "#101112",
+    "#1b1c1e",
+    "#2b2d31",
+    "#e8e8ea",
+    "#9a9da3",
+    "#5aa2ff",
+    "#2758d8",
+    "#ff4d57",
+    "#f5a623",
+    "#747982"
+  ],
+  "font": "Inter",
+  "export": "mp4",
+  "asset_needs": [],
+  "block": "caption-editorial-emphasis",
+  "hook": {
+    "line_1": "Sleep stages.",
+    "line_2": "The sensor’s best guess.",
+    "frame_zero_readable": true,
+    "position_px": {
+      "top": 118,
+      "left": 56,
+      "width": 608
+    },
+    "font_size_px": 56,
+    "font_weight": 650,
+    "line_height": 1.04,
+    "lead_color": "#e8e8ea",
+    "payoff_color": "#5aa2ff"
+  },
+  "hero": {
+    "selector": "#stage-card",
+    "surface": "#1b1c1e",
+    "border": "1px solid #2b2d31",
+    "width_px": 608,
+    "label": "Current stage",
+    "opening_value": "—",
+    "payoff_selector": "#payoff",
+    "payoff_value": "Light sleep",
+    "qualifier": {
+      "text": "sensor estimate",
+      "color": "#f5a623",
+      "shape": "fixed outlined chip",
+      "visible_from_s": 0,
+      "visible_through_s": 6
+    }
+  },
+  "source_truth": {
+    "origin_main": "a03399c6d72799a015c559ad0a72d4c1b6811ea3",
+    "release": "v1.2.1",
+    "release_published": "2026-07-03",
+    "sources": [
+      "../../README.md:35-36",
+      "../../README.md:212-233",
+      "../../examples/sleep_tracking.yaml:8-24",
+      "../../CHANGELOG.md:55"
+    ]
+  },
+  "motion": {
+    "dominant_motif": "A deterministic vertical fade-and-settle between pre-authored current-stage labels.",
+    "properties": [
+      "transform",
+      "opacity"
+    ],
+    "timeline_engine": "GSAP 3.14.2",
+    "paused": true,
+    "seek_safe": true,
+    "loop_return_s": 5.9
+  },
+  "timeline": [
+    {
+      "start_s": 0,
+      "end_s": 0.8,
+      "phase": "opening-read",
+      "action": "Hold the complete hook, Current stage label, em-dash value, and attached sensor estimate chip. No entrance motion."
+    },
+    {
+      "start_s": 0.8,
+      "end_s": 1.35,
+      "phase": "show-rem",
+      "action": "Fade and move the em dash upward, then settle the pre-authored REM label from below."
+    },
+    {
+      "start_s": 1.35,
+      "end_s": 1.9,
+      "phase": "show-light-first",
+      "action": "Move REM upward, then settle the first pre-authored Light sleep label from below."
+    },
+    {
+      "start_s": 1.9,
+      "end_s": 2.45,
+      "phase": "show-deep",
+      "action": "Move Light sleep upward, then settle the pre-authored Deep sleep label from below."
+    },
+    {
+      "start_s": 2.45,
+      "end_s": 3,
+      "phase": "settle-light-payoff",
+      "action": "Move Deep sleep upward, then settle the final pre-authored Light sleep label; complete the payoff by 3.0s."
+    },
+    {
+      "start_s": 3,
+      "end_s": 5.25,
+      "phase": "readable-payoff-hold",
+      "action": "Hold Current stage: Light sleep with the sensor estimate chip fixed and attached."
+    },
+    {
+      "start_s": 5.25,
+      "end_s": 5.9,
+      "phase": "exact-reverse",
+      "action": "Retrace Light sleep to Deep sleep to Light sleep to REM to the em dash using inverse vertical fade-and-settle motion."
+    },
+    {
+      "start_s": 5.9,
+      "end_s": 6,
+      "phase": "opening-state-hold",
+      "action": "Hold the exact opening CSS transform and opacity state."
+    }
+  ],
+  "constraints": [
+    "No audio, video, gradients, camera movement, or decorative effects.",
+    "No timeline, duration, average, night summary, session summary, or numeric telemetry appears on-screen.",
+    "No stage value uses semantic color; all stage values are neutral white.",
+    "The amber estimate qualifier is always explicit text inside a fixed outline.",
+    "Only pre-authored labels animate; no per-frame text mutation or nondeterministic logic.",
+    "The composition remains one self-contained six-second shot."
+  ]
+}

@@ -20,4 +20,9 @@ regexTarget = "line"
 regexes = [
   '''"appid":\s*"[A-Za-z0-9]+"''',
   '''"appkey":\s*"[A-Za-z0-9]+"''',
+  # Quiet Proof Loops validator self-tests: identifiers ending in "key"
+  # next to short lowercase phrase literals trip generic-api-key. These
+  # shapes cannot hold a real credential.
+  '''expected_failure="[a-z][a-z .-]{2,30}"''',
+  '''key == "profile_file"''',
 ]

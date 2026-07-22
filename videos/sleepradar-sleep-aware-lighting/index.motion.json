@@ -1,0 +1,29 @@
+{
+  "duration": 6,
+  "assertions": [
+    {
+      "kind": "appearsBy",
+      "selector": "#hook",
+      "bySec": 0.1
+    },
+    {
+      "kind": "appearsBy",
+      "selector": "#payoff-20",
+      "bySec": 3
+    },
+    {
+      "kind": "before",
+      "a": "#hook",
+      "b": "#payoff-20"
+    },
+    {
+      "kind": "staysInFrame",
+      "selector": "#chain"
+    },
+    {
+      "kind": "keepsMoving",
+      "withinSelector": "#scene",
+      "maxStaticSec": 2.5
+    }
+  ]
+}

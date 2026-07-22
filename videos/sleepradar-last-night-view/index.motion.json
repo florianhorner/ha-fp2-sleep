@@ -1,0 +1,38 @@
+{
+  "duration": 6,
+  "assertions": [
+    {
+      "kind": "appearsBy",
+      "selector": "#brand-lockup",
+      "bySec": 0.1
+    },
+    {
+      "kind": "staysInFrame",
+      "selector": "#brand-lockup"
+    },
+    {
+      "kind": "appearsBy",
+      "selector": "#hook",
+      "bySec": 0.1
+    },
+    {
+      "kind": "appearsBy",
+      "selector": "#payoff",
+      "bySec": 3
+    },
+    {
+      "kind": "before",
+      "a": "#hook",
+      "b": "#payoff"
+    },
+    {
+      "kind": "staysInFrame",
+      "selector": "#dashboard-card"
+    },
+    {
+      "kind": "keepsMoving",
+      "withinSelector": "#scene",
+      "maxStaticSec": 2.5
+    }
+  ]
+}

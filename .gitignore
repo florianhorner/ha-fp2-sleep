@@ -10,3 +10,13 @@ __pycache__/
 
 # Internal handover / working notes — never published
 *.local.md
+.gstack/
+
+# Quiet Proof Loops: source is versioned; generated production output is not.
+videos/**/renders/
+videos/**/snapshots/
+videos/**/VERIFICATION.md
+videos/gif-batch-verification.json
+videos/**/.hyperframes/
+videos/**/node_modules/
+.DS_Store

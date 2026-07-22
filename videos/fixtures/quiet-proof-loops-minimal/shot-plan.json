@@ -1,0 +1,56 @@
+{
+  "category": "kinetic-type",
+  "duration_s": 6,
+  "fps": 30,
+  "canvas": {
+    "w": 720,
+    "h": 1280,
+    "aspect": "9:16"
+  },
+  "palette": [
+    "#0b1020",
+    "#151d31",
+    "#34405a",
+    "#f4f7ff",
+    "#aab5ce",
+    "#62d2a2",
+    "#31846a",
+    "#ff6b6b",
+    "#ffd166",
+    "#6d7892"
+  ],
+  "font": "Inter",
+  "style": "A generic low-glare status card with one deterministic resolve.",
+  "timeline": [
+    {
+      "start_s": 0,
+      "end_s": 0.75,
+      "phase": "opening",
+      "action": "Hold the pending state."
+    },
+    {
+      "start_s": 0.75,
+      "end_s": 2.9,
+      "phase": "resolve",
+      "action": "Resolve the same card to Ready."
+    },
+    {
+      "start_s": 2.9,
+      "end_s": 5.2,
+      "phase": "hold",
+      "action": "Hold the proof."
+    },
+    {
+      "start_s": 5.2,
+      "end_s": 5.88,
+      "phase": "return",
+      "action": "Return to Pending."
+    },
+    {
+      "start_s": 5.88,
+      "end_s": 6,
+      "phase": "seam",
+      "action": "Hold the exact opening state."
+    }
+  ]
+}

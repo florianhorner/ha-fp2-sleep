@@ -1,0 +1,41 @@
+{
+  "projects": {
+    "sleepradar-contact-free-vitals": {
+      "gif_path": "assets/feature-gifs/sleepradar-contact-free-vitals.gif",
+      "gif_sha256": "db1a81bda87f77a6b5f151fe97622dac5b28a258eeaf93b408c3911d35eb55d3",
+      "mp4_path": "assets/feature-gifs/sleepradar-contact-free-vitals.mp4",
+      "mp4_sha256": "3b008f6fee229175142af3e7cc38c64b6437bd2b10a0fcc643a807caef2567ce"
+    },
+    "sleepradar-honest-sleep-stages": {
+      "gif_path": "assets/feature-gifs/sleepradar-honest-sleep-stages.gif",
+      "gif_sha256": "02fa4b5ae966d7ee5c7dfa5eb45af6bfbb3e963609e142a2a96d893d87bd25c7",
+      "mp4_path": "assets/feature-gifs/sleepradar-honest-sleep-stages.mp4",
+      "mp4_sha256": "3f87f34c6705bb88991f75ba859501d178bd8e1d544c0a18caccf2c367abb124"
+    },
+    "sleepradar-last-night-view": {
+      "gif_path": "assets/feature-gifs/sleepradar-last-night-view.gif",
+      "gif_sha256": "67f5ebfaf17f8c76dd5a7d7c0a1e5ba7156bf0b92541d1e4d4f240bd4ea5f196",
+      "mp4_path": "assets/feature-gifs/sleepradar-last-night-view.mp4",
+      "mp4_sha256": "8b768612da101270b01860ba15426186a80d25c54fb1c4ceab39e2693e303963"
+    },
+    "sleepradar-live-now-card": {
+      "gif_path": "assets/feature-gifs/sleepradar-live-now-card.gif",
+      "gif_sha256": "4e938a0febb5629864cd7349b635498517894de8c5211b3a6afffa5e872f1d64",
+      "mp4_path": "assets/feature-gifs/sleepradar-live-now-card.mp4",
+      "mp4_sha256": "6dd5520b2d65f2f1d2602fdaef1715f009ce7c5cf1c14346ecab3a4bb8a5af4a"
+    },
+    "sleepradar-more-than-presence": {
+      "gif_path": "assets/feature-gifs/sleepradar-more-than-presence.gif",
+      "gif_sha256": "8eaa2c8347363000bd7209f886a75a155a480551afdcf16da689a6d729d086be",
+      "mp4_path": "assets/feature-gifs/sleepradar-more-than-presence.mp4",
+      "mp4_sha256": "eaceaae01534c670d9c221949f664f0964a35d5ae07aaf2bb674a589e314e703"
+    },
+    "sleepradar-sleep-aware-lighting": {
+      "gif_path": "assets/feature-gifs/sleepradar-sleep-aware-lighting.gif",
+      "gif_sha256": "afcefd1d65f0ebe9533dc568c514af080c5858bcaabc6ade9c705f863a1525ac",
+      "mp4_path": "assets/feature-gifs/sleepradar-sleep-aware-lighting.mp4",
+      "mp4_sha256": "b24fda1be545a9ed1748a66e90ff093da938ebc00864ed216e5fe455f7d8e3b8"
+    }
+  },
+  "schema_version": 1
+}

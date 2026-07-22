@@ -1,0 +1,336 @@
+{
+  "category": "kinetic-type",
+  "duration_s": 6,
+  "fps": 30,
+  "canvas": {
+    "w": 720,
+    "h": 1280,
+    "aspect": "9:16"
+  },
+  "style": "Calm, technical, low-glare Home Assistant night readout. Typography is scan-first and compact, with solid surfaces, thin borders, restrained semantic color, no gradients, no wellness imagery, and no medical framing. The hook is the typographic hero; entity cards are supporting UI forms.",
+  "palette": [
+    "#101112",
+    "#1b1c1e",
+    "#2b2d31",
+    "#e8e8ea",
+    "#9a9da3",
+    "#5aa2ff",
+    "#2758d8",
+    "#ff4d57",
+    "#f5a623",
+    "#747982"
+  ],
+  "font": "Inter",
+  "beats": [
+    8,
+    24,
+    36,
+    48,
+    60,
+    84,
+    158
+  ],
+  "export": "mp4",
+  "asset_needs": [],
+  "block": "caption-editorial-emphasis",
+  "rules": [
+    {
+      "id": "center-outward-expansion",
+      "role": "dominant motion motif",
+      "application": "Treat the muted Presence card as the single geometric origin. Drive all five entity cards from that origin toward fixed stack targets with deterministic translate transforms, then run the exact inverse transforms during collapse.",
+      "parameters": {
+        "item_count": 5,
+        "center_px": {
+          "x": 360,
+          "y": 704
+        },
+        "target_centers_px": [
+          {
+            "entity": "Heart rate",
+            "x": 360,
+            "y": 480
+          },
+          {
+            "entity": "Breathing",
+            "x": 360,
+            "y": 592
+          },
+          {
+            "entity": "Sleep stage",
+            "x": 360,
+            "y": 704
+          },
+          {
+            "entity": "Body movement",
+            "x": 360,
+            "y": 816
+          },
+          {
+            "entity": "Illuminance",
+            "x": 360,
+            "y": 928
+          }
+        ],
+        "entry_window_s": [
+          0.8,
+          2.6
+        ],
+        "reveal_beats_s": [
+          0.8,
+          1.2,
+          1.6,
+          2,
+          2.4
+        ],
+        "start_progress": 0,
+        "ease": "power2.out",
+        "return_window_s": [
+          5.25,
+          6
+        ]
+      },
+      "implementation_constraints": [
+        "Use x/y translate transforms from the shared center; never animate left, top, width, or height.",
+        "Keep the five-card reveal cadence at 0.4 seconds while the shared expansion progress produces one coherent center-outward gesture.",
+        "Reverse the stored entry transforms and activation states exactly, in reverse reveal order, so rendered frame 179 equals frame 0.",
+        "Use a paused, seek-safe GSAP timeline and no random or infinite animation."
+      ]
+    },
+    {
+      "id": "ambient-glow-bloom",
+      "variant": "traveling-sweep",
+      "role": "single pattern interrupt and scan activation",
+      "application": "Run one clipped radar scan across the assembled five-card stack. The line activates each deterministic status dot and micro-readout as it passes, then clears the stack and never repeats.",
+      "parameters": {
+        "start_s": 2.8,
+        "end_s": 3.25,
+        "duration_s": 0.45,
+        "axis": "top-to-bottom",
+        "surface": "resolved five-card stack",
+        "line": "2px solid #5aa2ff",
+        "gradient": false,
+        "ease": "none",
+        "start_position": "fully above the clipped stack",
+        "end_position": "fully below the clipped stack",
+        "peak_opacity": 0.3
+      },
+      "implementation_constraints": [
+        "Use one finite pass only: no repeat, yoyo, CSS transition, random source, or persistent shimmer.",
+        "Keep the scan layer clipped to the card stack and use y plus opacity only.",
+        "Honor the no-gradient visual system; this adaptation uses the rule's deterministic single-pass sweep timing with a thin solid scan line.",
+        "Use a paused, seek-safe GSAP timeline and restore all activated states during the exact reverse collapse."
+      ]
+    }
+  ],
+  "shot_brief": "The viewer first sees one deliberately muted Home Assistant Presence card under the hook “Same sensor. Now 5 sleep signals.” Within the first beat, that single card becomes the origin of one center-outward expansion: five compact SleepRadar entity cards peel from its geometry and settle into a vertical signal stack, making the expanded capability legible through motion alone. After 2.5 seconds, a restrained radar scan interrupts the rhythm and activates the five status indicators together; the complete stack then holds long enough to read before retracing the same paths into the original Presence card, producing an exact first-frame/last-frame loop.",
+  "customize": {
+    "dominant_motion": "A single presence card duplicates and travels center-outward into five cards; every entrance and exit derives from that same origin geometry.",
+    "hook": {
+      "text": "Same sensor. Now 5 sleep signals.",
+      "land_by_s": 0.3,
+      "position": "top safe area, centered",
+      "emphasis": "Now 5 sleep signals.",
+      "treatment": "Two centered semibold lines: ‘Same sensor.’ in #e8e8ea and ‘Now 5 sleep signals.’ in #5aa2ff; no all-caps and no letter spacing."
+    },
+    "layout": {
+      "presence_origin": "centered on the vertical axis in the middle third",
+      "resolved_cards": "five equal-width compact cards in one centered vertical stack with generous separation from the hook",
+      "safe_area_px": {
+        "top": 96,
+        "right": 56,
+        "bottom": 96,
+        "left": 56
+      }
+    },
+    "entity_cards": [
+      {
+        "label": "Heart rate",
+        "kind": "measured",
+        "unit": "bpm",
+        "accent": "#ff4d57"
+      },
+      {
+        "label": "Breathing",
+        "kind": "measured",
+        "unit": "br/min",
+        "accent": "#5aa2ff"
+      },
+      {
+        "label": "Sleep stage",
+        "kind": "estimated",
+        "caveat": "sensor estimate",
+        "accent": "#f5a623"
+      },
+      {
+        "label": "Body movement",
+        "kind": "measured",
+        "accent": "#5aa2ff"
+      },
+      {
+        "label": "Illuminance",
+        "kind": "measured",
+        "unit": "lx",
+        "accent": "#5aa2ff"
+      }
+    ],
+    "pattern_interrupt": {
+      "time_s": 2.8,
+      "motion": "One thin radar-blue scan line crosses the settled stack once; status dots and restrained micro-readouts switch from unknown gray to their semantic accents as it passes.",
+      "duration_s": 0.45
+    },
+    "readability": {
+      "minimum_static_hold_s": 0.3,
+      "full_stack_hold": "All five activated cards remain fully readable from 3.25s through 5.25s.",
+      "copy_limit": "Only the hook, five entity labels, units, and the sleep-stage caveat appear."
+    },
+    "loop": {
+      "return_start_s": 5.25,
+      "method": "Reverse the exact card trajectories and activation states into the original muted Presence card; restore the opening hook transform and opacity by frame 179 so frame 179 matches frame 0.",
+      "constraint": "The final return is transition footage only; the resolved story finish is the preceding hold on all five live signals."
+    },
+    "timeline": [
+      {
+        "start_s": 0,
+        "end_s": 0.3,
+        "phase": "hook-land",
+        "action": "Use a short soft scale_grow so “Same sensor. Now 5 sleep signals.” and the one muted Presence card settle together by 0.3s. Keep the second line #5aa2ff and retain the frame-zero hook transform and opacity as the loop target."
+      },
+      {
+        "start_s": 0.3,
+        "end_s": 0.8,
+        "phase": "presence-read",
+        "action": "Hold the hook and the single muted Presence card still and fully legible; no additional surface, card, signal, or accent appears."
+      },
+      {
+        "start_s": 0.8,
+        "end_s": 1.2,
+        "phase": "expand-heart-rate",
+        "action": "Begin the shared center-outward expansion from the Presence-card origin and reveal the Heart rate card on the 0.8s beat; its unknown-gray status remains inactive."
+      },
+      {
+        "start_s": 1.2,
+        "end_s": 1.6,
+        "phase": "expand-breathing",
+        "action": "Continue the same expansion and reveal the Breathing card on the 1.2s beat, preserving equal card width and the centered vertical stack."
+      },
+      {
+        "start_s": 1.6,
+        "end_s": 2,
+        "phase": "expand-sleep-stage",
+        "action": "Reveal the Sleep stage card on the 1.6s beat. Show the visible caveat “sensor estimate” with the label from its first readable frame and keep it visible for the rest of the resolved hold."
+      },
+      {
+        "start_s": 2,
+        "end_s": 2.4,
+        "phase": "expand-body-movement",
+        "action": "Reveal the Body movement card on the 2.0s beat while all cards continue to derive from the same Presence-card origin geometry."
+      },
+      {
+        "start_s": 2.4,
+        "end_s": 2.6,
+        "phase": "expand-illuminance",
+        "action": "Reveal the Illuminance card on the 2.4s beat and settle all five equal-width entity cards into their fixed target centers by 2.6s."
+      },
+      {
+        "start_s": 2.6,
+        "end_s": 2.8,
+        "phase": "stack-anticipation",
+        "action": "Hold the complete stack in its unknown-gray state for a clean 0.2s anticipation; the hook remains unchanged and the camera remains fixed."
+      },
+      {
+        "start_s": 2.8,
+        "end_s": 3.25,
+        "phase": "scan-activate",
+        "action": "Send one thin solid radar-blue scan line from fully above to fully below the clipped stack. As it passes, switch the five status dots and restrained micro-readouts from unknown gray to their semantic accents; clear the line completely by 3.25s."
+      },
+      {
+        "start_s": 3.25,
+        "end_s": 5.25,
+        "phase": "long-readable-hold",
+        "action": "Hold all five activated cards fully readable for 2.0s. Limit motion to subtle deterministic status pulses; retain the hook, every entity label and unit, and the visible “sensor estimate” caveat."
+      },
+      {
+        "start_s": 5.25,
+        "end_s": 6,
+        "phase": "exact-collapse-loop",
+        "action": "Reverse the five stored entry trajectories and activation states in exact reverse order into the one muted Presence card. Restore every transform, color, opacity, layer state, and the opening hook transform and opacity so rendered frame 179 at 5.9667s matches frame 0; 6.0s is the exclusive loop boundary."
+      }
+    ],
+    "constraints": [
+      "Silent: no narration, music, or sound effects.",
+      "Use no personal or numeric telemetry; signal activity is represented by deterministic status dots and micro-readout marks.",
+      "Sleep stage must always carry the visible caveat ‘sensor estimate’.",
+      "Do not use medical, diagnostic, coaching, wearable, moon-mascot, or wellness imagery.",
+      "Do not introduce the SleepRadar logo unless readability testing proves a compact brand identifier is necessary.",
+      "Build only this pilot composition."
+    ]
+  },
+  "content": {
+    "scenes": [
+      {
+        "id": "hook",
+        "start": 0,
+        "end": 0.8,
+        "text": "Same sensor. Now 5 sleep signals.",
+        "emphasis_words": [
+          "5 sleep signals"
+        ],
+        "emotion": "quiet curiosity",
+        "motion": "Hook resolves by 0.3s while one muted Presence card makes a short, soft scale settle at center.",
+        "beats": [
+          0.27
+        ]
+      },
+      {
+        "id": "build",
+        "start": 0.8,
+        "end": 2.6,
+        "text": "Heart rate. Breathing. Sleep stage. Body movement. Illuminance.",
+        "emphasis_words": [
+          "Heart rate",
+          "Sleep stage"
+        ],
+        "emotion": "controlled revelation",
+        "motion": "The Presence card becomes an origin shell; five cards peel center-outward in 0.4s cadence and settle as one vertical stack without camera movement.",
+        "beats": [
+          0.8,
+          1.2,
+          1.6,
+          2,
+          2.4
+        ]
+      },
+      {
+        "id": "punch",
+        "start": 2.6,
+        "end": 5.25,
+        "text": "Five live signals.",
+        "emphasis_words": [
+          "five",
+          "live"
+        ],
+        "emotion": "clear proof",
+        "motion": "At 2.8s the single radar scan activates all five cards; then motion reduces to subtle deterministic status pulses while the complete stack holds for reading.",
+        "beats": [
+          2.8,
+          3.25
+        ]
+      },
+      {
+        "id": "resolve-loop",
+        "start": 5.25,
+        "end": 6,
+        "text": "Same sensor. Now 5 sleep signals.",
+        "emphasis_words": [
+          "5 sleep signals"
+        ],
+        "emotion": "satisfying return",
+        "motion": "The five cards retrace their paths into one muted Presence card; all transforms, colors, and opacity return exactly to their frame-zero values.",
+        "beats": [
+          5.27,
+          5.97
+        ]
+      }
+    ]
+  }
+}

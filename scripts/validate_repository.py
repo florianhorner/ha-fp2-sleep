@@ -7,8 +7,9 @@ import importlib.util
 import json
 import types
 import xml.etree.ElementTree as ET
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
+import subprocess
 import sys
 
 import yaml
@@ -42,9 +43,7 @@ EXPECTED_CI_REQUIREMENTS = [
     "yamllint==1.37.1",
 ]
 CHECKOUT_ACTION = "actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10"
-SETUP_PYTHON_ACTION = (
-    "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1"
-)
+SETUP_PYTHON_ACTION = "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1"
 PYTHON_VERSION = "3.12"
 PIP_AUDIT_VERSION = "2.10.1"
 GITLEAKS_VERSION = "8.30.0"
@@ -60,6 +59,7 @@ WATCHDOG_URL_PATTERN = re.compile(r"^(?:https?|tcp)://")
 
 class ValidationError(Exception):
     """Raised by fail(); --self-test asserts these failures."""
+
 
 PRIVATE_PATTERNS = {
     "private HA URL": re.compile(r"ha\.horner\.io", re.IGNORECASE),
@@ -87,11 +87,25 @@ TEXT_SUFFIXES = {
     ".txt",
     ".json",
     ".js",
+    ".html",
+    ".svg",
     ".gitignore",
     ".Dockerfile",
 }
 
-SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", ".ruff_cache", ".venv", ".context"}
+SKIP_DIRS = {
+    ".git",
+    "__pycache__",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    ".context",
+    # Generated/vendored video output; only authored source is scanned.
+    "node_modules",
+    ".hyperframes",
+    "renders",
+    "snapshots",
+}
 
 
 def fail(message: str) -> None:
@@ -232,7 +246,9 @@ def step_run(steps: list[dict], name: str) -> str:
     return run
 
 
-def require_run_pattern(steps: list[dict], name: str, pattern: str, description: str) -> None:
+def require_run_pattern(
+    steps: list[dict], name: str, pattern: str, description: str
+) -> None:
     if not re.search(pattern, step_run(steps, name), re.MULTILINE):
         fail(f".github/workflows/ci.yml step {name!r} must {description}")
 
@@ -270,7 +286,9 @@ def validate_workflow() -> None:
             )
 
     install_run = step_run(validate_steps, "Install dependencies")
-    if not re.search(r"\bpython3?\s+-m\s+pip\s+install\s+-r\s+requirements-ci\.txt\b", install_run):
+    if not re.search(
+        r"\bpython3?\s+-m\s+pip\s+install\s+-r\s+requirements-ci\.txt\b", install_run
+    ):
         fail(".github/workflows/ci.yml must install requirements-ci.txt")
 
     whitespace_run = step_run(validate_steps, "Check whitespace")
@@ -286,9 +304,12 @@ def validate_workflow() -> None:
         (
             r"\bpython3?\s+-m\s+py_compile\s+"
             r"aqara_fp2_sleep/aqara_fp2_sleep_poller\.py\s+"
-            r"scripts/validate_repository\.py\b"
+            r"scripts/validate_repository\.py\s+"
+            r"videos/quiet_proof_loops\.py\s+"
+            r"videos/validate-gif-batch\.py\s+"
+            r"videos/build-gif-deliverables\.py\b"
         ),
-        "compile-check the Python entrypoints",
+        "compile-check the Python and GIF workflow entrypoints",
     )
     require_run_pattern(
         validate_steps,
@@ -308,6 +329,45 @@ def validate_workflow() -> None:
         r"\bpython3?\s+scripts/validate_repository\.py\s+--self-test\b",
         "run the repository validator self-test",
     )
+    require_run_pattern(
+        validate_steps,
+        "Validate GIF sources",
+        r"\A\s*python3?\s+videos/validate-gif-batch\.py\s*\Z",
+        "validate the tracked GIF sources without rendering",
+    )
+    require_run_pattern(
+        validate_steps,
+        "GIF validator drift self-test",
+        r"\A\s*python3?\s+videos/validate-gif-batch\.py\s+--self-test\s*\Z",
+        "run the GIF source validator self-test",
+    )
+    require_run_pattern(
+        validate_steps,
+        "GIF builder guard self-test",
+        r"\A\s*python3?\s+videos/build-gif-deliverables\.py\s+--self-test\s*\Z",
+        "run the non-rendering GIF builder guard self-test",
+    )
+    require_run_pattern(
+        validate_steps,
+        "Check tracked published baseline",
+        (
+            r"\A\s*python3?\s+videos/validate-gif-batch\.py\s+"
+            r"--check-baseline\s+"
+            r"videos/gif-batch-baseline-sha256\.json\s*\Z"
+        ),
+        "check the tracked published binaries against the SHA-256 baseline",
+    )
+    for step in all_steps:
+        run = step.get("run")
+        if (
+            isinstance(run, str)
+            and re.search(r"\bpython3?\s+videos/build-gif-deliverables\.py\b", run)
+            and not re.fullmatch(
+                r"\s*python3?\s+videos/build-gif-deliverables\.py\s+--self-test\s*",
+                run,
+            )
+        ):
+            fail(".github/workflows/ci.yml must not render GIF deliverables")
     require_run_pattern(
         validate_steps,
         "Test SleepRadar card",
@@ -370,6 +430,90 @@ def validate_workflow() -> None:
     scan_run = step_run(security_steps, "Scan current tree for secrets")
     if "gitleaks dir --no-banner --redact --verbose ." not in scan_run:
         fail(".github/workflows/ci.yml must scan the current worktree with Gitleaks")
+
+
+def git_tracked_paths() -> list[str]:
+    """Return the prospective commit surface: tracked plus non-ignored new files."""
+
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        fail(f"unable to list repository candidate paths: {exc}")
+    if result.returncode:
+        detail = result.stderr.strip() or f"git exited with {result.returncode}"
+        fail(f"unable to list repository candidate paths: {detail}")
+    return [path for path in result.stdout.split("\0") if path]
+
+
+def validate_tracked_paths(paths=None) -> None:
+    tracked = sorted(set(git_tracked_paths() if paths is None else paths))
+    tracked_set = set(tracked)
+    published: dict[str, set[str]] = {}
+    violations = []
+
+    for rel in tracked:
+        path = PurePosixPath(rel)
+        parts = path.parts
+
+        if path.name == ".DS_Store":
+            violations.append(f"{rel}: .DS_Store must not be tracked")
+
+        if parts and parts[0] == "videos":
+            generated_dirs = {"renders", "snapshots"}.intersection(parts[1:])
+            if generated_dirs:
+                directory = sorted(generated_dirs)[0]
+                violations.append(
+                    f"{rel}: videos/**/{directory}/ artifacts must not be tracked"
+                )
+            if path.name == "VERIFICATION.md":
+                violations.append(
+                    f"{rel}: videos/**/VERIFICATION.md receipts must not be tracked"
+                )
+            if rel == "videos/gif-batch-verification.json":
+                violations.append(
+                    f"{rel}: generated batch verification must not be tracked"
+                )
+
+        suffix = path.suffix.lower()
+        if suffix not in {".gif", ".mp4"}:
+            continue
+        if parts[:2] != ("assets", "feature-gifs") or len(parts) < 3:
+            violations.append(
+                f"{rel}: tracked GIF/MP4 binaries belong under assets/feature-gifs/"
+            )
+            continue
+
+        published_path = PurePosixPath(*parts[2:])
+        published_stem = published_path.with_suffix("").as_posix()
+        published.setdefault(published_stem, set()).add(suffix)
+
+    for published_stem, suffixes in sorted(published.items()):
+        missing = sorted({".gif", ".mp4"} - suffixes)
+        if missing:
+            violations.append(
+                f"assets/feature-gifs/{published_stem}: missing published "
+                + " and ".join(missing)
+            )
+
+        source_stem = PurePosixPath(published_stem).name
+        source_prefix = f"videos/{source_stem}/"
+        if not any(rel.startswith(source_prefix) for rel in tracked_set):
+            violations.append(
+                f"assets/feature-gifs/{published_stem}: missing tracked source "
+                f"under videos/{source_stem}/"
+            )
+
+    if violations:
+        fail(
+            "tracked repository path validation failed:\n"
+            + "\n".join(f"  - {violation}" for violation in violations)
+        )
 
 
 def iter_text_files():
@@ -506,7 +650,9 @@ def validate_run_script(text=None) -> None:
             "aqara_fp2_sleep/run.sh must slow-exit via startup_failure(), "
             "not bashio::exit.nok"
         )
-    expected_cooldown = 'export STARTUP_FAILURE_COOLDOWN="${STARTUP_FAILURE_COOLDOWN:-30}"'
+    expected_cooldown = (
+        'export STARTUP_FAILURE_COOLDOWN="${STARTUP_FAILURE_COOLDOWN:-30}"'
+    )
     if expected_cooldown not in text:
         fail(
             "aqara_fp2_sleep/run.sh must export STARTUP_FAILURE_COOLDOWN with "
@@ -514,17 +660,19 @@ def validate_run_script(text=None) -> None:
         )
     if (
         "startup_failure()" not in text
-        or "sleep \"${STARTUP_FAILURE_COOLDOWN}\" &" not in text
+        or 'sleep "${STARTUP_FAILURE_COOLDOWN}" &' not in text
     ):
-        fail("aqara_fp2_sleep/run.sh is missing the interruptible startup_failure helper")
-    if "trap 'kill \"${sleep_pid}\"" not in text:
+        fail(
+            "aqara_fp2_sleep/run.sh is missing the interruptible startup_failure helper"
+        )
+    if 'trap \'kill "${sleep_pid}"' not in text:
         fail("aqara_fp2_sleep/run.sh startup_failure sleep must be interruptible")
     for message in [
         "No MQTT service available",
         "aqara_username and aqara_password are required.",
         "subject_id is required.",
     ]:
-        if f"startup_failure \"{message}" not in text:
+        if f'startup_failure "{message}' not in text:
             fail(f"aqara_fp2_sleep/run.sh does not slow-exit for: {message}")
 
 
@@ -916,6 +1064,11 @@ def run_self_test() -> None:
     favicon_source = (ROOT / FAVICON_SOURCE).read_bytes()
     favicon = (ROOT / FAVICON_PATH).read_bytes()
     entity_ids = {f"sensor.{oid}" for oid in EXPECTED_OBJECT_IDS}
+    published_paths = [
+        "assets/feature-gifs/example.gif",
+        "assets/feature-gifs/example.mp4",
+        "videos/example/index.html",
+    ]
 
     expect_pass("favicon real", lambda: check_favicon(favicon_source, favicon))
     expect_pass("addon config real", lambda: validate_addon_config(addon_config))
@@ -932,6 +1085,18 @@ def run_self_test() -> None:
     expect_pass("dashboard real", lambda: check_dashboard_maps(dashboard))
     expect_pass("recorder real", lambda: check_recorder_entities(recorder, entity_ids))
     expect_pass(
+        "tracked published pair",
+        lambda: validate_tracked_paths(published_paths),
+    )
+    expect_pass(
+        "privacy scan covers authored markup",
+        lambda: (
+            None
+            if {".html", ".svg"} <= TEXT_SUFFIXES
+            else fail("TEXT_SUFFIXES must include .html and .svg")
+        ),
+    )
+    expect_pass(
         "login failure retry loop",
         check_login_failure_falls_through_to_retry_loop,
     )
@@ -944,6 +1109,65 @@ def run_self_test() -> None:
     expect_fail(
         "addon config boolean watchdog",
         lambda: validate_addon_config(dict(addon_config, watchdog=True)),
+    )
+    expect_fail(
+        "tracked render artifact",
+        lambda: validate_tracked_paths(
+            published_paths + ["videos/example/renders/proof.jpg"]
+        ),
+    )
+    expect_fail(
+        "tracked snapshot artifact",
+        lambda: validate_tracked_paths(
+            published_paths + ["videos/example/snapshots/frame.png"]
+        ),
+    )
+    expect_fail(
+        "tracked verification receipt",
+        lambda: validate_tracked_paths(
+            published_paths + ["videos/example/VERIFICATION.md"]
+        ),
+    )
+    expect_fail(
+        "tracked batch verification",
+        lambda: validate_tracked_paths(
+            published_paths + ["videos/gif-batch-verification.json"]
+        ),
+    )
+    expect_fail(
+        "tracked DS Store",
+        lambda: validate_tracked_paths(published_paths + ["videos/example/.DS_Store"]),
+    )
+    expect_fail(
+        "tracked media outside published assets",
+        lambda: validate_tracked_paths(published_paths + ["docs/example.gif"]),
+    )
+    expect_fail(
+        "published GIF missing MP4",
+        lambda: validate_tracked_paths(
+            [
+                "assets/feature-gifs/example.gif",
+                "videos/example/index.html",
+            ]
+        ),
+    )
+    expect_fail(
+        "published MP4 missing GIF",
+        lambda: validate_tracked_paths(
+            [
+                "assets/feature-gifs/example.mp4",
+                "videos/example/index.html",
+            ]
+        ),
+    )
+    expect_fail(
+        "published pair missing source",
+        lambda: validate_tracked_paths(
+            [
+                "assets/feature-gifs/example.gif",
+                "assets/feature-gifs/example.mp4",
+            ]
+        ),
     )
     expect_fail(
         "addon config non-URL watchdog",
@@ -976,7 +1200,7 @@ def run_self_test() -> None:
         lambda: validate_run_script(
             mutate(
                 run_script,
-                'trap \'kill "${sleep_pid}" 2>/dev/null\' TERM INT',
+                "trap 'kill \"${sleep_pid}\" 2>/dev/null' TERM INT",
                 "",
             )
         ),
@@ -1009,7 +1233,9 @@ def run_self_test() -> None:
     )
     expect_fail(
         "sleep_tracking phases label",
-        lambda: check_sleep_tracking_maps(mutate(tracking, "1: 'Awake',", "1: 'Sleepy',")),
+        lambda: check_sleep_tracking_maps(
+            mutate(tracking, "1: 'Awake',", "1: 'Sleepy',")
+        ),
     )
     expect_fail(
         "sleep_tracking names awake-prefix",
@@ -1066,6 +1292,7 @@ def main() -> None:
     validate_requirements()
     validate_dockerfile()
     validate_workflow()
+    validate_tracked_paths()
     validate_yaml()
     validate_favicon()
     validate_addon_config()
