@@ -1,0 +1,12 @@
+{
+  "name": "quiet-proof-loops-minimal",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx --yes hyperframes@0.7.61 preview",
+    "lint": "npx --yes hyperframes@0.7.61 lint",
+    "check": "npx --yes hyperframes@0.7.61 check",
+    "render": "npx --yes hyperframes@0.7.61 render",
+    "publish": "npx --yes hyperframes@0.7.61 publish"
+  }
+}

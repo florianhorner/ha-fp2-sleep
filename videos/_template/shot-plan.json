@@ -1,0 +1,56 @@
+{
+  "category": "kinetic-type",
+  "duration_s": 6,
+  "fps": 30,
+  "canvas": {
+    "w": 720,
+    "h": 1280,
+    "aspect": "9:16"
+  },
+  "palette": [
+    "#101112",
+    "#1b1c1e",
+    "#2b2d31",
+    "#e8e8ea",
+    "#9a9da3",
+    "#5aa2ff",
+    "#2758d8",
+    "#ff4d57",
+    "#f5a623",
+    "#747982"
+  ],
+  "font": "Inter",
+  "style": "[Product-native proof surface and one causal motion]",
+  "timeline": [
+    {
+      "start_s": 0,
+      "end_s": 0.8,
+      "phase": "honest-opening",
+      "action": "Hold the frame-zero hook and honest starting state."
+    },
+    {
+      "start_s": 0.8,
+      "end_s": 3,
+      "phase": "causal-reveal",
+      "action": "Reveal one concrete payoff with the brief's motion verb."
+    },
+    {
+      "start_s": 3,
+      "end_s": 5.25,
+      "phase": "proof-hold",
+      "action": "Hold the complete proof and attached qualifier."
+    },
+    {
+      "start_s": 5.25,
+      "end_s": 5.9,
+      "phase": "exact-return",
+      "action": "Retrace every changed state."
+    },
+    {
+      "start_s": 5.9,
+      "end_s": 6,
+      "phase": "seam-hold",
+      "action": "Hold the exact authored opening state."
+    }
+  ]
+}

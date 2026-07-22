@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=720, height=1280" />
+    <script src="/assets/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Inter";
+        src: url("/assets/inter-latin-wght-normal.woff2") format("woff2-variations");
+        font-style: normal;
+        font-weight: 100 900;
+        font-display: block;
+      }
+      :root {
+        --background: #0b1020;
+        --surface: #151d31;
+        --border: #34405a;
+        --text: #f4f7ff;
+        --muted: #aab5ce;
+        --primary: #62d2a2;
+        --primary-strong: #31846a;
+        --signal-red: #ff6b6b;
+        --qualifier: #ffd166;
+        --unknown: #6d7892;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        width: 720px;
+        height: 1280px;
+        margin: 0;
+        overflow: hidden;
+        background: var(--background);
+      }
+      body { font-family: "Inter", sans-serif; }
+      #stage, .clip, #scene {
+        position: relative;
+        width: 720px;
+        height: 1280px;
+        overflow: hidden;
+      }
+      #hook {
+        position: absolute;
+        top: 110px;
+        left: 60px;
+        width: 600px;
+        margin: 0;
+        color: var(--text);
+        font-size: 54px;
+        font-weight: 640;
+        line-height: 1.05;
+        text-align: center;
+      }
+      #hook span { display: block; }
+      #hook .accent { color: var(--primary); }
+      #proof-card {
+        position: absolute;
+        top: 414px;
+        left: 60px;
+        width: 600px;
+        height: 360px;
+        padding: 34px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--surface);
+        color: var(--text);
+      }
+      .eyebrow {
+        color: var(--muted);
+        font-size: 18px;
+        font-weight: 640;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .state {
+        position: absolute;
+        top: 92px;
+        left: 34px;
+        font-size: 46px;
+        font-weight: 640;
+      }
+      #opening { color: var(--unknown); }
+      #payoff {
+        color: var(--primary);
+        opacity: 0;
+      }
+      .rule {
+        position: absolute;
+        top: 176px;
+        left: 34px;
+        width: 532px;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--primary-strong);
+        transform-origin: left center;
+      }
+      .qualifier {
+        position: absolute;
+        left: 34px;
+        bottom: 34px;
+        color: var(--qualifier);
+        font-size: 18px;
+      }
+      .semantic-swatches {
+        position: absolute;
+        right: 34px;
+        bottom: 34px;
+        display: flex;
+        gap: 8px;
+      }
+      .semantic-swatches span {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+      }
+      .semantic-swatches span:first-child { background: var(--signal-red); }
+      .semantic-swatches span:last-child { background: var(--unknown); }
+    </style>
+  </head>
+  <body>
+    <div
+      id="stage"
+      data-composition-id="quiet-proof-loops-minimal"
+      data-start="0"
+      data-duration="6"
+      data-fps="30"
+      data-width="720"
+      data-height="1280"
+    >
+      <div id="fixture-clip" class="clip" data-start="0" data-duration="6" data-track-index="0">
+        <main id="scene">
+          <h1 id="hook">
+            <span>One state.</span>
+            <span class="accent">Proved, then returned.</span>
+          </h1>
+          <article id="proof-card">
+            <div class="eyebrow">Deterministic status</div>
+            <div id="opening" class="state" data-layout-allow-overlap>Pending</div>
+            <div id="payoff" class="state" data-layout-allow-overlap>Ready</div>
+            <div class="rule" aria-hidden="true"></div>
+            <div class="qualifier">Fixture state only</div>
+            <div class="semantic-swatches" aria-hidden="true"><span></span><span></span></div>
+          </article>
+        </main>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      tl.set(".rule", { scaleX: 0 }, 0);
+      tl.to("#opening", { opacity: 0, y: -6, duration: 0.35, ease: "power2.in" }, 0.75);
+      tl.fromTo(
+        "#payoff",
+        { opacity: 0, y: 8 },
+        { opacity: 1, y: 0, duration: 0.55, ease: "power2.out" },
+        0.92,
+      );
+      tl.to(".rule", { scaleX: 1, duration: 0.65, ease: "power2.out" }, 2.25);
+
+      tl.to(".rule", { scaleX: 0, duration: 0.3, ease: "power2.in" }, 5.2);
+      tl.to("#payoff", { opacity: 0, y: 8, duration: 0.3, ease: "power2.in" }, 5.32);
+      tl.to("#opening", { opacity: 1, y: 0, duration: 0.34, ease: "power2.out" }, 5.5);
+
+      tl.set("#opening", { opacity: 1, x: 0, y: 0 }, 5.88);
+      tl.set("#payoff", { opacity: 0, x: 0, y: 8 }, 5.88);
+      tl.set(".rule", { scaleX: 0 }, 5.88);
+      tl.set("#hook", { opacity: 1, x: 0, y: 0, scale: 1 }, 5.88);
+      tl.set("#proof-card", { opacity: 1, x: 0, y: 0, scale: 1 }, 5.88);
+
+      window.__timelines["quiet-proof-loops-minimal"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

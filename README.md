@@ -199,6 +199,10 @@ the full dashboard:
   `PLACEHOLDER_*` values with your own light, vacuum, and thermostat entity
   IDs.
 
+<p align="center">
+  <img src="assets/feature-gifs/sleepradar-last-night-view.gif" alt="Optional SleepRadar dashboard showing previous-night sleep state, heart rate, and breathing histories" width="360">
+</p>
+
 All files are pre-wired to the default `mqtt_node_id`. If you changed it,
 update `sensor.aqara_fp2_sleep_*` references to match.
 

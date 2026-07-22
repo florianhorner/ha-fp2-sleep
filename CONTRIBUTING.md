@@ -68,10 +68,14 @@ Run these checks before opening a PR:
 
 ```bash
 git diff --check
-python3 -m py_compile aqara_fp2_sleep/aqara_fp2_sleep_poller.py scripts/validate_repository.py
+python3 -m py_compile aqara_fp2_sleep/aqara_fp2_sleep_poller.py scripts/validate_repository.py videos/quiet_proof_loops.py videos/validate-gif-batch.py videos/build-gif-deliverables.py
 yamllint -c .yamllint .
 python3 scripts/validate_repository.py
 python3 scripts/validate_repository.py --self-test
+python3 videos/validate-gif-batch.py
+python3 videos/validate-gif-batch.py --self-test
+python3 videos/build-gif-deliverables.py --self-test
+python3 videos/validate-gif-batch.py --check-baseline videos/gif-batch-baseline-sha256.json
 node tests/sleepradar-card.test.js
 bash -n aqara_fp2_sleep/run.sh
 pip-audit -r aqara_fp2_sleep/requirements.txt --progress-spinner off

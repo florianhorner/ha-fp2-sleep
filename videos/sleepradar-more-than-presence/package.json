@@ -1,0 +1,11 @@
+{
+  "name": "sleepradar-more-than-presence",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx --yes hyperframes@0.7.59 preview",
+    "check": "npx --yes hyperframes@0.7.59 check",
+    "render": "npx --yes hyperframes@0.7.59 render",
+    "publish": "npx --yes hyperframes@0.7.59 publish"
+  }
+}

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=720, height=1280" />
+    <script src="/assets/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Inter";
+        src: url("/assets/inter-latin-wght-normal.woff2") format("woff2-variations");
+        font-style: normal;
+        font-weight: 100 900;
+        font-display: block;
+      }
+      :root {
+        --background: #101112;
+        --surface: #1b1c1e;
+        --border: #2b2d31;
+        --text: #e8e8ea;
+        --muted: #9a9da3;
+        --primary: #5aa2ff;
+        --primary-strong: #2758d8;
+        --signal-red: #ff4d57;
+        --qualifier: #f5a623;
+        --unknown: #747982;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        width: 720px;
+        height: 1280px;
+        margin: 0;
+        overflow: hidden;
+        background: var(--background);
+      }
+      body { font-family: "Inter", sans-serif; }
+      #stage, .clip, #scene {
+        position: relative;
+        width: 720px;
+        height: 1280px;
+        overflow: hidden;
+      }
+      #hook {
+        position: absolute;
+        top: 118px;
+        left: 56px;
+        width: 608px;
+        margin: 0;
+        color: var(--text);
+        font-size: 56px;
+        font-weight: 650;
+        line-height: 1.04;
+        text-align: center;
+      }
+      #hook span { display: block; }
+      #hook .accent { color: var(--primary); }
+      #proof-card {
+        position: absolute;
+        top: 390px;
+        left: 56px;
+        width: 608px;
+        min-height: 360px;
+        padding: 32px;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: var(--surface);
+        color: var(--text);
+      }
+      .label { color: var(--muted); font-size: 18px; }
+      .state { margin-top: 18px; font-size: 38px; font-weight: 650; }
+      #payoff { margin-top: 24px; color: var(--primary); opacity: 0; }
+      .qualifier { margin-top: 30px; color: var(--qualifier); font-size: 16px; }
+    </style>
+  </head>
+  <body>
+    <div
+      id="stage"
+      data-composition-id="replace-me"
+      data-start="0"
+      data-duration="6"
+      data-fps="30"
+      data-width="720"
+      data-height="1280"
+    >
+      <div class="clip" data-start="0" data-duration="6" data-track-index="0">
+        <main id="scene">
+          <h1 id="hook">
+            <span>[Honest hook.]</span>
+            <span class="accent">[Concrete payoff.]</span>
+          </h1>
+          <article id="proof-card">
+            <div class="label">[Product-native surface]</div>
+            <div class="state">[Opening state]</div>
+            <div id="payoff">[Visible payoff]</div>
+            <div class="qualifier">[Attached qualifier]</div>
+          </article>
+        </main>
+      </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      tl.fromTo(
+        "#payoff",
+        { opacity: 0, y: 8 },
+        { opacity: 1, y: 0, duration: 0.8, ease: "power2.out" },
+        0.8,
+      );
+      tl.to(
+        "#payoff",
+        { opacity: 0, y: 8, duration: 0.45, ease: "power2.in" },
+        5.25,
+      );
+      tl.set("#payoff", { opacity: 0, x: 0, y: 8 }, 5.9);
+      tl.set("#hook", { opacity: 1, x: 0, y: 0, scale: 1 }, 5.9);
+      tl.set("#proof-card", { opacity: 1, x: 0, y: 0, scale: 1 }, 5.9);
+
+      window.__timelines["replace-me"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,111 @@
+{
+  "category": "kinetic-type",
+  "duration_s": 6,
+  "fps": 30,
+  "canvas": {
+    "w": 720,
+    "h": 1280,
+    "aspect": "9:16"
+  },
+  "palette": [
+    "#101112",
+    "#1b1c1e",
+    "#2b2d31",
+    "#e8e8ea",
+    "#9a9da3",
+    "#5aa2ff",
+    "#2758d8",
+    "#ff4d57",
+    "#f5a623",
+    "#747982"
+  ],
+  "font": "Inter",
+  "style": "Calm low-glare Home Assistant dashboard structure. Three labelled history rails expand into configured panels without drawing invented telemetry.",
+  "summary": "A structural proof of the current optional Last night dashboard: sleep state, heart rate, and breathing share one previous-night view with Recorder and estimate qualifiers attached.",
+  "customize": {
+    "brand_lockup": {
+      "mark": "assets/sleepradar-mark-flat.svg",
+      "label": "SleepRadar",
+      "position_px": {
+        "top": 48,
+        "left": 56,
+        "width": 608
+      },
+      "mark_size_px": 30,
+      "label_size_px": 20,
+      "static": true
+    },
+    "hook": {
+      "line_1": "Last night.",
+      "line_2": "Three histories. One view.",
+      "position_px": {
+        "top": 118,
+        "left": 56,
+        "width": 608
+      },
+      "font_size_px": 56,
+      "font_weight": 650,
+      "line_height": 1.04,
+      "frame_zero_visible": true
+    },
+    "motion_verb": "expand",
+    "timeline": [
+      {
+        "start_s": 0,
+        "end_s": 0.8,
+        "phase": "compact-opening",
+        "action": "Hold the hook and three collapsed, labelled history rails with no values or traces."
+      },
+      {
+        "start_s": 0.8,
+        "end_s": 1.45,
+        "phase": "sleep-panel",
+        "action": "Expand the configured Sleep state panel and keep Aqara estimate attached."
+      },
+      {
+        "start_s": 1.45,
+        "end_s": 2.1,
+        "phase": "heart-panel",
+        "action": "Expand Heart rate with bpm and measured labels but no trace or value."
+      },
+      {
+        "start_s": 2.1,
+        "end_s": 2.75,
+        "phase": "breathing-panel",
+        "action": "Expand Breathing with br/min and measured labels but no trace or value."
+      },
+      {
+        "start_s": 2.75,
+        "end_s": 3,
+        "phase": "truth-lock",
+        "action": "Reveal the configured previous-night window and Recorder requirement."
+      },
+      {
+        "start_s": 3,
+        "end_s": 5.25,
+        "phase": "readable-hold",
+        "action": "Hold the complete structural proof without ambient motion."
+      },
+      {
+        "start_s": 5.25,
+        "end_s": 5.9,
+        "phase": "exact-collapse",
+        "action": "Collapse truth and panels in reverse, then restore all three opening rails."
+      },
+      {
+        "start_s": 5.9,
+        "end_s": 6,
+        "phase": "seam-hold",
+        "action": "Hold the exact authored opening state."
+      }
+    ],
+    "constraints": [
+      "No plotted trace, readout, cursor, or invented personal value.",
+      "Keep the SleepRadar logo-and-name lockup static and subordinate to the hook.",
+      "Keep Optional dashboard example and the Recorder requirement visible.",
+      "Keep measured vitals and estimated sleep stage explicit.",
+      "Do not imply the unreleased sessionized summary shown elsewhere.",
+      "Animate only transform, opacity, color, backgroundColor, and borderColor."
+    ]
+  }
+}

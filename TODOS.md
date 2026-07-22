@@ -146,6 +146,35 @@ renames existing entities). Known dogfood gap from the v1.1.0 notes.
 **Effort:** M **Priority:** P2 **Depends on:** live-instance verification of
 `default_entity_id` behavior on current HA
 
+## GIF pipeline hardening (pre-ship review squad, 2026-07-22)
+
+### Close the verified P2 gaps from the Quiet Proof Loops review
+
+**What:** The three-agent pre-ship review of the `videos/` pipeline confirmed these
+lower-severity gaps (P0/P1 were fixed before shipping): (1) the CI must-not-render
+guard in `scripts/validate_repository.py` only matches literal `python[3]
+videos/build-gif-deliverables.py` run lines and never scans extra workflow jobs;
+(2) `validate_tracked_paths` passes vacuously when `git ls-files` returns empty
+(nested checkout without its own `.git`); (3) nested pairs under
+`assets/feature-gifs/sub/` and `.webm`/`.webp`/`.apng` binaries are policed by
+neither the tracked-path check nor baseline discovery; (4) the new
+`validate_workflow` GIF branches have no mutation self-tests, and both videos/
+validators enforce many branches (banned-source classes, projection parity,
+truth-pin edge cases) that self-tests don't exercise; (5)
+`GIF-PRODUCTION-PLAYBOOK.md` has no `baseline_commit` guidance — a brief pinning a
+squash-merged branch commit would permanently fail main CI — and no warning that
+citing churny line ranges (TODOS/README) reds unrelated PRs by design; (6)
+`checked_at` compares a CET-stamped date against the UTC runner clock (transient
+late-evening failure); (7) `batch_default` semantics are undocumented and a bare
+`build-gif-deliverables.py` run re-renders exactly the four approved episodes; (8)
+episode AGENTS/CLAUDE doc conventions and `meta.json` name style are inconsistent
+across the six projects.
+
+**Why:** Each is a verified sharp edge that will cost a future session a debugging
+cycle; none blocks the current CI or falsifies published binaries today.
+
+**Effort:** M **Priority:** P2 **Depends on:** shipped Quiet Proof Loops PR
+
 ## Completed
 
 ### Real "Last night" dashboard view

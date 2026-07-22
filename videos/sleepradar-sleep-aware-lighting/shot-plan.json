@@ -1,0 +1,306 @@
+{
+  "category": "kinetic-type",
+  "duration_s": 6,
+  "fps": 30,
+  "canvas": {
+    "w": 720,
+    "h": 1280,
+    "aspect": "9:16"
+  },
+  "style": "Calm, technical, low-glare Home Assistant automation chain using the approved SleepRadar pilot shell. The frame-zero hook is the typographic hero; four equal-width solid cards make trigger, condition, comfort automation, and response explicit. No gradients, decorative drift, medical framing, or invented telemetry.",
+  "palette": [
+    "#101112",
+    "#1b1c1e",
+    "#2b2d31",
+    "#e8e8ea",
+    "#9a9da3",
+    "#5aa2ff",
+    "#2758d8",
+    "#ff4d57",
+    "#f5a623",
+    "#747982"
+  ],
+  "font": "Inter",
+  "beats": [
+    0.8,
+    1.3,
+    1.82,
+    2.42,
+    3,
+    5.25,
+    5.9
+  ],
+  "export": "mp4",
+  "asset_needs": [],
+  "block": "caption-editorial-emphasis",
+  "source_truth": {
+    "origin_main": "a03399c6d72799a015c559ad0a72d4c1b6811ea3",
+    "latest_release": "v1.2.1",
+    "latest_release_date": "2026-07-03",
+    "automation": "../../examples/automations.yaml:14-33",
+    "asleep_helper": "../../examples/sleep_tracking.yaml:61-72"
+  },
+  "rules": [
+    {
+      "id": "stat-bars-and-fills",
+      "role": "directional connector flow",
+      "application": "Adapt the progress-fill transform pattern to three solid vertical connectors. Each blue fill scales from zero to one from its authored top origin as the trigger, condition, automation, and response resolve.",
+      "constraints": [
+        "Use scaleY and opacity only; never animate connector height or position.",
+        "Use one finite pass and reverse the same authored fills after 5.25 seconds.",
+        "Keep every connector solid; use no gradient or shimmer."
+      ]
+    },
+    {
+      "id": "press-release-spring",
+      "role": "state acknowledgement",
+      "application": "Use only the rule's press-to-release continuity for a restrained 1.012 scale acknowledgement while each node changes from neutral to active. Replace playful overshoot and glow with calm power easing and exact palette border, surface, dot, and label changes.",
+      "constraints": [
+        "No button metaphor, burst, glow, gradient, shadow tween, or bouncy ease.",
+        "Every node returns to scale 1 before the next semantic beat.",
+        "Activation state remains readable through the payoff hold."
+      ]
+    },
+    {
+      "id": "scale-swap-transition",
+      "role": "output payoff",
+      "application": "Crossfade the authored dash and 20% state in one fixed output slot. Use restrained scale and opacity only so Brightness · — resolves to Brightness · 20% without reflow.",
+      "constraints": [
+        "Incoming and outgoing states share the same right-hand anchor.",
+        "Use no overshoot; 20% must be fully visible by 3.0 seconds.",
+        "Reverse to the dash before the 5.9-second exact-state hold."
+      ]
+    }
+  ],
+  "shot_brief": "The viewer sees the complete optional Home Assistant chain at frame zero under the hook Asleep? Lights cap at 20%. At 0.8 seconds the Bedroom light trigger activates, followed by the FP2 Asleep condition, the Cap light brightness comfort automation, and a Brightness response that changes from a dash to 20%. The resolved chain holds through 5.25 seconds, then retracts in reverse and exactly restores the opening neutral state by 5.9 seconds.",
+  "customize": {
+    "hook": {
+      "line_1": "Asleep?",
+      "line_2": "Lights cap at 20%.",
+      "position_px": {
+        "top": 118,
+        "left": 56,
+        "width": 608
+      },
+      "font_size_px": 56,
+      "font_weight": 650,
+      "line_height": 1.04,
+      "lead_color": "#e8e8ea",
+      "payoff_color": "#5aa2ff",
+      "frame_zero_visible": true
+    },
+    "layout": {
+      "safe_area_px": {
+        "top": 96,
+        "right": 56,
+        "bottom": 96,
+        "left": 56
+      },
+      "card_width_px": 608,
+      "card_height_px": 104,
+      "card_surface": "#1b1c1e",
+      "card_border": "#2b2d31",
+      "card_border_width_px": 1,
+      "card_radius_px": 14,
+      "chain_top_px": 350
+    },
+    "nodes": [
+      {
+        "role": "trigger",
+        "label": "Bedroom light",
+        "state": "on"
+      },
+      {
+        "role": "condition",
+        "label": "FP2 Asleep",
+        "state": "on"
+      },
+      {
+        "role": "automation",
+        "label": "Cap light brightness",
+        "qualifier": "comfort automation"
+      },
+      {
+        "role": "response",
+        "label": "Brightness",
+        "opening_state": "—",
+        "payoff_state": "20%"
+      }
+    ],
+    "microcopy": "Optional Home Assistant example",
+    "timeline": [
+      {
+        "start_s": 0,
+        "end_s": 0.8,
+        "phase": "neutral-read",
+        "action": "Hold the hook and all four neutral nodes fully readable. No hook entrance and no motion."
+      },
+      {
+        "start_s": 0.8,
+        "end_s": 1.3,
+        "phase": "trigger",
+        "action": "Activate Bedroom light · on with a restrained surface acknowledgement, then fill the first solid connector."
+      },
+      {
+        "start_s": 1.3,
+        "end_s": 1.82,
+        "phase": "condition",
+        "action": "Activate FP2 Asleep · on as the explicit Home Assistant condition, then fill the second connector."
+      },
+      {
+        "start_s": 1.82,
+        "end_s": 2.42,
+        "phase": "automation",
+        "action": "Activate Cap light brightness while keeping the comfort automation qualifier visible, then fill the final connector."
+      },
+      {
+        "start_s": 2.42,
+        "end_s": 3,
+        "phase": "response",
+        "action": "Activate the response card and crossfade Brightness · — to Brightness · 20%."
+      },
+      {
+        "start_s": 3,
+        "end_s": 5.25,
+        "phase": "readable-hold",
+        "action": "Hold the complete trigger plus condition to comfort automation to response chain without ambient motion."
+      },
+      {
+        "start_s": 5.25,
+        "end_s": 5.9,
+        "phase": "exact-reverse",
+        "action": "Reverse the payoff, response, connectors, automation, condition, and trigger to the authored neutral CSS state."
+      },
+      {
+        "start_s": 5.9,
+        "end_s": 6,
+        "phase": "opening-state-hold",
+        "action": "Hold the exact frame-zero state for the final 0.10 seconds."
+      }
+    ],
+    "constraints": [
+      "Silent: no narration, music, or sound effects.",
+      "No personal telemetry or invented sensor values.",
+      "Keep comfort automation and Optional Home Assistant example visible.",
+      "Do not imply direct certainty, emergency behavior, diagnostics, or built-in automation support beyond the documented optional YAML.",
+      "Animate only transform, opacity, backgroundColor, color, and borderColor.",
+      "No CSS transitions or animations, gradients, random sources, clocks, timers, fetches, or infinite repeats."
+    ]
+  },
+  "content": {
+    "scenes": [
+      {
+        "id": "neutral",
+        "start": 0,
+        "end": 0.8,
+        "text": "Asleep? Lights cap at 20%.",
+        "emphasis_words": [
+          "20%"
+        ],
+        "emotion": "quiet clarity",
+        "motion": "No entrance. The complete neutral chain is readable at frame zero.",
+        "beats": []
+      },
+      {
+        "id": "trigger",
+        "start": 0.8,
+        "end": 1.3,
+        "text": "Bedroom light · on",
+        "emphasis_words": [
+          "on"
+        ],
+        "emotion": "observed input",
+        "motion": "The trigger acknowledges and sends a solid blue flow downward.",
+        "beats": [
+          0.8,
+          1.08
+        ]
+      },
+      {
+        "id": "condition",
+        "start": 1.3,
+        "end": 1.82,
+        "text": "FP2 Asleep · on",
+        "emphasis_words": [
+          "Asleep"
+        ],
+        "emotion": "explicit condition",
+        "motion": "The condition acknowledges and the second connector resolves.",
+        "beats": [
+          1.3,
+          1.58
+        ]
+      },
+      {
+        "id": "automation",
+        "start": 1.82,
+        "end": 2.42,
+        "text": "Cap light brightness · comfort automation",
+        "emphasis_words": [
+          "comfort automation"
+        ],
+        "emotion": "bounded automation",
+        "motion": "The center node acknowledges and sends the final connector to the response.",
+        "beats": [
+          1.82,
+          2.16
+        ]
+      },
+      {
+        "id": "response",
+        "start": 2.42,
+        "end": 3,
+        "text": "Brightness · 20%",
+        "emphasis_words": [
+          "20%"
+        ],
+        "emotion": "clear payoff",
+        "motion": "The response activates and the fixed output slot crossfades from a dash to 20%.",
+        "beats": [
+          2.42,
+          2.6,
+          2.94
+        ]
+      },
+      {
+        "id": "hold",
+        "start": 3,
+        "end": 5.25,
+        "text": "Optional Home Assistant example",
+        "emphasis_words": [
+          "Optional"
+        ],
+        "emotion": "readable proof",
+        "motion": "Deliberate static payoff hold.",
+        "beats": []
+      },
+      {
+        "id": "reverse",
+        "start": 5.25,
+        "end": 5.9,
+        "text": "Brightness · —",
+        "emphasis_words": [
+          "—"
+        ],
+        "emotion": "calm return",
+        "motion": "The exact activation order reverses from response to trigger.",
+        "beats": [
+          5.25,
+          5.9
+        ]
+      },
+      {
+        "id": "loop-hold",
+        "start": 5.9,
+        "end": 6,
+        "text": "Asleep? Lights cap at 20%.",
+        "emphasis_words": [
+          "20%"
+        ],
+        "emotion": "exact loop",
+        "motion": "No motion; exact authored opening state.",
+        "beats": []
+      }
+    ]
+  }
+}

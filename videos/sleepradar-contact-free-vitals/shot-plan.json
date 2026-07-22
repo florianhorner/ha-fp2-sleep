@@ -1,0 +1,77 @@
+{
+  "category": "kinetic-type",
+  "duration_s": 6,
+  "fps": 30,
+  "canvas": { "w": 720, "h": 1280, "aspect": "9:16" },
+  "style": "Approved SleepRadar pilot shell: calm technical night UI, solid low-glare surfaces, restrained semantic color, no authored gradients, and one finite radar activation motif.",
+  "palette": [
+    "#101112",
+    "#1b1c1e",
+    "#2b2d31",
+    "#e8e8ea",
+    "#9a9da3",
+    "#5aa2ff",
+    "#2758d8",
+    "#ff4d57",
+    "#f5a623",
+    "#747982"
+  ],
+  "font": "Inter",
+  "beats": [0.8, 1.08, 1.75, 2.47, 3.0, 5.25, 5.9],
+  "export": "mp4",
+  "asset_needs": [
+    {
+      "role": "hero-mark",
+      "kind": "svg",
+      "source": "../../assets/sleepradar-mark.svg",
+      "treatment": "copy unchanged to assets/sleepradar-mark.svg"
+    }
+  ],
+  "block": "caption-editorial-emphasis",
+  "rules": [
+    {
+      "id": "ambient-glow-bloom",
+      "variant": "finite-solid-ring-pulse",
+      "application": "Three concentric solid-border rings make one finite outward relay from the canonical mark; no gradient, repeat, yoyo, or persistent shimmer."
+    },
+    {
+      "id": "spring-pop-entrance",
+      "variant": "smooth-card-settle",
+      "application": "Heart rate then Breathing move only eight pixels and scale from 0.985 to 1 with power3.out; no overshoot."
+    }
+  ],
+  "customize": {
+    "hook": {
+      "line_1": "Heart + breathing.",
+      "line_2": "Measured contact-free.",
+      "frame_zero_readable": true
+    },
+    "layout": {
+      "hook": "top 118px, left 56px, width 608px, centered",
+      "hero": "canonical mark centered above two 608px Home Assistant sensor cards",
+      "card_surface": "#1b1c1e with 1px #2b2d31 border"
+    },
+    "truth_guards": [
+      "No numeric readings anywhere.",
+      "Both semantic colors are paired with visible units and the word measured.",
+      "Unknown states stay neutral and do not invent an empty-bed reading.",
+      "No diagnosis, clinical precision, medical framing, or safety claim."
+    ],
+    "timeline": [
+      { "start_s": 0.0, "end_s": 0.8, "phase": "opening-hold", "action": "Hold the readable hook, subdued mark, and two neutral unknown sensor cards exactly still." },
+      { "start_s": 0.8, "end_s": 1.75, "phase": "heart-activation", "action": "Begin one finite solid-border radar pulse and resolve Heart rate to bpm and measured with a red label accent." },
+      { "start_s": 1.75, "end_s": 3.0, "phase": "breathing-activation", "action": "Resolve Breathing to br/min and measured with a blue label accent; settle the final status dot by 3.0 seconds." },
+      { "start_s": 3.0, "end_s": 5.25, "phase": "payoff-hold", "action": "Hold both activated cards fully readable with no ambient loop." },
+      { "start_s": 5.25, "end_s": 5.9, "phase": "exact-reverse", "action": "Reverse Breathing then Heart rate and restore the subdued neutral opening state." },
+      { "start_s": 5.9, "end_s": 6.0, "phase": "seam-hold", "action": "Hold the exact opening CSS state for the final tenth of a second." }
+    ]
+  },
+  "content": {
+    "scenes": [
+      { "id": "hook", "start": 0.0, "end": 0.8, "text": "Heart + breathing. Measured contact-free.", "emphasis_words": ["Measured contact-free"], "emotion": "quiet confidence", "motion": "none; fully readable at frame zero", "beats": [] },
+      { "id": "build", "start": 0.8, "end": 3.0, "text": "Heart rate · bpm · measured. Breathing · br/min · measured.", "emphasis_words": ["measured"], "emotion": "clear proof", "motion": "finite radar pulse plus ordered smooth card activation", "beats": [0.8, 1.08, 1.75, 3.0] },
+      { "id": "hold", "start": 3.0, "end": 5.25, "text": "Heart rate and breathing measured contact-free.", "emphasis_words": ["measured"], "emotion": "readable certainty", "motion": "deliberate static payoff hold", "beats": [] },
+      { "id": "resolve", "start": 5.25, "end": 6.0, "text": "Heart + breathing. Measured contact-free.", "emphasis_words": ["Measured contact-free"], "emotion": "calm return", "motion": "exact inverse activation then final opening-state hold", "beats": [5.25, 5.9] }
+    ]
+  }
+}
