@@ -408,9 +408,8 @@ def validate_workflow(jobs=None) -> None:
         if isinstance(step.get("run"), str) and name not in known_validate_steps:
             fail(
                 f".github/workflows/ci.yml jobs.validate step {name!r} runs a "
-                "gate that is not in CONDUCTOR_REQUIRED_COMMANDS; add it to "
-                "CONDUCTOR_GATES in scripts/validate_repository.py, "
-                ".conductor/settings.toml, CONTRIBUTING.md, and "
+                "gate that is not declared in CONDUCTOR_GATES; add it there, "
+                "plus .conductor/settings.toml, CONTRIBUTING.md, and "
                 ".github/PULL_REQUEST_TEMPLATE.md so local runs stay "
                 "CI-equivalent"
             )
@@ -1351,13 +1350,23 @@ def run_self_test() -> None:
             f"[scripts\nrun = {json.dumps(conductor_command)}\n"
         ),
     )
+    expect_fail(
+        "conductor settings missing scripts table",
+        lambda: validate_conductor_settings("[other]\nfoo = 1\n"),
+    )
+    expect_fail(
+        "conductor settings run wrong type",
+        lambda: validate_conductor_settings("[scripts]\nrun = 1\n"),
+    )
     # Same gate set, different order: exercises the "gate order differs" branch,
     # which the missing/unexpected cases never reach.
     reordered = list(CONDUCTOR_REQUIRED_COMMANDS)
     reordered[-1], reordered[-2] = reordered[-2], reordered[-1]
 
+    base_jobs = workflow_jobs()
+
     def workflow_with(job, mutate_steps):
-        mutated = copy.deepcopy(workflow_jobs())
+        mutated = copy.deepcopy(base_jobs)
         mutated[job]["steps"] = mutate_steps(mutated[job]["steps"])
         return mutated
 
@@ -1369,7 +1378,7 @@ def run_self_test() -> None:
 
     expect_pass(
         "workflow real",
-        lambda: validate_workflow(copy.deepcopy(workflow_jobs())),
+        lambda: validate_workflow(copy.deepcopy(base_jobs)),
     )
     # An unanchored guard let this pass: CI would run the self-test twice and
     # never run real package validation, while the drift check stayed green.
@@ -1395,6 +1404,31 @@ def run_self_test() -> None:
                 "validate",
                 lambda steps: steps
                 + [{"name": "Undocumented extra gate", "run": "python -c pass"}],
+            )
+        ),
+    )
+    # The Gitleaks config self-test step must prove BOTH control directions.
+    # Dropping just the "exit 1" (the positive-control failure branch) must
+    # still be caught, or this step could be weakened to a no-op scan.
+    expect_fail(
+        "workflow gitleaks config self-test missing positive control",
+        lambda: validate_workflow(
+            workflow_with(
+                "security",
+                lambda steps: set_step_run(
+                    steps,
+                    "Self-test repo config detects and excludes correctly",
+                    "trap 'rm -rf .gitleaks-selftest' EXIT\n"
+                    "mkdir -p .gitleaks-selftest\n"
+                    "printf 'api_key = \"x\"\\n' > .gitleaks-selftest/planted.txt\n"
+                    "if gitleaks dir --no-banner --redact .; then\n"
+                    "  echo not-detected\n"
+                    "fi\n"
+                    "rm -rf .gitleaks-selftest\n"
+                    "printf 'api_key = \"x\"\\n' "
+                    "> .gstack/gitleaks-generated-state-self-test.json\n"
+                    "gitleaks dir --no-banner --redact .\n",
+                ),
             )
         ),
     )

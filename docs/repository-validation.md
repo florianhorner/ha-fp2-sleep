@@ -60,7 +60,8 @@ payloads. It does not connect to Aqara, MQTT, or Home Assistant.
 A green Conductor run means the shared `validate` lane passed locally. It does
 not mean the full CI pipeline passed. Likewise, the repository validator
 checks that external-tool steps are defined correctly; it does not itself run
-yamllint, Node, the GIF validators, `pip-audit`, Gitleaks, or Docker.
+yamllint, Node, the GIF validators, `pip-audit`, Gitleaks, Docker, or
+production GIF/video rendering.
 
 The shared `.conductor/settings.toml` file is repository configuration.
 Conductor reflects changes to that shared configuration after they are merged
