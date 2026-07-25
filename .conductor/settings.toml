@@ -4,8 +4,12 @@
 # credentials) and cannot run standalone — never wire it into scripts.run.
 # The safe, useful local action is the same lint+validate loop CI and
 # CONTRIBUTING.md require before every PR.
+#
+# setup prefers 3.12 (what CI pins) and falls back to other modern
+# interpreters. Bare `python3` is macOS system Python 3.9 on some machines,
+# which is not CI-equivalent and lacks the stdlib tomllib the validator needs.
 
 [scripts]
-setup = "python3 -m venv .venv && .venv/bin/python -m pip install --upgrade pip && .venv/bin/python -m pip install -r requirements-ci.txt"
-run = "git diff --check && .venv/bin/python -m py_compile aqara_fp2_sleep/aqara_fp2_sleep_poller.py scripts/validate_repository.py && .venv/bin/yamllint -c .yamllint . && .venv/bin/python scripts/validate_repository.py && .venv/bin/python scripts/validate_repository.py --self-test && node tests/sleepradar-card.test.js && bash -n aqara_fp2_sleep/run.sh"
+setup = "{ python3.12 -m venv .venv || python3.13 -m venv .venv || python3.11 -m venv .venv; } && .venv/bin/python -m pip install --upgrade pip && .venv/bin/python -m pip install -r requirements-ci.txt"
+run = "git diff --check && .venv/bin/python -m py_compile aqara_fp2_sleep/aqara_fp2_sleep_poller.py scripts/validate_repository.py videos/quiet_proof_loops.py videos/validate-gif-batch.py videos/build-gif-deliverables.py && .venv/bin/yamllint -c .yamllint . && .venv/bin/python scripts/validate_repository.py && .venv/bin/python scripts/validate_repository.py --self-test && .venv/bin/python tests/test_validate_repository_cli.py && .venv/bin/python videos/validate-gif-batch.py && .venv/bin/python videos/validate-gif-batch.py --self-test && .venv/bin/python videos/build-gif-deliverables.py --self-test && .venv/bin/python videos/validate-gif-batch.py --check-baseline videos/gif-batch-baseline-sha256.json && node tests/sleepradar-card.test.js && bash -n aqara_fp2_sleep/run.sh"
 run_mode = "concurrent"

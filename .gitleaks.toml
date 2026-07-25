@@ -14,7 +14,7 @@
 [extend]
 useDefault = true
 
-[allowlist]
+[[allowlists]]
 description = "Aqara public app constants (appid/appkey), not user secrets"
 regexTarget = "line"
 regexes = [
@@ -25,4 +25,19 @@ regexes = [
   # shapes cannot hold a real credential.
   '''expected_failure="[a-z][a-z .-]{2,30}"''',
   '''key == "profile_file"''',
+]
+
+# Conductor/gstack writes local tool state here. `gitleaks dir` does NOT honor
+# .gitignore, so without this the documented local scan fails on generated
+# noise. Scoped to the specific generated filenames rather than the whole
+# directory: a path-wide rule prunes the file walk, so anything a future tool
+# dropped in .gstack/ would be invisible to the only secret scanner in the
+# pipeline. Repository validation separately forbids tracked .gstack paths,
+# and scripts/validate_repository.py still scans .gstack/ for private strings.
+[[allowlists]]
+description = "Generated Conductor/gstack tool state"
+# Generated tool state is always a log or a JSON document. Anything else that
+# appears under .gstack/ (a stray .env, .pem, .key, .txt) is still scanned.
+paths = [
+  '''^\.gstack/(?:[A-Za-z0-9._-]+/)*[A-Za-z0-9._-]+\.(?:log|jsonl|json)$''',
 ]

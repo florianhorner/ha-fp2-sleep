@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Aligns Conductor's shared validation run with CI's `validate` job, requires
+  Python 3.11+, hardens validator CLI and Gitleaks controls with regression
+  coverage, documents the repository validation contract, and adds direct
+  bug-report and security-support links.
+
 - Adds the "Last night" feature GIF to the README dashboard section and tracks
   its reproducible production source in git: `videos/` now carries the frame
   contract, style guide, production playbooks, per-episode projects, template,

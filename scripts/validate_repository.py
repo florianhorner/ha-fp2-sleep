@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import argparse
+import copy
 import importlib.util
 import json
 import types
@@ -11,6 +13,18 @@ from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import sys
+
+if sys.version_info < (3, 11):
+    raise SystemExit(
+        "scripts/validate_repository.py requires Python 3.11 or newer "
+        f"(running {sys.version.split()[0]}); it parses .conductor/settings.toml "
+        "with the stdlib tomllib module. CI pins 3.12 and the add-on image is "
+        "3.13, so a local venv older than 3.11 was never CI-equivalent anyway. "
+        "Recreate it: rm -rf .venv && python3.12 -m venv .venv && "
+        ".venv/bin/python -m pip install -r requirements-ci.txt"
+    )
+
+import tomllib  # noqa: E402  (guarded above: stdlib only from 3.11)
 
 import yaml
 
@@ -50,6 +64,86 @@ GITLEAKS_VERSION = "8.30.0"
 GITLEAKS_LINUX_X64_SHA256 = (
     "79a3ab579b53f71efd634f3aaf7e04a0fa0cf206b7ed434638d1547a2470a66e"
 )
+CONDUCTOR_CLI_TEST_COMMAND = ".venv/bin/python tests/test_validate_repository_cli.py"
+CONDUCTOR_BASELINE_COMMAND = (
+    ".venv/bin/python videos/validate-gif-batch.py "
+    "--check-baseline videos/gif-batch-baseline-sha256.json"
+)
+# Single source of truth for the pre-PR gate chain, in the documented order.
+# Each entry is (local command, ci.yml step name, what the gate proves). The
+# ci.yml step name is None where CI deliberately runs a different form: the
+# whitespace gate compares a commit range in CI but the working tree locally.
+# Both `.conductor/settings.toml` and the ci.yml `validate` job are checked
+# against this one tuple, so a gate cannot be added to one and forgotten in
+# the other.
+CONDUCTOR_GATES = (
+    ("git diff --check", None, None),
+    (
+        (
+            ".venv/bin/python -m py_compile "
+            "aqara_fp2_sleep/aqara_fp2_sleep_poller.py "
+            "scripts/validate_repository.py "
+            "videos/quiet_proof_loops.py "
+            "videos/validate-gif-batch.py "
+            "videos/build-gif-deliverables.py"
+        ),
+        "Check Python syntax",
+        "compile-check the Python and GIF workflow entrypoints",
+    ),
+    (
+        ".venv/bin/yamllint -c .yamllint .",
+        "Lint YAML",
+        "lint YAML with the repo config",
+    ),
+    (
+        ".venv/bin/python scripts/validate_repository.py",
+        "Validate add-on package",
+        "run the repository validator",
+    ),
+    (
+        ".venv/bin/python scripts/validate_repository.py --self-test",
+        "Validator drift self-test",
+        "run the repository validator self-test",
+    ),
+    (
+        CONDUCTOR_CLI_TEST_COMMAND,
+        "Test validator CLI",
+        "test validator command-line behavior",
+    ),
+    (
+        ".venv/bin/python videos/validate-gif-batch.py",
+        "Validate GIF sources",
+        "validate the tracked GIF sources without rendering",
+    ),
+    (
+        ".venv/bin/python videos/validate-gif-batch.py --self-test",
+        "GIF validator drift self-test",
+        "run the GIF source validator self-test",
+    ),
+    (
+        ".venv/bin/python videos/build-gif-deliverables.py --self-test",
+        "GIF builder guard self-test",
+        "run the non-rendering GIF builder guard self-test",
+    ),
+    (
+        CONDUCTOR_BASELINE_COMMAND,
+        "Check tracked published baseline",
+        "check the tracked published binaries against the SHA-256 baseline",
+    ),
+    (
+        "node tests/sleepradar-card.test.js",
+        "Test SleepRadar card",
+        "run the SleepRadar card test",
+    ),
+    (
+        "bash -n aqara_fp2_sleep/run.sh",
+        "Check run script syntax",
+        "check the add-on run script syntax",
+    ),
+)
+CONDUCTOR_REQUIRED_COMMANDS = tuple(command for command, _, _ in CONDUCTOR_GATES)
+# ci.yml validate-job steps that legitimately run something other than a gate.
+CI_VALIDATE_SUPPORT_STEPS = frozenset({"Install dependencies", "Check whitespace"})
 FAVICON_SOURCE = "assets/sleepradar-mark.svg"
 FAVICON_PATH = "favicon.svg"
 FAVICON_VIEW_BOX = "0 0 128 128"
@@ -253,8 +347,8 @@ def require_run_pattern(
         fail(f".github/workflows/ci.yml step {name!r} must {description}")
 
 
-def validate_workflow() -> None:
-    jobs = workflow_jobs()
+def validate_workflow(jobs=None) -> None:
+    jobs = workflow_jobs() if jobs is None else jobs
     validate_steps = job_steps(jobs, "validate")
     security_steps = job_steps(jobs, "security")
     docker_steps = job_steps(jobs, "docker-build")
@@ -298,65 +392,29 @@ def validate_workflow() -> None:
                 ".github/workflows/ci.yml Check whitespace step must compare "
                 f"the checked-out branch with git diff --check using {required}"
             )
-    require_run_pattern(
-        validate_steps,
-        "Check Python syntax",
-        (
-            r"\bpython3?\s+-m\s+py_compile\s+"
-            r"aqara_fp2_sleep/aqara_fp2_sleep_poller\.py\s+"
-            r"scripts/validate_repository\.py\s+"
-            r"videos/quiet_proof_loops\.py\s+"
-            r"videos/validate-gif-batch\.py\s+"
-            r"videos/build-gif-deliverables\.py\b"
-        ),
-        "compile-check the Python and GIF workflow entrypoints",
+    for command, step_name, purpose in CONDUCTOR_GATES:
+        if step_name is None:
+            continue
+        require_run_pattern(validate_steps, step_name, ci_run_pattern(command), purpose)
+
+    # Every gate in ci.yml must also be a documented local gate. Without this,
+    # a new CI step would pass validation while .conductor/settings.toml (and
+    # CONTRIBUTING.md) silently lagged behind it.
+    known_validate_steps = CI_VALIDATE_SUPPORT_STEPS.union(
+        step_name for _, step_name, _ in CONDUCTOR_GATES if step_name
     )
-    require_run_pattern(
-        validate_steps,
-        "Lint YAML",
-        r"\byamllint\s+-c\s+\.yamllint\s+\.",
-        "lint YAML with the repo config",
-    )
-    require_run_pattern(
-        validate_steps,
-        "Validate add-on package",
-        r"\bpython3?\s+scripts/validate_repository\.py\b",
-        "run the repository validator",
-    )
-    require_run_pattern(
-        validate_steps,
-        "Validator drift self-test",
-        r"\bpython3?\s+scripts/validate_repository\.py\s+--self-test\b",
-        "run the repository validator self-test",
-    )
-    require_run_pattern(
-        validate_steps,
-        "Validate GIF sources",
-        r"\A\s*python3?\s+videos/validate-gif-batch\.py\s*\Z",
-        "validate the tracked GIF sources without rendering",
-    )
-    require_run_pattern(
-        validate_steps,
-        "GIF validator drift self-test",
-        r"\A\s*python3?\s+videos/validate-gif-batch\.py\s+--self-test\s*\Z",
-        "run the GIF source validator self-test",
-    )
-    require_run_pattern(
-        validate_steps,
-        "GIF builder guard self-test",
-        r"\A\s*python3?\s+videos/build-gif-deliverables\.py\s+--self-test\s*\Z",
-        "run the non-rendering GIF builder guard self-test",
-    )
-    require_run_pattern(
-        validate_steps,
-        "Check tracked published baseline",
-        (
-            r"\A\s*python3?\s+videos/validate-gif-batch\.py\s+"
-            r"--check-baseline\s+"
-            r"videos/gif-batch-baseline-sha256\.json\s*\Z"
-        ),
-        "check the tracked published binaries against the SHA-256 baseline",
-    )
+    for step in validate_steps:
+        name = step.get("name")
+        if isinstance(step.get("run"), str) and name not in known_validate_steps:
+            fail(
+                f".github/workflows/ci.yml jobs.validate step {name!r} runs a "
+                "gate that is not in CONDUCTOR_REQUIRED_COMMANDS; add it to "
+                "CONDUCTOR_GATES in scripts/validate_repository.py, "
+                ".conductor/settings.toml, CONTRIBUTING.md, and "
+                ".github/PULL_REQUEST_TEMPLATE.md so local runs stay "
+                "CI-equivalent"
+            )
+
     for step in all_steps:
         run = step.get("run")
         if (
@@ -368,18 +426,6 @@ def validate_workflow() -> None:
             )
         ):
             fail(".github/workflows/ci.yml must not render GIF deliverables")
-    require_run_pattern(
-        validate_steps,
-        "Test SleepRadar card",
-        r"\bnode\s+tests/sleepradar-card\.test\.js\b",
-        "run the SleepRadar card test",
-    )
-    require_run_pattern(
-        validate_steps,
-        "Check run script syntax",
-        r"\bbash\s+-n\s+aqara_fp2_sleep/run\.sh\b",
-        "check the add-on run script syntax",
-    )
     require_run_pattern(
         docker_steps,
         "Build add-on image",
@@ -427,9 +473,152 @@ def validate_workflow() -> None:
                 f"detection with: {required}"
             )
 
+    # This self-test is the only CI step that proves .gitleaks.toml itself still
+    # detects anything: the step above it scans a temp dir, so it loads the
+    # DEFAULT ruleset and would stay green even if the repo allowlist were
+    # broadened to suppress everything. Require both control directions.
+    config_selftest_run = step_run(
+        security_steps, "Self-test repo config detects and excludes correctly"
+    )
+    for required in [
+        "trap ",
+        ".gitleaks-selftest",
+        "api_key",
+        "if gitleaks dir --no-banner --redact .; then",
+        "exit 1",
+        ".gstack/gitleaks-generated-state-self-test.json",
+        "gitleaks dir --no-banner --redact .",
+    ]:
+        if required not in config_selftest_run:
+            fail(
+                ".github/workflows/ci.yml Gitleaks config self-test must prove "
+                "the repo config both detects a planted secret and excludes "
+                f"generated .gstack state, using: {required}"
+            )
+
     scan_run = step_run(security_steps, "Scan current tree for secrets")
     if "gitleaks dir --no-banner --redact --verbose ." not in scan_run:
         fail(".github/workflows/ci.yml must scan the current worktree with Gitleaks")
+
+
+def ci_run_pattern(conductor_command: str) -> str:
+    """Derive the anchored ci.yml run-step regex from a documented local gate.
+
+    Conductor runs the workspace venv (`.venv/bin/python`); CI runs the
+    runner's interpreter (`python` or `python3`). Deriving one from the other
+    keeps a single gate list instead of two hand-maintained copies. The pattern
+    is fully anchored so a step cannot satisfy its guard by running a
+    *different* invocation that merely contains the expected substring.
+    """
+
+    for prefix, replacement in (
+        (".venv/bin/python ", r"python3?\s+"),
+        (".venv/bin/yamllint ", r"yamllint\s+"),
+    ):
+        if conductor_command.startswith(prefix):
+            rest = conductor_command[len(prefix) :]
+            break
+    else:
+        replacement, rest = "", conductor_command
+    escaped = r"\s+".join(re.escape(token) for token in rest.split())
+    return r"\A\s*" + replacement + escaped + r"\s*\Z"
+
+
+def normalized_shell_commands(command: str) -> list[str]:
+    """Split a `&&` chain into commands, collapsing only horizontal whitespace.
+
+    Newlines and other control characters are deliberately NOT collapsed: the
+    shell treats a newline as a command terminator, so folding one into a space
+    would let a broken run command match a documented gate.
+    """
+
+    if any(character in command for character in "\n\r"):
+        fail(
+            ".conductor/settings.toml validation run must not contain newlines; "
+            "the shell treats them as command terminators"
+        )
+    return [
+        re.sub(r"[ \t]+", " ", part.strip())
+        for part in command.split("&&")
+        if part.strip()
+    ]
+
+
+def check_conductor_run_command(command: str) -> None:
+    actual = normalized_shell_commands(command)
+    expected = list(CONDUCTOR_REQUIRED_COMMANDS)
+    if actual == expected:
+        return
+
+    details = []
+    missing = [item for item in expected if item not in actual]
+    unexpected = [item for item in actual if item not in expected]
+    if missing:
+        details.append("missing: " + ", ".join(missing))
+    if unexpected:
+        details.append("unexpected: " + ", ".join(unexpected))
+    if not missing and not unexpected:
+        details.append("gate order differs from the documented local pre-PR order")
+    fail(
+        ".conductor/settings.toml validation run must exactly match the "
+        "documented local pre-PR gates (" + "; ".join(details) + "). "
+        "Intentional new gates belong in CONDUCTOR_REQUIRED_COMMANDS in "
+        "scripts/validate_repository.py, .github/workflows/ci.yml, "
+        "CONTRIBUTING.md, and .github/PULL_REQUEST_TEMPLATE.md."
+    )
+
+
+def conductor_run_commands(text: str) -> list[str]:
+    """Return every declared Conductor run command, parsed as real TOML.
+
+    A hand-rolled line parser accepted decoys: text inside a multi-line string
+    satisfied the guard even with no `run` key present. tomllib is stdlib on
+    every Python this repo targets (CI pins 3.12; the add-on base image is 3.13).
+    """
+
+    try:
+        settings = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        fail(f".conductor/settings.toml is not valid TOML: {exc}")
+
+    scripts = settings.get("scripts")
+    if not isinstance(scripts, dict):
+        fail(".conductor/settings.toml must define a [scripts] table")
+
+    commands = []
+    run = scripts.get("run")
+    if isinstance(run, str):
+        commands.append(run)
+    elif isinstance(run, dict):
+        # Structured form: [scripts.run.<name>] command = "..."
+        for name, entry in sorted(run.items()):
+            if isinstance(entry, dict) and isinstance(entry.get("command"), str):
+                commands.append(entry["command"])
+            elif isinstance(entry, str) and name == "command":
+                commands.append(entry)
+    elif run is not None:
+        fail(".conductor/settings.toml scripts.run must be a string or a table")
+
+    if not commands:
+        fail(".conductor/settings.toml must define a validation run command")
+    if len(commands) != 1:
+        fail(
+            ".conductor/settings.toml must define exactly one validation run "
+            "command so the checked gate cannot be bypassed"
+        )
+    return commands
+
+
+def validate_conductor_settings(text: str | None = None) -> None:
+    if text is None:
+        path = ROOT / ".conductor/settings.toml"
+        if not path.is_file():
+            fail(".conductor/settings.toml is missing")
+        text = path.read_text(encoding="utf-8")
+
+    # conductor_run_commands() guarantees exactly one command, so the single
+    # gate below is the only path: never "any command matches, so pass".
+    check_conductor_run_command(conductor_run_commands(text)[0])
 
 
 def git_tracked_paths() -> list[str]:
@@ -463,6 +652,11 @@ def validate_tracked_paths(paths=None) -> None:
 
         if path.name == ".DS_Store":
             violations.append(f"{rel}: .DS_Store must not be tracked")
+
+        if parts and parts[0] == ".gstack":
+            violations.append(
+                f"{rel}: .gstack/ is generated local state and must not be tracked"
+            )
 
         if parts and parts[0] == "videos":
             generated_dirs = {"renders", "snapshots"}.intersection(parts[1:])
@@ -1060,6 +1254,7 @@ def run_self_test() -> None:
     dashboard = (ROOT / "examples/dashboard-sleep.yaml").read_text()
     recorder = (ROOT / "examples/recorder.yaml").read_text()
     run_script = (ROOT / "aqara_fp2_sleep/run.sh").read_text()
+    conductor_settings = (ROOT / ".conductor/settings.toml").read_text()
     addon_config = yaml.safe_load((ROOT / "aqara_fp2_sleep/config.yaml").read_text())
     favicon_source = (ROOT / FAVICON_SOURCE).read_bytes()
     favicon = (ROOT / FAVICON_PATH).read_bytes()
@@ -1079,6 +1274,10 @@ def run_self_test() -> None:
         ),
     )
     expect_pass("run script real", lambda: validate_run_script(run_script))
+    expect_pass(
+        "conductor settings real",
+        lambda: validate_conductor_settings(conductor_settings),
+    )
     expect_pass("card real", lambda: check_card_phase_semantics(card))
     expect_pass("readme real", lambda: check_readme_phase_table(readme))
     expect_pass("sleep_tracking real", lambda: check_sleep_tracking_maps(tracking))
@@ -1105,6 +1304,106 @@ def run_self_test() -> None:
         if old not in text:
             failures.append(f"self-test anchor not found: {old!r}")
         return text.replace(old, new)
+
+    conductor_command = conductor_run_commands(conductor_settings)[0]
+    structured_conductor_settings = (
+        "[scripts]\n"
+        'setup = "true"\n'
+        "[scripts.run.validate]\n"
+        f"command = {json.dumps(conductor_command)}\n"
+    )
+    expect_pass(
+        "structured conductor settings",
+        lambda: validate_conductor_settings(structured_conductor_settings),
+    )
+    expect_fail(
+        "multiple conductor run commands",
+        lambda: validate_conductor_settings(
+            structured_conductor_settings
+            + "\n[scripts.run.decoy]\n"
+            + 'command = "exit 0"\n'
+        ),
+    )
+    # A line-oriented parser accepted the gate text inside a multi-line string
+    # even with no run key present at all. Real TOML parsing must reject it.
+    expect_fail(
+        "conductor multiline string decoy",
+        lambda: validate_conductor_settings(
+            "[scripts]\n"
+            'setup = "true"\n'
+            'note = """\n'
+            f"run = {json.dumps(conductor_command)}\n"
+            '"""\n'
+        ),
+    )
+    # A decoded newline is a shell command terminator; whitespace normalization
+    # must not fold it into a space and call the broken chain a match.
+    newline_command = conductor_command.replace("git diff", "git\ndiff", 1)
+    expect_fail(
+        "conductor embedded newline in command",
+        lambda: validate_conductor_settings(
+            f"[scripts]\nrun = {json.dumps(newline_command)}\n"
+        ),
+    )
+    expect_fail(
+        "conductor settings invalid toml",
+        lambda: validate_conductor_settings(
+            f"[scripts\nrun = {json.dumps(conductor_command)}\n"
+        ),
+    )
+    # Same gate set, different order: exercises the "gate order differs" branch,
+    # which the missing/unexpected cases never reach.
+    reordered = list(CONDUCTOR_REQUIRED_COMMANDS)
+    reordered[-1], reordered[-2] = reordered[-2], reordered[-1]
+
+    def workflow_with(job, mutate_steps):
+        mutated = copy.deepcopy(workflow_jobs())
+        mutated[job]["steps"] = mutate_steps(mutated[job]["steps"])
+        return mutated
+
+    def set_step_run(steps, name, run):
+        for step in steps:
+            if step.get("name") == name:
+                step["run"] = run
+        return steps
+
+    expect_pass(
+        "workflow real",
+        lambda: validate_workflow(copy.deepcopy(workflow_jobs())),
+    )
+    # An unanchored guard let this pass: CI would run the self-test twice and
+    # never run real package validation, while the drift check stayed green.
+    expect_fail(
+        "workflow validate step running the self-test instead",
+        lambda: validate_workflow(
+            workflow_with(
+                "validate",
+                lambda steps: set_step_run(
+                    steps,
+                    "Validate add-on package",
+                    "python scripts/validate_repository.py --self-test",
+                ),
+            )
+        ),
+    )
+    # A new CI gate must also be a documented local gate, or Conductor and
+    # CONTRIBUTING.md silently lag behind CI.
+    expect_fail(
+        "workflow gate absent from the documented local chain",
+        lambda: validate_workflow(
+            workflow_with(
+                "validate",
+                lambda steps: steps
+                + [{"name": "Undocumented extra gate", "run": "python -c pass"}],
+            )
+        ),
+    )
+    expect_fail(
+        "conductor settings gate order swapped",
+        lambda: validate_conductor_settings(
+            f"[scripts]\nrun = {json.dumps(' && '.join(reordered))}\n"
+        ),
+    )
 
     expect_fail(
         "addon config boolean watchdog",
@@ -1137,6 +1436,12 @@ def run_self_test() -> None:
     expect_fail(
         "tracked DS Store",
         lambda: validate_tracked_paths(published_paths + ["videos/example/.DS_Store"]),
+    )
+    expect_fail(
+        "tracked generated .gstack state",
+        lambda: validate_tracked_paths(
+            published_paths + [".gstack/generated-state.json"]
+        ),
     )
     expect_fail(
         "tracked media outside published assets",
@@ -1172,6 +1477,40 @@ def run_self_test() -> None:
     expect_fail(
         "addon config non-URL watchdog",
         lambda: validate_addon_config(dict(addon_config, watchdog="true")),
+    )
+    expect_fail(
+        "conductor settings missing published baseline",
+        lambda: validate_conductor_settings(
+            mutate(
+                conductor_settings,
+                f" && {CONDUCTOR_BASELINE_COMMAND}",
+                "",
+            )
+        ),
+    )
+    expect_fail(
+        "conductor settings unreachable after early exit",
+        lambda: validate_conductor_settings(
+            mutate(
+                conductor_settings,
+                'run = "git diff --check',
+                'run = "exit 0 && git diff --check',
+            )
+        ),
+    )
+    conductor_settings_without_baseline = mutate(
+        conductor_settings,
+        f" && {CONDUCTOR_BASELINE_COMMAND}",
+        "",
+    )
+    conductor_settings_with_decoy = (
+        conductor_settings_without_baseline
+        + "\n[unrelated]\n"
+        + f"command = {json.dumps(conductor_command)}\n"
+    )
+    expect_fail(
+        "conductor settings ignores unrelated command decoy",
+        lambda: validate_conductor_settings(conductor_settings_with_decoy),
     )
     expect_fail(
         "favicon drift",
@@ -1285,13 +1624,28 @@ def run_self_test() -> None:
     print("SleepRadar validator self-test OK")
 
 
-def main() -> None:
-    if "--self-test" in sys.argv:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    # allow_abbrev=False: with argparse's default, `--self` and even `--s`
+    # resolve to --self-test, so a typo would silently run the drift self-test
+    # and exit 0 while the caller believed package validation had run.
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        help="run validator drift checks instead of repository validation",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = parse_args(argv)
+    if args.self_test:
         run_self_test()
         return
     validate_requirements()
     validate_dockerfile()
     validate_workflow()
+    validate_conductor_settings()
     validate_tracked_paths()
     validate_yaml()
     validate_favicon()
