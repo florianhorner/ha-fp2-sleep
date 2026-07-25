@@ -83,11 +83,14 @@ base-to-head range instead of the local working-tree form.
 
 The validator derives fully anchored CI command patterns from the named
 entries. It requires each named runnable gate and rejects an unknown named
-runnable step in the CI `validate` job. It does not currently enforce CI gate
-order or unique step names, and additional `uses:` steps are allowed when
-SHA-pinned. Separately, it requires Conductor to expose exactly one run command
-with the same gates in the same order. Real TOML parsing prevents gate text in
-comments or unrelated strings from satisfying the Conductor check.
+runnable step in the CI `validate` job, and rejects a duplicate step name
+within any job (named-step lookups only ever inspect the first match, so a
+duplicate could otherwise smuggle an unvalidated step past every check keyed
+on that name). It does not currently enforce CI gate order, and additional
+`uses:` steps are allowed when SHA-pinned. Separately, it requires Conductor
+to expose exactly one run command with the same gates in the same order.
+Real TOML parsing prevents gate text in comments or unrelated strings from
+satisfying the Conductor check.
 
 Three human-facing mirrors are not parsed into the machine contract:
 
@@ -180,8 +183,9 @@ Python 3.12, 3.13, then 3.11.
 Treat the first Conductor-chain error as the synchronization list. Update
 `CONDUCTOR_GATES`, the named CI step, `.conductor/settings.toml`,
 Contributing, and the pull request template in one change. Run the failing
-command directly, then rerun the full chain. Review CI order and duplicate step
-names manually because the validator does not enforce either.
+command directly, then rerun the full chain. Review CI order manually — the
+validator does not enforce it, though a duplicate step name within a job is
+now rejected automatically.
 
 ### Validation reports an unexpected MQTT node or device name
 

@@ -589,7 +589,7 @@ def check_conductor_run_command(command: str) -> None:
     fail(
         ".conductor/settings.toml validation run must exactly match the "
         "documented local pre-PR gates (" + "; ".join(details) + "). "
-        "Intentional new gates belong in CONDUCTOR_REQUIRED_COMMANDS in "
+        "Intentional new gates belong in CONDUCTOR_GATES in "
         "scripts/validate_repository.py, .github/workflows/ci.yml, "
         "CONTRIBUTING.md, and .github/PULL_REQUEST_TEMPLATE.md."
     )
