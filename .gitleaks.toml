@@ -32,8 +32,8 @@ regexes = [
 # noise. Scoped to the specific generated filenames rather than the whole
 # directory: a path-wide rule prunes the file walk, so anything a future tool
 # dropped in .gstack/ would be invisible to the only secret scanner in the
-# pipeline. Repository validation separately forbids tracked .gstack paths,
-# and scripts/validate_repository.py still scans .gstack/ for private strings.
+# pipeline. Repository validation separately forbids tracking .gstack paths;
+# Gitleaks remains the only thing that scans .gstack/ file contents.
 [[allowlists]]
 description = "Generated Conductor/gstack tool state"
 # Generated tool state is always a log or a JSON document. Anything else that
