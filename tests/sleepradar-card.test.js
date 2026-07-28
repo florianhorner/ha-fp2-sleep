@@ -70,6 +70,73 @@ function defaultStates({ sleepState, heartRate = "54", respirationRate = "11", u
   };
 }
 
+function withOccupancy(states, state, updated = "2026-07-03T08:00:00.000Z") {
+  return {
+    ...states,
+    "sensor.example_bed_status": {
+      state,
+      last_updated: updated,
+    },
+  };
+}
+
+const occupancyConfig = {
+  bed_occupancy: {
+    entity: "sensor.example_bed_status",
+    occupied_states: ["Schlafend", "Wach"],
+  },
+};
+
+assert.throws(
+  () => new Card().setConfig({ bed_occupancy: null }),
+  /bed_occupancy must be a mapping/
+);
+assert.throws(
+  () => new Card().setConfig({ bed_occupancy: {} }),
+  /bed_occupancy\.entity is required/
+);
+assert.throws(
+  () =>
+    new Card().setConfig({
+      bed_occupancy: {
+        entity: "sensor.example_bed_status",
+        occupied_states: [],
+      },
+    }),
+  /bed_occupancy\.occupied_states must be a non-empty array/
+);
+for (const invalidOccupiedStates of [[null], [1], [""], ["   "]]) {
+  assert.throws(
+    () =>
+      new Card().setConfig({
+        bed_occupancy: {
+          entity: "sensor.example_bed_status",
+          occupied_states: invalidOccupiedStates,
+        },
+      }),
+    /bed_occupancy\.occupied_states must contain non-empty strings/
+  );
+}
+assert.throws(
+  () =>
+    new Card().setConfig({
+      bed_occupancy: {
+        entity: "sensor.example_bed_status",
+        occupied_states: "Wach",
+      },
+    }),
+  /bed_occupancy\.occupied_states must be a non-empty array/
+);
+assert.throws(
+  () =>
+    new Card().setConfig({
+      bed_occupancy: {
+        entity: "sensor.example_bed_status",
+      },
+    }),
+  /bed_occupancy\.occupied_states is required for non-binary entities/
+);
+
 const noData = render({});
 assert.match(noData, /No data from sensor\.aqara_fp2_sleep_sleep_state yet/);
 assert.match(noData, /Home\s+Assistant pins entity ids when it first creates them/);
@@ -106,6 +173,231 @@ assert.match(freshInBed, /REM/);
 assert.match(freshInBed, /Live now/);
 assert.match(freshInBed, />54\s*<span class="sr-unit">bpm<\/span>/);
 assert.match(freshInBed, />11\s*<span class="sr-unit">br\/min<\/span>/);
+
+const noOccupancyConfig = render(
+  defaultStates({
+    sleepState: "2",
+    heartRate: "69",
+    respirationRate: "21",
+    updated: "2026-07-03T08:00:00.000Z",
+  })
+);
+assert.match(noOccupancyConfig, /Awake in bed — heart 69 bpm, breathing 21 br\/min/);
+assert.match(noOccupancyConfig, />69\s*<span class="sr-unit">bpm<\/span>/);
+assert.match(noOccupancyConfig, />21\s*<span class="sr-unit">br\/min<\/span>/);
+
+const ghostVitalsBlocked = render(
+  withOccupancy(
+    defaultStates({
+      sleepState: "2",
+      heartRate: "69",
+      respirationRate: "21",
+      updated: "2026-07-03T08:00:00.000Z",
+    }),
+    "Leer"
+  ),
+  occupancyConfig
+);
+assert.match(ghostVitalsBlocked, /Out of bed/);
+assert.match(ghostVitalsBlocked, /sr-badge sr-badge-neutral">not measuring/);
+assert.match(ghostVitalsBlocked, /Paused out of bed/);
+assert.equal(
+  (ghostVitalsBlocked.match(/<div class="sr-stat-value">—/g) || []).length,
+  2,
+  "an empty occupancy gate must render dashes for both vitals"
+);
+assert.doesNotMatch(
+  ghostVitalsBlocked,
+  />69\s*<span class="sr-unit">bpm<\/span>/,
+  "an empty occupancy gate must hide a retained heart rate"
+);
+assert.doesNotMatch(
+  ghostVitalsBlocked,
+  />21\s*<span class="sr-unit">br\/min<\/span>/,
+  "an empty occupancy gate must hide a retained breathing rate"
+);
+
+const emptyBedWithoutAqaraData = render(
+  withOccupancy({}, "Leer"),
+  occupancyConfig
+);
+assert.match(emptyBedWithoutAqaraData, /Out of bed/);
+assert.doesNotMatch(emptyBedWithoutAqaraData, /No data from/);
+
+const occupiedVitals = render(
+  withOccupancy(
+    defaultStates({
+      sleepState: "2",
+      heartRate: "69",
+      respirationRate: "21",
+      updated: "2026-07-03T08:00:00.000Z",
+    }),
+    "Wach"
+  ),
+  occupancyConfig
+);
+assert.match(occupiedVitals, /Awake in bed — heart 69 bpm, breathing 21 br\/min/);
+assert.match(occupiedVitals, />69\s*<span class="sr-unit">bpm<\/span>/);
+assert.match(occupiedVitals, />21\s*<span class="sr-unit">br\/min<\/span>/);
+
+const missingOccupancy = render(
+  defaultStates({
+    sleepState: "2",
+    heartRate: "69",
+    respirationRate: "21",
+    updated: "2026-07-03T08:00:00.000Z",
+  }),
+  occupancyConfig
+);
+assert.match(missingOccupancy, /Occupancy unknown/);
+assert.match(missingOccupancy, /sr-badge sr-badge-neutral">not measuring/);
+assert.equal(
+  (missingOccupancy.match(/<div class="sr-stat-value">—/g) || []).length,
+  2,
+  "unknown occupancy must render dashes for both vitals"
+);
+assert.doesNotMatch(missingOccupancy, />69\s*<span class="sr-unit">bpm<\/span>/);
+assert.doesNotMatch(missingOccupancy, />21\s*<span class="sr-unit">br\/min<\/span>/);
+
+for (const unavailableState of ["unavailable", "unknown", "None", "none", ""]) {
+  const unavailableOccupancy = render(
+    withOccupancy(
+      defaultStates({
+        sleepState: "2",
+        heartRate: "69",
+        respirationRate: "21",
+        updated: "2026-07-03T08:00:00.000Z",
+      }),
+      unavailableState
+    ),
+    occupancyConfig
+  );
+  assert.match(
+    unavailableOccupancy,
+    /Occupancy unknown/,
+    `occupancy state ${JSON.stringify(unavailableState)} must fail closed`
+  );
+  assert.doesNotMatch(unavailableOccupancy, />69\s*<span class="sr-unit">bpm<\/span>/);
+  assert.doesNotMatch(unavailableOccupancy, />21\s*<span class="sr-unit">br\/min<\/span>/);
+}
+
+const invalidOccupancy = render(
+  withOccupancy(
+    defaultStates({
+      sleepState: "2",
+      heartRate: "69",
+      respirationRate: "21",
+      updated: "2026-07-03T08:00:00.000Z",
+    }),
+    1
+  ),
+  occupancyConfig
+);
+assert.match(invalidOccupancy, /Occupancy unknown/);
+assert.doesNotMatch(invalidOccupancy, />69\s*<span class="sr-unit">bpm<\/span>/);
+
+const wrongCaseOccupancy = render(
+  withOccupancy(
+    defaultStates({
+      sleepState: "2",
+      heartRate: "69",
+      respirationRate: "21",
+      updated: "2026-07-03T08:00:00.000Z",
+    }),
+    "wach"
+  ),
+  occupancyConfig
+);
+assert.match(wrongCaseOccupancy, /Out of bed/);
+assert.doesNotMatch(wrongCaseOccupancy, />69\s*<span class="sr-unit">bpm<\/span>/);
+
+const defaultOnOccupancy = render(
+  {
+    ...defaultStates({
+      sleepState: "3",
+      updated: "2026-07-03T08:00:00.000Z",
+    }),
+    "binary_sensor.bed_occupied": {
+      state: "on",
+      last_updated: "2026-07-03T08:00:00.000Z",
+    },
+  },
+  {
+    bed_occupancy: {
+      entity: "binary_sensor.bed_occupied",
+    },
+  }
+);
+assert.match(defaultOnOccupancy, />54\s*<span class="sr-unit">bpm<\/span>/);
+assert.match(defaultOnOccupancy, />11\s*<span class="sr-unit">br\/min<\/span>/);
+
+const defaultOffOccupancy = render(
+  {
+    ...defaultStates({
+      sleepState: "3",
+      updated: "2026-07-03T08:00:00.000Z",
+    }),
+    "binary_sensor.bed_occupied": {
+      state: "off",
+      last_updated: "2026-07-03T08:00:00.000Z",
+    },
+  },
+  {
+    bed_occupancy: {
+      entity: "binary_sensor.bed_occupied",
+    },
+  }
+);
+assert.match(defaultOffOccupancy, /Out of bed/);
+assert.doesNotMatch(defaultOffOccupancy, />54\s*<span class="sr-unit">bpm<\/span>/);
+
+const signatureCard = new Card();
+signatureCard.setConfig(occupancyConfig);
+signatureCard.hass = {
+  states: withOccupancy(
+    defaultStates({
+      sleepState: "2",
+      updated: "2026-07-03T08:00:00.000Z",
+    }),
+    "Wach",
+    "2026-07-03T08:00:01.000Z"
+  ),
+};
+assert.match(signatureCard._lastSignature, /Wach/);
+assert.match(signatureCard._lastSignature, /2026-07-03T08:00:01\.000Z/);
+assert.match(signatureCard.shadowRoot.innerHTML, />54\s*<span class="sr-unit">bpm<\/span>/);
+
+signatureCard.hass = {
+  states: withOccupancy(
+    defaultStates({
+      sleepState: "2",
+      updated: "2026-07-03T08:00:00.000Z",
+    }),
+    "Leer",
+    "2026-07-03T08:00:02.000Z"
+  ),
+};
+assert.match(signatureCard._lastSignature, /Leer/);
+assert.match(signatureCard._lastSignature, /2026-07-03T08:00:02\.000Z/);
+assert.match(signatureCard.shadowRoot.innerHTML, /Out of bed/);
+assert.doesNotMatch(
+  signatureCard.shadowRoot.innerHTML,
+  />54\s*<span class="sr-unit">bpm<\/span>/
+);
+
+const staleOccupied = render(
+  withOccupancy(
+    defaultStates({
+      sleepState: "3",
+      updated: "2026-07-03T07:56:00.000Z",
+    }),
+    "Schlafend"
+  ),
+  occupancyConfig
+);
+assert.match(staleOccupied, /stale/);
+assert.doesNotMatch(staleOccupied, />54\s*<span class="sr-unit">bpm<\/span>/);
+assert.doesNotMatch(staleOccupied, />11\s*<span class="sr-unit">br\/min<\/span>/);
 
 const staleInBed = render(
   defaultStates({

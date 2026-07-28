@@ -10,14 +10,17 @@ Before using them:
 3. `sleep_tracking.yaml`, `dashboard-sleep.yaml`, and `recorder.yaml` are
    pre-wired to the app's own default entity IDs — copy them in as-is
    unless you changed `mqtt_node_id` from the default. `automations.yaml`
-   and the dashboard's optional "Cross-check" card still need your own
-   entity IDs (lights, vacuum, thermostat, or a separate bed-presence
-   sensor) — replace those remaining `PLACEHOLDER_*` values, or delete the
-   automation/card you don't need.
-4. Load `sleep_tracking.yaml` before `dashboard-sleep.yaml`. The dashboard
-   reads `sensor.fp2_sleep_phase`, which `sleep_tracking.yaml` creates; the
-   phase card shows "unavailable" until that helper exists.
-5. Keep private entity IDs out of screenshots and issues.
+   still needs your own light, vacuum, and thermostat entity IDs. The
+   dashboard's optional Cross-check section needs your separate bed-presence
+   entity; replace `PLACEHOLDER_BED_STATUS_ENTITY` or delete that section.
+4. Register `card/sleepradar-card.js` as `/local/sleepradar-card.js` before
+   loading `dashboard-sleep.yaml`. The historical charts also require
+   ApexCharts Card. The optional "Cross-check" section requires
+   `sleep_tracking.yaml` and Mushroom Cards; card-mod is not required.
+5. The dashboard's optional `bed_occupancy` block is commented out. If you
+   enable it, replace `PLACEHOLDER_BED_STATUS_ENTITY` with your independent
+   occupancy entity. A binary sensor uses `occupied_states: ['on']`.
+6. Keep private entity IDs out of screenshots and issues.
 
 Files:
 
@@ -27,12 +30,11 @@ Files:
 - `automations.yaml`: example automations that act on the sleep data (dim
   lights while asleep, hold the vacuum, cool down for deep sleep). Needs your
   own light/vacuum/thermostat entity IDs.
-- `dashboard-sleep.yaml`: optional Lovelace view. Requires Mushroom cards,
-  ApexCharts Card, and card-mod. Pre-wired except the optional "Cross-check"
-  card. Two sections: a live "Now" card, and a "Last night" view charting
-  sleep stage, heart rate, and breathing over the previous night (needs one
-  night of Recorder history for the three entities; `recorder.yaml` keeps
-  them). Sleep stage is Aqara's estimate; heart rate and breathing are
-  measured.
+- `dashboard-sleep.yaml`: optional Lovelace view. Requires the SleepRadar Card
+  and ApexCharts Card; its optional cross-check also uses Mushroom Cards and
+  the template helper. It has a live "Now" card plus a "Last night" view of raw
+  sleep-state, heart-rate, and breathing telemetry from Recorder. The commented
+  `bed_occupancy` block gates only the live card; it does not filter history.
+  Sleep stage is Aqara's estimate; heart rate and breathing are measured.
 - `recorder.yaml`: example Recorder include for long-term history. Pre-wired,
   load as-is.

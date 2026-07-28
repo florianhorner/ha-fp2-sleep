@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Adds an optional, fail-closed `bed_occupancy` gate to the SleepRadar Card so
+  independent occupancy can hide ghost vitals without changing MQTT or
+  Recorder history. The optional dashboard now uses the production card for
+  its live view and labels its previous-night charts as raw Aqara telemetry.
+
 - Adds the "Last night" feature GIF to the README dashboard section and tracks
   its reproducible production source in git: `videos/` now carries the frame
   contract, style guide, production playbooks, per-episode projects, template,

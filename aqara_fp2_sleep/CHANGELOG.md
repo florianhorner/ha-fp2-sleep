@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Adds an optional, fail-closed `bed_occupancy` gate to the SleepRadar Card.
+  It hides live vitals when independent occupancy is empty or uncertain while
+  leaving the app's MQTT telemetry and Recorder history unchanged.
+
 ## 1.2.2
 
 - Removes the invalid boolean `watchdog` add-on config and adds a validator

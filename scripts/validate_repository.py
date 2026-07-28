@@ -78,6 +78,14 @@ PRIVATE_PATTERNS = {
     "likely HA token": re.compile(r"eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9"),
 }
 
+# This exact entity id is part of the documented public API example. Keep the
+# exception narrow so other private bedroom entity names still fail the scan.
+PRIVATE_PATTERN_EXEMPTIONS = {
+    ("README.md", "private bedroom entity prefix"): (
+        re.compile(r"(?<![a-z0-9_])sensor\.bedroom_bed_status(?![a-z0-9_])"),
+    ),
+}
+
 TEXT_SUFFIXES = {
     ".md",
     ".py",
@@ -528,6 +536,26 @@ def iter_text_files():
             yield path
 
 
+def private_string_matches(rel: str, text: str) -> list[str]:
+    matches = []
+    for label, pattern in PRIVATE_PATTERNS.items():
+        scan_text = text
+        for allowed in PRIVATE_PATTERN_EXEMPTIONS.get((rel, label), ()):
+            scan_text = allowed.sub("", scan_text)
+        if pattern.search(scan_text):
+            matches.append(label)
+    return matches
+
+
+def check_private_strings_in_text(rel: str, text: str) -> None:
+    matches = private_string_matches(rel, text)
+    if matches:
+        fail(
+            f"{rel}: matched private strings: "
+            + ", ".join(sorted(matches))
+        )
+
+
 def scan_private_strings() -> None:
     errors = []
     for path in ROOT.rglob(".env"):
@@ -537,9 +565,8 @@ def scan_private_strings() -> None:
     for path in iter_text_files():
         rel = path.relative_to(ROOT)
         text = path.read_text(encoding="utf-8")
-        for label, pattern in PRIVATE_PATTERNS.items():
-            if pattern.search(text):
-                errors.append(f"{rel}: matched {label}")
+        for label in private_string_matches(str(rel), text):
+            errors.append(f"{rel}: matched {label}")
     if errors:
         fail("privacy scan failed:\n" + "\n".join(f"  - {err}" for err in errors))
 
@@ -924,15 +951,39 @@ def check_sleep_tracking_maps(text: str) -> None:
 
 
 def check_dashboard_maps(text: str) -> None:
-    icons = re.search(r"icons\s*=\s*\{(.*?)\}", text, re.DOTALL)
-    if not icons:
-        fail("examples/dashboard-sleep.yaml: could not find the `icons` map")
-    labels = set(re.findall(r"'([^']+)'\s*:\s*'mdi:", icons.group(1)))
-    unknown = labels - set(CANONICAL_PHASES.values())
-    if unknown:
+    dashboard = yaml.safe_load(text)
+    if not isinstance(dashboard, list):
+        fail("examples/dashboard-sleep.yaml must contain a list of views")
+
+    now_sections = []
+    for view in dashboard:
+        if not isinstance(view, dict):
+            continue
+        for section in view.get("sections") or []:
+            if not isinstance(section, dict):
+                continue
+            cards = section.get("cards") or []
+            if any(
+                isinstance(card, dict)
+                and card.get("type") == "heading"
+                and card.get("heading") == "Now"
+                for card in cards
+            ):
+                now_sections.append(cards)
+
+    if len(now_sections) != 1:
         fail(
-            "examples/dashboard-sleep.yaml icon map has non-canonical phase "
-            f"labels: {sorted(unknown)}"
+            "examples/dashboard-sleep.yaml must contain exactly one `Now` section"
+        )
+    now_cards = [
+        card
+        for card in now_sections[0]
+        if isinstance(card, dict) and card.get("type") != "heading"
+    ]
+    if [card.get("type") for card in now_cards] != ["custom:sleepradar-card"]:
+        fail(
+            "examples/dashboard-sleep.yaml `Now` must contain exactly one "
+            "custom:sleepradar-card and no duplicate live cards"
         )
 
     apex = re.search(r"const phases\s*=\s*\{([^}]*)\}", text)
@@ -1097,6 +1148,18 @@ def run_self_test() -> None:
         ),
     )
     expect_pass(
+        "documented occupancy entity privacy exception",
+        lambda: check_private_strings_in_text(
+            "README.md", "entity: sensor.bedroom_bed_status"
+        ),
+    )
+    expect_fail(
+        "documented occupancy entity privacy exception boundary",
+        lambda: check_private_strings_in_text(
+            "README.md", "entity: sensor.bedroom_bed_status_florian"
+        ),
+    )
+    expect_pass(
         "login failure retry loop",
         check_login_failure_falls_through_to_retry_loop,
     )
@@ -1256,9 +1319,13 @@ def run_self_test() -> None:
         ),
     )
     expect_fail(
-        "dashboard icon label",
+        "dashboard live card",
         lambda: check_dashboard_maps(
-            mutate(dashboard, "'REM': 'mdi:brain'", "'Napping': 'mdi:brain'")
+            mutate(
+                dashboard,
+                "type: custom:sleepradar-card",
+                "type: custom:mushroom-template-card",
+            )
         ),
     )
     expect_fail(

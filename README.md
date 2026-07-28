@@ -171,10 +171,39 @@ type: custom:sleepradar-card
 poll_interval_seconds: 120
 ```
 
+Optionally gate the live card with an independent bed-occupancy entity:
+
+```yaml
+type: custom:sleepradar-card
+bed_occupancy:
+  entity: sensor.bedroom_bed_status
+  occupied_states:
+    - Schlafend
+    - Wach
+```
+
+`bed_occupancy` must be a mapping, and its `entity` is required. For a
+`binary_sensor.*`, you can omit `occupied_states`; it defaults to `["on"]`.
+For every other entity, `occupied_states` must be a non-empty list of its exact
+occupied state values. The card rejects an invalid gate configuration instead
+of silently ignoring it.
+
+With the gate enabled, the card shows live vitals only when the occupancy
+entity is in an occupied state, the Aqara sleep code is `1`–`5`, and the
+SleepRadar data is fresh. Any other concrete occupancy state renders **Out of
+bed**, the existing **not measuring** badge, and dashes. A missing entity or an
+`unknown`, `unavailable`, or otherwise invalid occupancy value renders
+**Occupancy unknown** and hides the vitals. This is fail-closed: uncertain
+occupancy never exposes retained values as live. Omit `bed_occupancy` to keep
+the original Aqara-only behavior.
+
 The card shows "no data yet" if the sleep state sensor is missing, "not
 measuring" when the bed is empty, and a "stale" badge if readings are older
 than three poll intervals. In those states it hides retained heart-rate and
 breathing values rather than showing stale in-bed numbers as live.
+
+The occupancy gate changes only what the card displays. It does not change the
+five MQTT entities, polling, Recorder data, or historical charts.
 
 > **Entity ID note.** Home Assistant pins an entity ID on first creation and
 > does not rename it later. If you installed before v1.1.0, your entity IDs
@@ -184,17 +213,20 @@ breathing values rather than showing stale in-bed numbers as live.
 
 ## Optional Templates and Dashboard
 
-The `examples/` folder contains optional YAML. Load in this order if you want
-the full dashboard:
+The `examples/` folder contains optional YAML:
 
 - `examples/sleep_tracking.yaml` maps raw sleep codes to readable names. It
-  has no dependencies.
+  has no dependencies. The dashboard's optional cross-check card uses it.
 - `examples/recorder.yaml` keeps sleep sensors in Recorder. It has no
   dependencies.
-- `examples/dashboard-sleep.yaml` is a Lovelace sleep dashboard. It requires
-  `sleep_tracking.yaml`, [Mushroom Cards](https://github.com/piitaya/lovelace-mushroom),
-  [ApexCharts Card](https://github.com/RomRider/apexcharts-card), and
-  [card-mod](https://github.com/thomasloven/lovelace-card-mod).
+- `examples/dashboard-sleep.yaml` is a Lovelace sleep dashboard. Register the
+  SleepRadar Card first; the historical charts also require
+  [ApexCharts Card](https://github.com/RomRider/apexcharts-card). Its optional
+  cross-check card requires `sleep_tracking.yaml` and
+  [Mushroom Cards](https://github.com/piitaya/lovelace-mushroom). The optional
+  `bed_occupancy` example is commented out so the live card works without a
+  separate occupancy sensor. Replace `PLACEHOLDER_BED_STATUS_ENTITY` in the
+  optional cross-check section, or delete that section before importing.
 - `examples/automations.yaml` contains example automations. Replace
   `PLACEHOLDER_*` values with your own light, vacuum, and thermostat entity
   IDs.
@@ -227,9 +259,10 @@ measured data. A few starting points (see `examples/automations.yaml`):
 
 Today, `examples/dashboard-sleep.yaml` gives you a live "Now" card plus a
 "Last night" view that charts sleep stage, heart rate, and breathing over the
-previous night. It does not compute session duration, averaged vitals, or the
-segmented stage timeline shown above. That sessionization is the next planned
-SleepRadar Card release.
+previous night as raw MQTT/Recorder history. The optional live occupancy gate
+does not rewrite or filter that history. The example does not compute session
+duration, averaged vitals, or the segmented stage timeline shown above. That
+sessionization is the next planned SleepRadar Card release.
 
 ## Sleep State Codes
 
@@ -245,10 +278,13 @@ SleepRadar Card release.
 The optional template (`examples/sleep_tracking.yaml`) maps these
 automatically. The raw code stays available as an attribute.
 
-Heart rate and breathing are measured directly and are the reliable part.
-Sleep stage scoring is the device's best estimate. In testing it matched
-expected sleep architecture, but some FP2 users report false "awake" readings.
-Treat stages as indicative, vitals as measured.
+Heart rate and breathing are measured directly, but the FP2 can retain or
+report values when it incorrectly considers an empty bed occupied. The optional
+`bed_occupancy` gate keeps those values out of the live card; the raw entities
+and their history remain unchanged. Sleep stage scoring is the device's best
+estimate. In testing it matched expected sleep architecture, but some FP2 users
+report false "awake" readings. Treat stages as indicative and use an
+independent occupancy signal when false in-bed states matter.
 
 ## Troubleshooting
 

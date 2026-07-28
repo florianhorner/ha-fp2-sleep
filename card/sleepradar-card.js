@@ -190,6 +190,45 @@ class SleepradarCard extends HTMLElement {
       heart_rate: overrides.heart_rate || defaults.heart_rate,
       respiration_rate: overrides.respiration_rate || defaults.respiration_rate,
     };
+    const hasBedOccupancyConfig =
+      config && Object.prototype.hasOwnProperty.call(config, "bed_occupancy");
+    if (hasBedOccupancyConfig) {
+      const bedOccupancy = config.bed_occupancy;
+      if (!bedOccupancy || typeof bedOccupancy !== "object" || Array.isArray(bedOccupancy)) {
+        throw new Error("bed_occupancy must be a mapping");
+      }
+      if (typeof bedOccupancy.entity !== "string" || !bedOccupancy.entity.trim()) {
+        throw new Error("bed_occupancy.entity is required");
+      }
+      const entity = bedOccupancy.entity.trim();
+      let occupiedStates = bedOccupancy.occupied_states;
+      if (occupiedStates === undefined) {
+        if (!entity.startsWith("binary_sensor.")) {
+          throw new Error(
+            "bed_occupancy.occupied_states is required for non-binary entities"
+          );
+        }
+        occupiedStates = ["on"];
+      }
+      if (!Array.isArray(occupiedStates) || occupiedStates.length === 0) {
+        throw new Error("bed_occupancy.occupied_states must be a non-empty array");
+      }
+      if (
+        occupiedStates.some(
+          (state) => typeof state !== "string" || state.trim().length === 0
+        )
+      ) {
+        throw new Error(
+          "bed_occupancy.occupied_states must contain non-empty strings"
+        );
+      }
+      this._bedOccupancy = {
+        entity,
+        occupiedStates: [...occupiedStates],
+      };
+    } else {
+      this._bedOccupancy = null;
+    }
     const pollIntervalSeconds = Number(config && config.poll_interval_seconds);
     this._pollIntervalSeconds =
       Number.isFinite(pollIntervalSeconds) && pollIntervalSeconds > 0 ? pollIntervalSeconds : 60;
@@ -232,15 +271,36 @@ class SleepradarCard extends HTMLElement {
     const stateObj = this._hass.states[this._entityIds.sleep_state];
     const hrObj = this._hass.states[this._entityIds.heart_rate];
     const brObj = this._hass.states[this._entityIds.respiration_rate];
+    const occupancyObj = this._bedOccupancy
+      ? this._hass.states[this._bedOccupancy.entity]
+      : null;
 
     // Cheap re-render guard: skip DOM work if nothing relevant changed.
-    const signature = JSON.stringify([
+    const signatureValues = [
       stateObj && [stateObj.state, stateObj.last_updated],
       hrObj && [hrObj.state, hrObj.last_updated],
       brObj && [brObj.state, brObj.last_updated],
-    ]);
+    ];
+    if (this._bedOccupancy) {
+      signatureValues.push(occupancyObj && [occupancyObj.state, occupancyObj.last_updated]);
+    }
+    const signature = JSON.stringify(signatureValues);
     if (signature === this._lastSignature) return;
     this._lastSignature = signature;
+
+    if (this._bedOccupancy) {
+      const occupancyIsKnown =
+        occupancyObj &&
+        typeof occupancyObj.state === "string" &&
+        !UNAVAILABLE_STATES.has(occupancyObj.state);
+      const occupancyIsOccupied =
+        occupancyIsKnown &&
+        this._bedOccupancy.occupiedStates.includes(occupancyObj.state);
+      if (!occupancyIsOccupied) {
+        this._renderOccupancyBlocked(!occupancyIsKnown, occupancyObj);
+        return;
+      }
+    }
 
     if (!stateObj || UNAVAILABLE_STATES.has(stateObj.state)) {
       this.shadowRoot.innerHTML = this._styles() + `
@@ -326,6 +386,56 @@ class SleepradarCard extends HTMLElement {
               <div class="sr-stat-status">${escapeHtml(
                 describeVitalStatus(code, isFresh, isStale, shownBr)
               )}</div>
+            </div>
+          </div>
+          <div class="sr-footer">
+            ${escapeHtml(footer)}
+          </div>
+        </div>
+      </ha-card>`;
+  }
+
+  _renderOccupancyBlocked(isUnknown, occupancyObj) {
+    const phase = isUnknown ? "Occupancy unknown" : "Out of bed";
+    const phaseCaption = isUnknown ? "occupancy unavailable" : "bed empty";
+    const readout = isUnknown
+      ? "Occupancy unknown. Heart rate and breathing are not shown."
+      : "Out of bed. Heart rate and breathing are not currently measured.";
+    const vitalStatus = isUnknown ? "Occupancy unknown" : "Paused out of bed";
+    const footer = isUnknown
+      ? "Heart rate and breathing are hidden because the independent bed-occupancy state is unavailable."
+      : "Heart rate and breathing are hidden while the independent bed-occupancy sensor reports the bed is empty.";
+    const time = formatTime(occupancyObj && occupancyObj.last_updated);
+
+    this.shadowRoot.innerHTML = this._styles() + `
+      <ha-card>
+        <div class="sr-card">
+          <div class="sr-header">
+            <div class="sr-header-left">
+              <div class="sr-eyebrow">CURRENT STATUS${
+                time ? ` · ${escapeHtml(time)}` : ""
+              }</div>
+              <div class="sr-phase">${escapeHtml(phase)}
+                <span class="sr-caption">${escapeHtml(phaseCaption)}</span>
+              </div>
+            </div>
+            <div class="sr-badge sr-badge-neutral">not measuring</div>
+          </div>
+          <div class="sr-readout">${escapeHtml(readout)}</div>
+          <div class="sr-stats">
+            <div class="sr-stat">
+              <div class="sr-stat-label">Heart rate</div>
+              <div class="sr-stat-value">—
+                <span class="sr-unit">bpm</span>
+              </div>
+              <div class="sr-stat-status">${escapeHtml(vitalStatus)}</div>
+            </div>
+            <div class="sr-stat">
+              <div class="sr-stat-label">Breathing</div>
+              <div class="sr-stat-value">—
+                <span class="sr-unit">br/min</span>
+              </div>
+              <div class="sr-stat-status">${escapeHtml(vitalStatus)}</div>
             </div>
           </div>
           <div class="sr-footer">
