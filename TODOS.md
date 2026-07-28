@@ -175,6 +175,48 @@ cycle; none blocks the current CI or falsifies published binaries today.
 
 **Effort:** M **Priority:** P2 **Depends on:** shipped Quiet Proof Loops PR
 
+## CI Workflow Validator Hardening (ship review, 2026-07-25)
+
+### Close remaining `validate_workflow()` gaps beyond the fixed name/job bugs
+
+**What:** The `/ship` pre-landing review found and fixed five real "unseen name
+skips every check" bugs in `scripts/validate_repository.py`'s `validate_workflow()`
+(duplicate step names, undocumented steps in jobs.security/jobs.docker-build,
+undocumented top-level jobs). A further review round found four more gaps in the
+same family that were deliberately deferred rather than fixed in the same PR:
+(1) job-level `permissions:` overrides aren't checked — a job can override the
+workflow-level `permissions: {contents: read}` with its own broader grant and
+pass validation untouched; (2) `if:`/`continue-on-error:` aren't checked at the
+step or job level — a step or entire job can carry the exact required name and
+command text (satisfying every regex check) while never actually executing or
+never actually failing the run; (3) passing a jobs dict missing a required job
+(bypassing `workflow_jobs()`) crashes with a raw `KeyError` instead of a clean
+`ValidationError` — reproduced directly, no self-test mutation covers it; (4)
+`docs/repository-validation.md`'s "Sources of Truth and Synchronization" section
+was never updated to describe the undocumented-job check added in the
+job-set-completeness fix.
+
+**Why:** All four are genuine gaps in the same bug family already being actively
+hardened in this PR, but the search space (what GitHub Actions YAML properties
+could make a passing-looking check meaningless) stopped shrinking round over
+round — this round found two new critical variants instead of the prior
+pattern of one converging to smaller scope. Chasing every remaining semantic
+corner (reusable workflows, environments, matrix expansion, secrets
+inheritance) risks the branch never converging. All four are defense-in-depth:
+every exploit requires a malicious CI edit to already survive GitHub branch
+protection and human review first.
+
+**Context:** Deferred at the end of a 6-commit, 5-round `/ship` pre-landing
+review pass on branch `florianhorner/devex-review-v1`. Fix the same way the
+prior five were fixed: one mechanical change per gap in `validate_workflow()`
+plus a matching `expect_fail` mutation in `run_self_test()`, following the
+`CI_JOB_NAMES`/`CI_SECURITY_STEPS`/`CI_DOCKER_BUILD_STEPS` pattern already
+established.
+
+**Effort:** M
+**Priority:** P1
+**Depends on:** None
+
 ## Completed
 
 ### Real "Last night" dashboard view
