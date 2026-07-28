@@ -646,9 +646,16 @@ def check_conductor_run_command(command: str) -> None:
     if actual == expected:
         return
 
+    # Counter (multiset) diff, not `in`-based set membership: a duplicated
+    # gate (same command twice) has every element individually present in
+    # both lists, so set-membership checks would find nothing missing or
+    # unexpected and misdiagnose it as "order differs" instead of naming the
+    # actual defect.
+    actual_counts = collections.Counter(actual)
+    expected_counts = collections.Counter(expected)
     details = []
-    missing = [item for item in expected if item not in actual]
-    unexpected = [item for item in actual if item not in expected]
+    missing = sorted((expected_counts - actual_counts).elements())
+    unexpected = sorted((actual_counts - expected_counts).elements())
     if missing:
         details.append("missing: " + ", ".join(missing))
     if unexpected:
@@ -1412,6 +1419,18 @@ def run_self_test() -> None:
         "structured conductor settings",
         lambda: validate_conductor_settings(structured_conductor_settings),
     )
+    # Flat form: [scripts.run] command = "..." (no per-name sub-table). Only
+    # the structured [scripts.run.<name>] form was previously covered.
+    flat_conductor_settings = (
+        "[scripts]\n"
+        'setup = "true"\n'
+        "[scripts.run]\n"
+        f"command = {json.dumps(conductor_command)}\n"
+    )
+    expect_pass(
+        "flat conductor settings",
+        lambda: validate_conductor_settings(flat_conductor_settings),
+    )
     expect_fail(
         "multiple conductor run commands",
         lambda: validate_conductor_settings(
@@ -1606,6 +1625,16 @@ def run_self_test() -> None:
         "conductor settings gate order swapped",
         lambda: validate_conductor_settings(
             f"[scripts]\nrun = {json.dumps(' && '.join(reordered))}\n"
+        ),
+    )
+    # A duplicated gate (every required command present, but one repeated)
+    # must still fail: set-membership-only missing/unexpected checks would
+    # find nothing on either side and misdiagnose this as "order differs".
+    duplicated = list(CONDUCTOR_REQUIRED_COMMANDS) + [CONDUCTOR_REQUIRED_COMMANDS[0]]
+    expect_fail(
+        "conductor settings duplicated gate",
+        lambda: validate_conductor_settings(
+            f"[scripts]\nrun = {json.dumps(' && '.join(duplicated))}\n"
         ),
     )
 
