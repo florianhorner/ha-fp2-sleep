@@ -3,20 +3,21 @@
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
-import types
-import xml.etree.ElementTree as ET
-from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import sys
+import types
+import xml.etree.ElementTree as ET
+from pathlib import Path, PurePosixPath
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 
-CANONICAL_PHASES = {
+LEGACY_UNGATED_PHASES = {
     0: "Out of bed",
     1: "Awake",
     2: "Awake",
@@ -26,6 +27,71 @@ CANONICAL_PHASES = {
 }
 IN_BED_CODES = frozenset({1, 2, 3, 4, 5})
 ASLEEP_CODES = frozenset({3, 4, 5})
+INDICATIVE_PHASES = {
+    3: "REM (indicative)",
+    4: "Light sleep (indicative)",
+    5: "Deep sleep (indicative)",
+}
+INDICATIVE_DASHBOARD_PHASES = {
+    3: "REM (indicative)",
+    4: "Light (indicative)",
+    5: "Deep (indicative)",
+}
+OCCUPANCY_ENTITY = "binary_sensor.bed_occupied"
+EXPECTED_SLEEP_TEMPLATE_STATES = {
+    "FP2 Sleep Phase": (
+        "{% set occupancy = states('binary_sensor.bed_occupied') %} "
+        "{% set code = states('sensor.aqara_fp2_sleep_sleep_state') | int(-1) %} "
+        "{% set phases = { "
+        "3: 'REM (indicative)', "
+        "4: 'Light sleep (indicative)', "
+        "5: 'Deep sleep (indicative)' "
+        "} %} "
+        "{% if occupancy == 'off' %}Out of bed "
+        "{% elif occupancy == 'on' %}"
+        "{{ phases.get(code, 'In bed — stage unknown') }} "
+        "{% else %}Unknown{% endif %}"
+    ),
+    "FP2 Sleep Now": (
+        "{% set occupancy = states('binary_sensor.bed_occupied') %} "
+        "{% set code = states('sensor.aqara_fp2_sleep_sleep_state') | int(-1) %} "
+        "{% set hr = states('sensor.aqara_fp2_sleep_heart_rate') %} "
+        "{% set br = states('sensor.aqara_fp2_sleep_respiration_rate') %} "
+        "{% set names = { "
+        "3: 'REM (indicative)', "
+        "4: 'Light sleep (indicative)', "
+        "5: 'Deep sleep (indicative)' "
+        "} %} "
+        "{% if occupancy == 'off' %}Out of bed "
+        "{% elif occupancy == 'on' and code in [3, 4, 5] %} "
+        "{{ names[code] }} - heart {{ hr }}, breathing {{ br }} "
+        "{% elif occupancy == 'on' %}In bed — stage unknown "
+        "{% else %}Unknown{% endif %}"
+    ),
+    "FP2 Asleep": (
+        "{% set occupancy = states('binary_sensor.bed_occupied') %} "
+        "{% set code = states('sensor.aqara_fp2_sleep_sleep_state') | int(-1) %} "
+        "{{ occupancy == 'on' and code in [3, 4, 5] }}"
+    ),
+}
+EXPECTED_SLEEP_TEMPLATE_AVAILABILITY = (
+    "{% set occupancy = states('binary_sensor.bed_occupied') %} "
+    "{% set raw = states('sensor.aqara_fp2_sleep_sleep_state') %} "
+    "{{ occupancy in ['on', 'off'] "
+    "and (occupancy == 'off' "
+    "or raw not in ['unavailable', 'unknown', 'none', none]) }}"
+)
+GHOST_VITALS_FIXTURE = "tests/fixtures/ghost-vitals-incident.json"
+GHOST_VITALS_AGGREGATES = {
+    "window_minutes": 150,
+    "sleep_state_update_events": 300,
+    "heart_rate_update_events": 301,
+    "heart_rate_value_runs": 27,
+    "heart_rate_transitions": 26,
+    "heart_rate_distinct_values": 17,
+    "heart_rate_minimum_bpm": 50,
+    "heart_rate_maximum_bpm": 77,
+}
 EXPECTED_OBJECT_IDS = {
     "aqara_fp2_sleep_heart_rate",
     "aqara_fp2_sleep_respiration_rate",
@@ -78,14 +144,6 @@ PRIVATE_PATTERNS = {
     "likely HA token": re.compile(r"eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9"),
 }
 
-# This exact entity id is part of the documented public API example. Keep the
-# exception narrow so other private bedroom entity names still fail the scan.
-PRIVATE_PATTERN_EXEMPTIONS = {
-    ("README.md", "private bedroom entity prefix"): (
-        re.compile(r"(?<![a-z0-9_])sensor\.bedroom_bed_status(?![a-z0-9_])"),
-    ),
-}
-
 TEXT_SUFFIXES = {
     ".md",
     ".py",
@@ -118,6 +176,10 @@ SKIP_DIRS = {
 
 def fail(message: str) -> None:
     raise ValidationError(message)
+
+
+def normalize_template(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
 
 
 def read_effective_requirement_lines(rel: str) -> list[str]:
@@ -539,10 +601,7 @@ def iter_text_files():
 def private_string_matches(rel: str, text: str) -> list[str]:
     matches = []
     for label, pattern in PRIVATE_PATTERNS.items():
-        scan_text = text
-        for allowed in PRIVATE_PATTERN_EXEMPTIONS.get((rel, label), ()):
-            scan_text = allowed.sub("", scan_text)
-        if pattern.search(scan_text):
+        if pattern.search(text):
             matches.append(label)
     return matches
 
@@ -577,6 +636,7 @@ def validate_yaml() -> None:
         "aqara_fp2_sleep/config.yaml",
         "examples/sleep_tracking.yaml",
         "examples/dashboard-sleep.yaml",
+        "examples/automations.yaml",
         "examples/recorder.yaml",
     ]:
         path = ROOT / rel
@@ -707,11 +767,10 @@ def validate_examples() -> None:
     examples = list((ROOT / "examples").glob("*.yaml"))
     if not examples:
         fail("no example YAML files found")
-    # recorder.yaml and sleep_tracking.yaml are pre-wired to the add-on's own
-    # default entity IDs on purpose and intentionally contain no PLACEHOLDER_
-    # tokens. The privacy-relevant check is the allowlist regex below, not
-    # this one — it just used to also gate on "looks templated".
-    fully_wired = {"recorder.yaml", "sleep_tracking.yaml"}
+    # These examples are wired to the add-on's default sensor IDs and the
+    # documented neutral occupancy boundary. Automations still require
+    # PLACEHOLDER_ values for user-specific devices.
+    fully_wired = {"recorder.yaml", "sleep_tracking.yaml", "dashboard-sleep.yaml"}
     # Allow the add-on's own entities (aqara_fp2_sleep_*) and the example
     # template helpers defined in sleep_tracking.yaml (fp2_*). Any other real
     # entity ID in a common domain is a foreign/private entity that must be a
@@ -722,9 +781,7 @@ def validate_examples() -> None:
         "media_player|camera|fan|humidifier|number|select|person|"
         "device_tracker|input_[a-z]+"
     )
-    foreign_entity = re.compile(
-        rf"\b(?:{entity_domains})\.(?!aqara_fp2_sleep_|fp2_)[a-z0-9_]+"
-    )
+    entity_id = re.compile(rf"\b(?:{entity_domains})\.[a-z0-9_]+")
     service_line = re.compile(r"^\s*(?:-\s*)?(?:service|action):")
     for path in examples:
         text = path.read_text()
@@ -733,10 +790,17 @@ def validate_examples() -> None:
         for line in text.splitlines():
             if service_line.match(line):
                 continue
-            if foreign_entity.search(line):
+            for match in entity_id.finditer(line):
+                value = match.group(0)
+                object_id = value.split(".", 1)[1]
+                if (
+                    value == OCCUPANCY_ENTITY
+                    or object_id.startswith(("aqara_fp2_sleep_", "fp2_"))
+                ):
+                    continue
                 fail(
                     f"{path.relative_to(ROOT)} contains a non-placeholder "
-                    f"entity id: {line.strip()}"
+                    f"entity id {value}: {line.strip()}"
                 )
 
 
@@ -868,13 +932,120 @@ def _int_list(fragment: str) -> list:
     return [int(n) for n in re.findall(r"\d+", fragment)]
 
 
+def check_ghost_vitals_evidence(fixture_text: str, readme_text: str) -> None:
+    check_private_strings_in_text(GHOST_VITALS_FIXTURE, fixture_text)
+    if re.search(r"\b20\d{2}-\d{2}-\d{2}(?:[T ][0-9:.+-Z]+)?\b", fixture_text):
+        fail(f"{GHOST_VITALS_FIXTURE} must not contain absolute timestamps")
+    if re.search(
+        r"\b(?:sensor|binary_sensor|device_tracker|person)\.[a-z0-9_]+\b",
+        fixture_text,
+    ):
+        fail(f"{GHOST_VITALS_FIXTURE} must not contain Home Assistant entity IDs")
+
+    try:
+        data = json.loads(fixture_text)
+    except json.JSONDecodeError as exc:
+        fail(f"{GHOST_VITALS_FIXTURE} must be valid JSON: {exc}")
+    if not isinstance(data, dict):
+        fail(f"{GHOST_VITALS_FIXTURE} root must be an object")
+    if data.get("schema_version") != 1:
+        fail(f"{GHOST_VITALS_FIXTURE} schema_version must be 1")
+    if data.get("evidence_kind") != "sanitized_aggregate":
+        fail(f"{GHOST_VITALS_FIXTURE} must remain a sanitized aggregate")
+
+    window = data.get("window")
+    if not isinstance(window, dict):
+        fail(f"{GHOST_VITALS_FIXTURE} window must be an object")
+    if (
+        window.get("approximate_duration_minutes")
+        != GHOST_VITALS_AGGREGATES["window_minutes"]
+    ):
+        fail(f"{GHOST_VITALS_FIXTURE} window duration drifted")
+    if window.get("absolute_timestamps_included") is not False:
+        fail(f"{GHOST_VITALS_FIXTURE} must explicitly exclude absolute timestamps")
+
+    occupancy = data.get("occupancy")
+    if occupancy != {
+        "source_kind": "independent_binary_sensor",
+        "continuous_state": "empty",
+    }:
+        fail(f"{GHOST_VITALS_FIXTURE} occupancy aggregate drifted: {occupancy!r}")
+
+    sleep_state = data.get("sleep_state")
+    if not isinstance(sleep_state, dict):
+        fail(f"{GHOST_VITALS_FIXTURE} sleep_state must be an object")
+    if sleep_state.get("reported_codes") != [4, 5, 3]:
+        fail(f"{GHOST_VITALS_FIXTURE} sleep-state sequence must be [4, 5, 3]")
+    if (
+        sleep_state.get("update_events")
+        != GHOST_VITALS_AGGREGATES["sleep_state_update_events"]
+    ):
+        fail(f"{GHOST_VITALS_FIXTURE} sleep-state event count drifted")
+    if sleep_state.get("interpretation") != "indicative_only":
+        fail(f"{GHOST_VITALS_FIXTURE} stages must remain indicative only")
+
+    heart_rate = data.get("heart_rate")
+    if not isinstance(heart_rate, dict):
+        fail(f"{GHOST_VITALS_FIXTURE} heart_rate must be an object")
+    expected_heart_rate = {
+        "update_events": GHOST_VITALS_AGGREGATES["heart_rate_update_events"],
+        "value_runs": GHOST_VITALS_AGGREGATES["heart_rate_value_runs"],
+        "transitions_after_initial_sample": GHOST_VITALS_AGGREGATES[
+            "heart_rate_transitions"
+        ],
+        "distinct_values": GHOST_VITALS_AGGREGATES["heart_rate_distinct_values"],
+        "minimum_bpm": GHOST_VITALS_AGGREGATES["heart_rate_minimum_bpm"],
+        "maximum_bpm": GHOST_VITALS_AGGREGATES["heart_rate_maximum_bpm"],
+    }
+    if heart_rate != expected_heart_rate:
+        fail(f"{GHOST_VITALS_FIXTURE} heart-rate aggregate drifted: {heart_rate!r}")
+
+    recorder_note = data.get("recorder_note")
+    if not isinstance(recorder_note, str) or not (
+        "force_update" in recorder_note
+        and re.search(r"\b(?:duplicate|repeated)\b", recorder_note, re.IGNORECASE)
+    ):
+        fail(f"{GHOST_VITALS_FIXTURE} must explain force_update duplicate events")
+
+    section = re.search(
+        r"## Sleep State Codes(.*?)(?:\n## |\Z)", readme_text, re.DOTALL
+    )
+    if not section:
+        fail("README.md: could not find evidence-compatible Sleep State Codes section")
+    evidence_text = section.group(1)
+    required_tokens = [
+        GHOST_VITALS_FIXTURE,
+        "300",
+        "301",
+        "27",
+        "17",
+        "50",
+        "77",
+        "force_update",
+    ]
+    missing = [token for token in required_tokens if token not in evidence_text]
+    if missing:
+        fail(
+            "README.md ghost-vitals evidence contract is missing: " + ", ".join(missing)
+        )
+
+
+def validate_ghost_vitals_evidence() -> None:
+    fixture = (ROOT / GHOST_VITALS_FIXTURE).read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    check_ghost_vitals_evidence(fixture, readme)
+
+
 def check_card_phase_semantics(text: str) -> None:
     block = re.search(r"const PHASES\s*=\s*\{(.*?)\}", text, re.DOTALL)
     if not block:
         fail("card/sleepradar-card.js: could not find the PHASES map")
     phases = _code_label_pairs(block.group(1))
-    if phases != CANONICAL_PHASES:
-        fail(f"card/sleepradar-card.js PHASES drifted from canonical: {phases}")
+    if phases != LEGACY_UNGATED_PHASES:
+        fail(
+            "card/sleepradar-card.js legacy ungated PHASES drifted from "
+            f"published behavior: {phases}"
+        )
 
     in_bed = re.search(r"IN_BED_SLEEP_CODES\s*=\s*new Set\(\[([^\]]*)\]\)", text)
     if not in_bed:
@@ -885,15 +1056,35 @@ def check_card_phase_semantics(text: str) -> None:
             f"{sorted(_int_list(in_bed.group(1)))}"
         )
 
+    gated_contract = {
+        "occupied code 0": (
+            'if (occupancyConfirmed && code === 0) return "In bed";'
+        ),
+        "occupied codes 1/2": 'return "In bed — stage unknown";',
+        "direct self-reference rejection": (
+            "if (Object.values(this._entityIds).includes(entity))"
+        ),
+    }
+    missing = [
+        label for label, fragment in gated_contract.items() if fragment not in text
+    ]
+    if missing:
+        fail(
+            "card/sleepradar-card.js gated occupancy contract is missing: "
+            + ", ".join(missing)
+        )
+
 
 def check_readme_phase_table(text: str) -> None:
     section = re.search(r"## Sleep State Codes(.*?)(?:\n## |\Z)", text, re.DOTALL)
     if not section:
         fail("README.md: could not find the '## Sleep State Codes' section")
-    expected = dict(CANONICAL_PHASES)
+    expected = dict(LEGACY_UNGATED_PHASES)
     expected.update(
         {
-            2: "Awake (alternate code, treated identically to `1`)",
+            0: "In bed; not measuring",
+            1: "In bed — stage unknown",
+            2: "In bed — stage unknown",
             3: "REM sleep",
         }
     )
@@ -907,7 +1098,10 @@ def check_readme_phase_table(text: str) -> None:
             continue
         parsed[int(code_match.group(1))] = cells[-1]
     if parsed != expected:
-        fail(f"README.md Sleep State Codes table drifted from canonical: {parsed}")
+        fail(
+            "README.md gated Sleep State Codes column drifted from "
+            f"published behavior: {parsed}"
+        )
 
 
 def check_sleep_tracking_maps(text: str) -> None:
@@ -915,39 +1109,95 @@ def check_sleep_tracking_maps(text: str) -> None:
     if not phases_block:
         fail("examples/sleep_tracking.yaml: could not find the `phases` map")
     phases = _code_label_pairs(phases_block.group(1))
-    if phases != CANONICAL_PHASES:
+    if phases != INDICATIVE_PHASES:
         fail(f"examples/sleep_tracking.yaml `phases` map drifted: {phases}")
 
     names_block = re.search(r"names\s*=\s*\{(.*?)\}", text, re.DOTALL)
     if not names_block:
         fail("examples/sleep_tracking.yaml: could not find the `names` map")
     names = _code_label_pairs(names_block.group(1))
-    if set(names) != set(CANONICAL_PHASES):
+    if names != INDICATIVE_PHASES:
         fail(
-            "examples/sleep_tracking.yaml `names` map has the wrong code set: "
-            f"{sorted(names)}"
+            "examples/sleep_tracking.yaml `names` must contain only indicative "
+            f"codes 3-5: {names}"
         )
-    for code, label in names.items():
-        if code in (1, 2):
-            if not label.startswith("Awake"):
-                fail(
-                    f"examples/sleep_tracking.yaml `names`[{code}] must start "
-                    f"with 'Awake': {label!r}"
-                )
-        elif label != CANONICAL_PHASES[code]:
-            fail(f"examples/sleep_tracking.yaml `names`[{code}] drifted: {label!r}")
 
-    lists = [set(_int_list(m)) for m in re.findall(r"code in \[([\d,\s]+)\]", text)]
-    if set(IN_BED_CODES) not in lists:
+    data = yaml.safe_load(text)
+    if not isinstance(data, list):
+        fail("examples/sleep_tracking.yaml must contain a list of template groups")
+    sensor_entries = {}
+    binary_sensor_entries = {}
+    for group in data:
+        if not isinstance(group, dict):
+            continue
+        for item in group.get("sensor") or []:
+            if isinstance(item, dict):
+                sensor_entries[item.get("name")] = item
+        for item in group.get("binary_sensor") or []:
+            if isinstance(item, dict):
+                binary_sensor_entries[item.get("name")] = item
+    phase = sensor_entries.get("FP2 Sleep Phase")
+    now = sensor_entries.get("FP2 Sleep Now")
+    asleep = binary_sensor_entries.get("FP2 Asleep")
+    if not all(isinstance(item, dict) for item in [phase, now, asleep]):
         fail(
-            "examples/sleep_tracking.yaml is missing the in-bed code list "
-            f"{sorted(IN_BED_CODES)}; found {[sorted(s) for s in lists]}"
+            "examples/sleep_tracking.yaml must define FP2 Sleep Phase, "
+            "FP2 Sleep Now, and FP2 Asleep"
         )
-    if set(ASLEEP_CODES) not in lists:
+
+    phase_state = phase.get("state", "")
+    now_state = now.get("state", "")
+    asleep_state = asleep.get("state", "")
+    for name, template in [
+        ("FP2 Sleep Phase", phase_state),
+        ("FP2 Sleep Now", now_state),
+    ]:
+        if "occupancy == 'off'" not in template or "occupancy == 'on'" not in template:
+            fail(f"examples/sleep_tracking.yaml {name} is not occupancy-gated")
+        if "In bed — stage unknown" not in template:
+            fail(
+                f"examples/sleep_tracking.yaml {name} must not assign codes "
+                "0-2 an occupied stage"
+            )
+    if "occupancy == 'on' and code in [3, 4, 5]" not in now_state:
         fail(
-            "examples/sleep_tracking.yaml is missing the asleep code list "
-            f"{sorted(ASLEEP_CODES)}; found {[sorted(s) for s in lists]}"
+            "examples/sleep_tracking.yaml FP2 Sleep Now must gate indicative "
+            "stages and vitals on occupancy"
         )
+    if "occupancy == 'on' and code in [3, 4, 5]" not in asleep_state:
+        fail(
+            "examples/sleep_tracking.yaml FP2 Asleep must require occupancy "
+            "and an indicative code 3-5"
+        )
+
+    for name, item in [
+        ("FP2 Sleep Phase", phase),
+        ("FP2 Sleep Now", now),
+        ("FP2 Asleep", asleep),
+    ]:
+        state = item.get("state", "")
+        availability = item.get("availability", "")
+        if normalize_template(state) != EXPECTED_SLEEP_TEMPLATE_STATES[name]:
+            fail(
+                f"examples/sleep_tracking.yaml {name} state drifted from the "
+                "fail-closed occupancy contract"
+            )
+        if (
+            normalize_template(availability)
+            != EXPECTED_SLEEP_TEMPLATE_AVAILABILITY
+        ):
+            fail(
+                f"examples/sleep_tracking.yaml {name} availability drifted "
+                "from the fail-closed occupancy contract"
+            )
+        combined = f"{state}\n{availability}"
+        if f"states('{OCCUPANCY_ENTITY}')" not in combined:
+            fail(f"examples/sleep_tracking.yaml {name} uses no independent gate")
+        if (
+            "occupancy in ['on', 'off']" not in availability
+            or "occupancy == 'off'" not in availability
+        ):
+            fail(f"examples/sleep_tracking.yaml {name} does not fail closed")
 
 
 def check_dashboard_maps(text: str) -> None:
@@ -985,22 +1235,76 @@ def check_dashboard_maps(text: str) -> None:
             "examples/dashboard-sleep.yaml `Now` must contain exactly one "
             "custom:sleepradar-card and no duplicate live cards"
         )
+    bed_occupancy = now_cards[0].get("bed_occupancy")
+    if bed_occupancy != {
+        "entity": OCCUPANCY_ENTITY,
+        "occupied_states": ["on"],
+    }:
+        fail(
+            "examples/dashboard-sleep.yaml live card must use the neutral "
+            f"fail-closed occupancy gate {OCCUPANCY_ENTITY}"
+        )
 
     apex = re.search(r"const phases\s*=\s*\{([^}]*)\}", text)
     if not apex:
         fail("examples/dashboard-sleep.yaml: could not find the ApexCharts phases map")
     apex_map = _code_label_pairs(apex.group(1))
-    if not apex_map or not set(apex_map).issubset({2, 3, 4, 5}):
+    if apex_map != INDICATIVE_DASHBOARD_PHASES:
         fail(
-            "examples/dashboard-sleep.yaml ApexCharts map has unexpected codes: "
-            f"{sorted(apex_map)}"
+            "examples/dashboard-sleep.yaml ApexCharts map must contain only "
+            f"indicative codes 3-5: {apex_map}"
         )
-    for code, label in apex_map.items():
-        if not CANONICAL_PHASES[code].startswith(label):
+    if "Number(x) < 3" not in text:
+        fail(
+            "examples/dashboard-sleep.yaml must render unverified codes 0-2 "
+            "as historical gaps"
+        )
+
+
+def check_automation_gates(text: str) -> None:
+    automations = yaml.safe_load(text)
+    if not isinstance(automations, list) or not automations:
+        fail("examples/automations.yaml must contain a non-empty list")
+    for automation in automations:
+        if not isinstance(automation, dict):
+            fail("examples/automations.yaml entries must be mappings")
+        serialized = json.dumps(automation, sort_keys=True)
+        uses_asleep_helper = "binary_sensor.fp2_asleep" in serialized
+        uses_phase_helper = "sensor.fp2_sleep_phase" in serialized
+        if not (uses_asleep_helper or uses_phase_helper):
             fail(
-                f"examples/dashboard-sleep.yaml ApexCharts label for code {code} "
-                f"({label!r}) is not a prefix of canonical {CANONICAL_PHASES[code]!r}"
+                "examples/automations.yaml automation does not use an "
+                "occupancy-gated helper"
             )
+        if uses_phase_helper:
+            if "Deep sleep (indicative)" not in serialized:
+                fail(
+                    "examples/automations.yaml phase automation must use an "
+                    "indicative stage label"
+                )
+            if OCCUPANCY_ENTITY not in serialized:
+                fail(
+                    "examples/automations.yaml phase automation must include "
+                    "an independent occupancy condition"
+                )
+
+
+def check_examples_readme_gate_contract(text: str) -> None:
+    normalized = re.sub(r"\s+", " ", text)
+    required = [
+        OCCUPANCY_ENTITY,
+        "must not be derived from",
+        "fail closed",
+        "Codes 0–2 never assert an in-bed stage",
+        "codes 3–5 are indicative",
+        "sensor-reported",
+    ]
+    missing = [fragment for fragment in required if fragment not in normalized]
+    if missing:
+        fail(
+            "examples/README.md occupancy/evidence contract is missing: "
+            + ", ".join(missing)
+        )
 
 
 def check_recorder_entities(text: str, expected_entity_ids) -> None:
@@ -1018,6 +1322,8 @@ def validate_phase_semantics() -> None:
     check_readme_phase_table((ROOT / "README.md").read_text())
     check_sleep_tracking_maps((ROOT / "examples/sleep_tracking.yaml").read_text())
     check_dashboard_maps((ROOT / "examples/dashboard-sleep.yaml").read_text())
+    check_automation_gates((ROOT / "examples/automations.yaml").read_text())
+    check_examples_readme_gate_contract((ROOT / "examples/README.md").read_text())
 
 
 def check_login_failure_falls_through_to_retry_loop() -> None:
@@ -1109,7 +1415,10 @@ def run_self_test() -> None:
     readme = (ROOT / "README.md").read_text()
     tracking = (ROOT / "examples/sleep_tracking.yaml").read_text()
     dashboard = (ROOT / "examples/dashboard-sleep.yaml").read_text()
+    automations = (ROOT / "examples/automations.yaml").read_text()
+    examples_readme = (ROOT / "examples/README.md").read_text()
     recorder = (ROOT / "examples/recorder.yaml").read_text()
+    ghost_vitals_fixture = (ROOT / GHOST_VITALS_FIXTURE).read_text()
     run_script = (ROOT / "aqara_fp2_sleep/run.sh").read_text()
     addon_config = yaml.safe_load((ROOT / "aqara_fp2_sleep/config.yaml").read_text())
     favicon_source = (ROOT / FAVICON_SOURCE).read_bytes()
@@ -1134,7 +1443,16 @@ def run_self_test() -> None:
     expect_pass("readme real", lambda: check_readme_phase_table(readme))
     expect_pass("sleep_tracking real", lambda: check_sleep_tracking_maps(tracking))
     expect_pass("dashboard real", lambda: check_dashboard_maps(dashboard))
+    expect_pass("automations real", lambda: check_automation_gates(automations))
+    expect_pass(
+        "examples readme real",
+        lambda: check_examples_readme_gate_contract(examples_readme),
+    )
     expect_pass("recorder real", lambda: check_recorder_entities(recorder, entity_ids))
+    expect_pass(
+        "ghost-vitals evidence real",
+        lambda: check_ghost_vitals_evidence(ghost_vitals_fixture, readme),
+    )
     expect_pass(
         "tracked published pair",
         lambda: validate_tracked_paths(published_paths),
@@ -1147,16 +1465,16 @@ def run_self_test() -> None:
             else fail("TEXT_SUFFIXES must include .html and .svg")
         ),
     )
-    expect_pass(
-        "documented occupancy entity privacy exception",
+    expect_fail(
+        "private occupancy entity",
         lambda: check_private_strings_in_text(
-            "README.md", "entity: sensor.bedroom_bed_status"
+            "example.md", "entity: sensor.bedroom_bed_status"
         ),
     )
-    expect_fail(
-        "documented occupancy entity privacy exception boundary",
+    expect_pass(
+        "neutral occupancy entity",
         lambda: check_private_strings_in_text(
-            "README.md", "entity: sensor.bedroom_bed_status_florian"
+            "example.md", f"entity: {OCCUPANCY_ENTITY}"
         ),
     )
     expect_pass(
@@ -1168,6 +1486,39 @@ def run_self_test() -> None:
         if old not in text:
             failures.append(f"self-test anchor not found: {old!r}")
         return text.replace(old, new)
+
+    def dashboard_with_duplicate_now_section():
+        data = copy.deepcopy(yaml.safe_load(dashboard))
+        sections = data[0]["sections"]
+        now_section = next(
+            section
+            for section in sections
+            if any(
+                isinstance(card, dict) and card.get("heading") == "Now"
+                for card in section.get("cards") or []
+            )
+        )
+        sections.append(copy.deepcopy(now_section))
+        return yaml.safe_dump(data, sort_keys=False)
+
+    def dashboard_with_duplicate_live_card():
+        data = copy.deepcopy(yaml.safe_load(dashboard))
+        sections = data[0]["sections"]
+        now_section = next(
+            section
+            for section in sections
+            if any(
+                isinstance(card, dict) and card.get("heading") == "Now"
+                for card in section.get("cards") or []
+            )
+        )
+        live_card = next(
+            card
+            for card in now_section["cards"]
+            if isinstance(card, dict) and card.get("type") == "custom:sleepradar-card"
+        )
+        now_section["cards"].append(copy.deepcopy(live_card))
+        return yaml.safe_dump(data, sort_keys=False)
 
     expect_fail(
         "addon config boolean watchdog",
@@ -1289,21 +1640,63 @@ def run_self_test() -> None:
         ),
     )
     expect_fail(
+        "card occupied code 0 contract",
+        lambda: check_card_phase_semantics(
+            mutate(
+                card,
+                'if (occupancyConfirmed && code === 0) return "In bed";',
+                'if (occupancyConfirmed && code === 0) return "Out of bed";',
+            )
+        ),
+    )
+    expect_fail(
+        "card occupied codes 1/2 contract",
+        lambda: check_card_phase_semantics(
+            mutate(
+                card,
+                'return "In bed — stage unknown";',
+                'return "Awake";',
+            )
+        ),
+    )
+    expect_fail(
+        "card direct gate self-reference",
+        lambda: check_card_phase_semantics(
+            mutate(
+                card,
+                "if (Object.values(this._entityIds).includes(entity))",
+                "if (false)",
+            )
+        ),
+    )
+    expect_fail(
         "readme label",
         lambda: check_readme_phase_table(
-            mutate(readme, "| `3` | REM sleep |", "| `3` | Light sleep |")
+            mutate(
+                readme,
+                "| `3` | REM sleep | REM sleep |",
+                "| `3` | REM sleep | Light sleep |",
+            )
         ),
     )
     expect_fail(
         "sleep_tracking phases label",
         lambda: check_sleep_tracking_maps(
-            mutate(tracking, "1: 'Awake',", "1: 'Sleepy',")
+            mutate(
+                tracking,
+                "3: 'REM (indicative)'",
+                "3: 'Deep sleep (indicative)'",
+            )
         ),
     )
     expect_fail(
-        "sleep_tracking names awake-prefix",
+        "sleep_tracking asleep occupancy gate",
         lambda: check_sleep_tracking_maps(
-            mutate(tracking, "1: 'Awake in bed'", "1: 'Sleeping'")
+            mutate(
+                tracking,
+                "occupancy == 'on' and code in [3, 4, 5]",
+                "code in [3, 4, 5]",
+            )
         ),
     )
     expect_fail(
@@ -1313,9 +1706,35 @@ def run_self_test() -> None:
         ),
     )
     expect_fail(
-        "sleep_tracking in-bed list",
+        "sleep_tracking fail-closed availability",
         lambda: check_sleep_tracking_maps(
-            mutate(tracking, "code in [1, 2, 3, 4, 5]", "code in [2, 3, 4, 5]")
+            mutate(
+                tracking,
+                "occupancy in ['on', 'off']",
+                "occupancy != 'unknown'",
+            )
+        ),
+    )
+    expect_fail(
+        "sleep_tracking fail-open or true",
+        lambda: check_sleep_tracking_maps(
+            mutate(
+                tracking,
+                "occupancy == 'on' and code in [3, 4, 5]",
+                "occupancy == 'on' and code in [3, 4, 5] or true",
+            )
+        ),
+    )
+    expect_fail(
+        "sleep_tracking fail-open availability or",
+        lambda: check_sleep_tracking_maps(
+            mutate(
+                tracking,
+                "{{ occupancy in ['on', 'off']\n"
+                "           and (occupancy == 'off'",
+                "{{ occupancy in ['on', 'off']\n"
+                "           or (occupancy == 'off'",
+            )
         ),
     )
     expect_fail(
@@ -1329,8 +1748,106 @@ def run_self_test() -> None:
         ),
     )
     expect_fail(
+        "dashboard non-list root",
+        lambda: check_dashboard_maps(yaml.safe_dump({"title": "Sleep"})),
+    )
+    expect_fail(
+        "dashboard duplicate Now section",
+        lambda: check_dashboard_maps(dashboard_with_duplicate_now_section()),
+    )
+    expect_fail(
+        "dashboard duplicate live card",
+        lambda: check_dashboard_maps(dashboard_with_duplicate_live_card()),
+    )
+    expect_fail(
+        "dashboard occupancy gate",
+        lambda: check_dashboard_maps(
+            mutate(
+                dashboard,
+                "entity: binary_sensor.bed_occupied",
+                "entity: binary_sensor.other_occupancy",
+            )
+        ),
+    )
+    expect_fail(
         "dashboard apex label",
-        lambda: check_dashboard_maps(mutate(dashboard, '4: "Light"', '4: "Napping"')),
+        lambda: check_dashboard_maps(
+            mutate(
+                dashboard,
+                '4: "Light (indicative)"',
+                '4: "Napping (indicative)"',
+            )
+        ),
+    )
+    expect_fail(
+        "dashboard unverified-code gap",
+        lambda: check_dashboard_maps(
+            mutate(
+                dashboard,
+                "Number(x) < 3",
+                "Number(x) < 2",
+            )
+        ),
+    )
+    expect_fail(
+        "automation indicative stage",
+        lambda: check_automation_gates(
+            mutate(
+                automations,
+                'to: "Deep sleep (indicative)"',
+                'to: "Deep sleep"',
+            )
+        ),
+    )
+    expect_fail(
+        "examples readme occupancy dependency",
+        lambda: check_examples_readme_gate_contract(
+            mutate(
+                examples_readme,
+                OCCUPANCY_ENTITY,
+                "binary_sensor.optional_occupancy",
+            )
+        ),
+    )
+    expect_fail(
+        "ghost-vitals aggregate drift",
+        lambda: check_ghost_vitals_evidence(
+            mutate(
+                ghost_vitals_fixture,
+                '"update_events": 301',
+                '"update_events": 302',
+            ),
+            readme,
+        ),
+    )
+    expect_fail(
+        "ghost-vitals privacy drift",
+        lambda: check_ghost_vitals_evidence(
+            mutate(
+                ghost_vitals_fixture,
+                '"source_kind": "independent_binary_sensor"',
+                '"source_kind": "sensor.bedroom_bed_status"',
+            ),
+            readme,
+        ),
+    )
+    expect_fail(
+        "ghost-vitals timestamp drift",
+        lambda: check_ghost_vitals_evidence(
+            mutate(
+                ghost_vitals_fixture,
+                '"absolute_timestamps_included": false',
+                '"absolute_timestamps_included": true',
+            ),
+            readme,
+        ),
+    )
+    expect_fail(
+        "ghost-vitals README provenance drift",
+        lambda: check_ghost_vitals_evidence(
+            ghost_vitals_fixture,
+            mutate(readme, GHOST_VITALS_FIXTURE, "tests/fixtures/missing.json"),
+        ),
     )
     expect_fail(
         "recorder entity",
@@ -1367,6 +1884,7 @@ def main() -> None:
     validate_examples()
     validate_discovery_payloads()
     validate_phase_semantics()
+    validate_ghost_vitals_evidence()
     scan_private_strings()
     print("SleepRadar package validation OK")
 

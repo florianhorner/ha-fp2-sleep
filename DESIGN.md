@@ -9,9 +9,11 @@ telemetry from an Aqara FP2, exposed as normal Home Assistant entities.
 - Lead with utility: sleep vitals that HomeKit and Matter do not expose.
 - Keep the setup promise plain: no wearable, no Docker bridge, no developer
   account.
-- Separate measured data from inferred data every time it matters. Heart rate,
-  breathing, body movement, and illuminance are measured by the sensor. Sleep
-  stage is the device's best guess.
+- Separate sensor-reported measurements from inferred data every time it
+  matters. Heart rate, breathing, body movement, and illuminance are reported
+  by the sensor as measurements. Here, "measured" names the signal category; it
+  does not claim independent validation or clinical accuracy. Sleep stage is
+  the device's best guess.
 - Treat privacy as part of the product. Never show real credentials, full
   `subject_id` values, private Home Assistant URLs, or personal dashboard state.
 - Avoid medical, diagnostic, or coaching language. The app reports data; it

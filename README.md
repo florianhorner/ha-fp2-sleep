@@ -34,20 +34,22 @@ This is the SleepRadar Card (`card/sleepradar-card.js`). It ships with the
 repo, reads three of the five sensors (sleep stage, heart rate, breathing),
 and needs no other cards or plugins. See [The SleepRadar Card](#the-sleepradar-card).
 
-Heart rate and breathing are **measured** directly by the sensor. Sleep stages
-are the device's **best estimate**, shown honestly as such. The point is not a
-prettier chart — it is that this data was hidden from Home Assistant entirely,
-and now it is five entities you can see, automate, and build on.
+Heart rate and breathing are **sensor-reported measurements**. Here,
+"measured" identifies the kind of signal; it does not claim independent
+validation or clinical accuracy. Sleep stages are the device's **best
+estimate**, shown honestly as such. The point is not a prettier chart — it is
+that this data was hidden from Home Assistant entirely, and now it is five
+entities you can see, automate, and build on.
 
 SleepRadar creates five MQTT sensors in Home Assistant:
 
 | Sensor | What it shows | Kind |
 | --- | --- | --- |
-| `sensor.aqara_fp2_sleep_heart_rate` | Heart rate in bpm | Measured |
-| `sensor.aqara_fp2_sleep_respiration_rate` | Respiration rate in breaths/min | Measured |
+| `sensor.aqara_fp2_sleep_heart_rate` | Heart rate in bpm | Sensor-reported measurement |
+| `sensor.aqara_fp2_sleep_respiration_rate` | Respiration rate in breaths/min | Sensor-reported measurement |
 | `sensor.aqara_fp2_sleep_sleep_state` | Sleep stage (raw Aqara code) | Estimated |
-| `sensor.aqara_fp2_sleep_body_movement` | Body movement value | Measured |
-| `sensor.aqara_fp2_sleep_illuminance` | Illuminance in lux | Measured |
+| `sensor.aqara_fp2_sleep_body_movement` | Body movement value | Sensor-reported measurement |
+| `sensor.aqara_fp2_sleep_illuminance` | Illuminance in lux | Sensor-reported measurement |
 
 ## Before You Start
 
@@ -176,26 +178,33 @@ Optionally gate the live card with an independent bed-occupancy entity:
 ```yaml
 type: custom:sleepradar-card
 bed_occupancy:
-  entity: sensor.bedroom_bed_status
-  occupied_states:
-    - Schlafend
-    - Wach
+  entity: binary_sensor.bed_occupied
 ```
 
 `bed_occupancy` must be a mapping, and its `entity` is required. For a
 `binary_sensor.*`, you can omit `occupied_states`; it defaults to `["on"]`.
 For every other entity, `occupied_states` must be a non-empty list of its exact
 occupied state values. The card rejects an invalid gate configuration instead
-of silently ignoring it.
+of silently ignoring it. It also rejects direct reuse of the configured sleep
+state, heart-rate, or respiration entity as the occupancy source. Home
+Assistant template aliases cannot be detected here, so the configured entity
+must still be independently sourced.
 
-With the gate enabled, the card shows live vitals only when the occupancy
-entity is in an occupied state, the Aqara sleep code is `1`–`5`, and the
-SleepRadar data is fresh. Any other concrete occupancy state renders **Out of
-bed**, the existing **not measuring** badge, and dashes. A missing entity or an
-`unknown`, `unavailable`, or otherwise invalid occupancy value renders
-**Occupancy unknown** and hides the vitals. This is fail-closed: uncertain
-occupancy never exposes retained values as live. Omit `bed_occupancy` to keep
-the original Aqara-only behavior.
+With the gate enabled, confirmed occupancy is authoritative. Codes `3`–`5`
+show the mapped stage and fresh sensor-reported vitals. Code `0` shows **In
+bed**, the existing **not measuring** badge, and dashes; codes `1` and `2` show
+**In bed — stage unknown** and may show fresh sensor-reported vitals. A
+concrete non-occupied state overrides every Aqara code with **Out of bed**,
+**not measuring**, and dashes. A missing entity or an `unknown`, `unavailable`,
+or otherwise invalid occupancy value renders **Occupancy unknown** and hides
+the vitals. This is fail-closed: uncertain occupancy never exposes retained
+values as live.
+
+The gate trusts Home Assistant's current state and availability. It has no
+occupancy-age timeout because stable binary sensors may legitimately remain
+unchanged for a long time; it cannot detect a source that is silently stale
+while still available. Omit `bed_occupancy` to preserve the legacy Aqara-only
+labels: code `0` is **Out of bed**, while codes `1` and `2` are **Awake**.
 
 The card shows "no data yet" if the sleep state sensor is missing, "not
 measuring" when the bed is empty, and a "stale" badge if readings are older
@@ -215,21 +224,23 @@ five MQTT entities, polling, Recorder data, or historical charts.
 
 The `examples/` folder contains optional YAML:
 
-- `examples/sleep_tracking.yaml` maps raw sleep codes to readable names. It
-  has no dependencies. The dashboard's optional cross-check card uses it.
+- `examples/sleep_tracking.yaml` combines the raw sleep code with an
+  independent `binary_sensor.bed_occupied`. It gives codes `3`–`5` indicative
+  labels and keeps codes `0`–`2` from asserting occupancy or wakefulness. The
+  dashboard's optional cross-check card uses it.
 - `examples/recorder.yaml` keeps sleep sensors in Recorder. It has no
   dependencies.
 - `examples/dashboard-sleep.yaml` is a Lovelace sleep dashboard. Register the
   SleepRadar Card first; the historical charts also require
   [ApexCharts Card](https://github.com/RomRider/apexcharts-card). Its optional
   cross-check card requires `sleep_tracking.yaml` and
-  [Mushroom Cards](https://github.com/piitaya/lovelace-mushroom). The optional
-  `bed_occupancy` example is commented out so the live card works without a
-  separate occupancy sensor. Replace `PLACEHOLDER_BED_STATUS_ENTITY` in the
-  optional cross-check section, or delete that section before importing.
+  [Mushroom Cards](https://github.com/piitaya/lovelace-mushroom). Its live card
+  has an enabled, fail-closed `bed_occupancy` gate using
+  `binary_sensor.bed_occupied`; expose an independently sourced entity under
+  that name before importing.
 - `examples/automations.yaml` contains example automations. Replace
   `PLACEHOLDER_*` values with your own light, vacuum, and thermostat entity
-  IDs.
+  IDs, and load the occupancy-gated helpers from `sleep_tracking.yaml`.
 
 <p align="center">
   <img src="assets/feature-gifs/sleepradar-last-night-view.gif" alt="Optional SleepRadar dashboard showing previous-night sleep state, heart rate, and breathing histories" width="360">
@@ -241,7 +252,7 @@ update `sensor.aqara_fp2_sleep_*` references to match.
 ## What You Can Build
 
 Because these are normal Home Assistant entities, you can automate on raw
-measured data. A few starting points (see `examples/automations.yaml`):
+sensor-reported data. A few starting points (see `examples/automations.yaml`):
 
 <p align="center">
   <img src="assets/feature-gifs/sleepradar-sleep-aware-lighting.gif" alt="Animated Home Assistant automation capping light brightness while the FP2 reports sleep" width="360">
@@ -266,41 +277,44 @@ sessionization is the next planned SleepRadar Card release.
 
 ## Sleep State Codes
 
-| Code | Meaning |
-| --- | --- |
-| `0` | Out of bed |
-| `1` | Awake |
-| `2` | Awake (alternate code, treated identically to `1`) |
-| `3` | REM sleep |
-| `4` | Light sleep |
-| `5` | Deep sleep |
+| Code | Legacy label without a gate | With confirmed occupancy |
+| --- | --- | --- |
+| `0` | Out of bed | In bed; not measuring |
+| `1` | Awake | In bed — stage unknown |
+| `2` | Awake | In bed — stage unknown |
+| `3` | REM sleep | REM sleep |
+| `4` | Light sleep | Light sleep |
+| `5` | Deep sleep | Deep sleep |
 
-**This mapping is community-derived and unverified.** Aqara publishes no
-documentation for the `sleep_state` resource — the FP2 FAQ and user manual are
-retired, and `opendoc.aqara.com` documents only "some special resources". Every
-published version of the 0–5 table traces back to a single community gist, and
-that gist disagrees with this one: it reads code `1` as *In Bed* rather than
-*Awake*. Codes `3`/`4`/`5` are consistent everywhere and are the ones worth
-relying on. Treat `0`, `1` and `2` as "SleepRadar cannot tell you much here"
-rather than as a wake/occupancy signal, and read the raw code from the
+**This mapping is community-derived and unverified.** At the 2026-07-31 truth
+check, Aqara's public [resource documentation](https://opendoc.aqara.com/en/docs/developmanual/apiDocument/ResourceManagement.html)
+explained how resource values and metadata are queried and directed detailed
+resource lists to its developer console, but did not publish the FP2
+`sleep_state` enumeration. A [community mapping reviewed by this
+project](https://gist.github.com/Komzpa/396e66fb99592c14ba88e1bca21c11eb)
+labels code `1` as *In Bed*, not *Awake*. Its labels for codes `3`/`4`/`5`
+match the table above. Treat `0`, `1`, and `2` as "SleepRadar cannot determine
+occupancy or wakefulness from this code alone," and read the raw code from the
 attribute if you need to build your own logic.
 
-The optional template (`examples/sleep_tracking.yaml`) maps these
-automatically. The raw code stays available as an attribute.
+The optional template (`examples/sleep_tracking.yaml`) implements the
+gate-aware labels and keeps the raw code available as an attribute.
 
-Heart rate and breathing are measured directly, but the FP2 can retain or
-report values when it incorrectly considers an empty bed occupied. The optional
-`bed_occupancy` gate keeps those values out of the live card; the raw entities
-and their history remain unchanged.
+Heart rate and breathing are sensor-reported measurements, but the FP2 can
+retain or report values when it incorrectly considers an empty bed occupied.
+The optional `bed_occupancy` gate keeps those values out of the live card; the
+raw entities and their history remain unchanged.
 
 Sleep stage scoring is the device's best estimate, and it can be confidently
-wrong. In one measured case an independent bed-zone presence sensor read empty
-for two and a half hours while `sleep_state` cycled through light sleep, deep
-sleep and REM, and `heart_rate` kept publishing plausible varying values across
-that whole window (27 recorded values, 17 of them distinct, spanning 50-77 bpm).
-Nothing in the add-on or Home Assistant can detect that from the data alone —
-the readings look completely healthy. Other FP2 users report the same class of
-failure in the opposite direction (genuine sleep scored as awake).
+wrong. A [sanitized incident fixture](tests/fixtures/ghost-vitals-incident.json)
+captures an approximately 2.5-hour window where an independent occupancy
+sensor stayed empty while `sleep_state` reported codes `4`, `5`, and `3` across
+300 update events. In the same window, `heart_rate` produced 301 update events:
+27 consecutive value runs (26 transitions after the initial sample), 17
+distinct values, and a 50–77 bpm range. The source uses `force_update`, so
+Recorder can store repeated events even when the sensor-reported value does not
+change. The fixture removes entity IDs and absolute timestamps. Nothing in the
+add-on can infer true occupancy from those plausible-looking FP2 values alone.
 
 So treat stages as indicative, and use `bed_occupancy` with an **independent**
 occupancy signal (a bed sensor, a pressure mat, a separate presence zone) as

@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "sanitized_aggregate",
+  "window": {
+    "approximate_duration_minutes": 150,
+    "absolute_timestamps_included": false
+  },
+  "occupancy": {
+    "source_kind": "independent_binary_sensor",
+    "continuous_state": "empty"
+  },
+  "sleep_state": {
+    "reported_codes": [
+      4,
+      5,
+      3
+    ],
+    "update_events": 300,
+    "interpretation": "indicative_only"
+  },
+  "heart_rate": {
+    "update_events": 301,
+    "value_runs": 27,
+    "transitions_after_initial_sample": 26,
+    "distinct_values": 17,
+    "minimum_bpm": 50,
+    "maximum_bpm": 77
+  },
+  "recorder_note": "The source uses force_update, so Recorder can contain repeated update events even when a sensor-reported value did not change."
+}

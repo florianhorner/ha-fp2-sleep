@@ -22,23 +22,18 @@ const ENTITY_SUFFIXES = {
   respiration_rate: "respiration_rate",
 };
 
-// Raw Aqara sleep_state codes. Codes 1 and 2 are both treated as "awake"; see
-// README "Sleep State Codes" and examples/sleep_tracking.yaml for the same
-// mapping.
+// Legacy raw Aqara sleep_state labels used when no independent occupancy gate
+// is configured. Codes 1 and 2 remain "Awake" in that compatibility mode.
 //
-// This mapping is COMMUNITY-DERIVED AND UNVERIFIED. Aqara publishes no
-// documentation for the sleep_state resource — the FP2 FAQ and user manual are
-// retired and opendoc.aqara.com covers only "some special resources". Every
-// published 0-5 table descends from a single community gist, and that gist reads
-// code 1 as "In Bed", not "Awake", so the label on 1 here is a guess rather than
-// a spec. Codes 3/4/5 are consistent across every source and are the reliable
-// ones.
+// This mapping is COMMUNITY-DERIVED AND UNVERIFIED. Aqara's public resource
+// documentation does not publish the FP2 sleep_state enumeration. The
+// community mapping reviewed by this project reads code 1 as "In Bed", not
+// "Awake", so the legacy label is a compatibility choice rather than a spec.
+// The reviewed labels for codes 3/4/5 agree; that is label consistency, not a
+// claim that the device's stage estimate is accurate.
 //
-// Do not change these values without new first-party evidence: they are
-// duplicated into README.md and examples/, and scripts/validate_repository.py
-// enforces that all three stay in sync, so a guess here propagates everywhere.
-// Occupancy decisions belong to the bed_occupancy gate, never to these codes —
-// sleep_state can report full sleep staging for a demonstrably empty bed.
+// With bed_occupancy configured, independent occupancy is authoritative:
+// code 0 cannot claim an empty bed, and codes 1/2 cannot claim wakefulness.
 const PHASES = {
   0: "Out of bed",
   1: "Awake",
@@ -118,16 +113,16 @@ function describeFreshness(ageMs, isStale) {
   return `${isStale ? "Stale" : "Updated"} ${age}`;
 }
 
-function describeVitalStatus(code, isFresh, isStale, value) {
+function describeVitalStatus(code, isFresh, isStale, value, occupancyConfirmed) {
   if (isInBedCode(code) && isFresh && value !== null) return "Live now";
   if (isInBedCode(code) && isFresh) return "No value reported";
   if (isStale) return "Status stale";
   if (!isFresh) return "Freshness unknown";
-  if (code === 0) return "Paused out of bed";
+  if (code === 0) return occupancyConfirmed ? "Not measuring" : "Paused out of bed";
   return "Sleep state unknown";
 }
 
-function describeFooter(code, isFresh, isStale) {
+function describeFooter(code, isFresh, isStale, occupancyConfirmed) {
   if (isStale) {
     return "Status is stale. Check the app and MQTT before trusting live vitals.";
   }
@@ -135,6 +130,12 @@ function describeFooter(code, isFresh, isStale) {
     return "SleepRadar needs a fresh sleep-state timestamp before showing live vitals.";
   }
   if (code === 0) {
+    if (occupancyConfirmed) {
+      return (
+        "Independent occupancy confirms someone is in bed, but SleepRadar " +
+        "is not reporting a usable stage or live vitals."
+      );
+    }
     return (
       "Heart rate and breathing are hidden while the bed is empty because " +
       "the FP2 can retain its last in-bed values."
@@ -143,13 +144,34 @@ function describeFooter(code, isFresh, isStale) {
   if (!isInBedCode(code)) {
     return "SleepRadar needs a mapped in-bed sleep state before showing live vitals.";
   }
+  if (code === 1 || code === 2) {
+    if (occupancyConfirmed) {
+      return (
+        "Heart rate and breathing are sensor-reported. Occupancy is confirmed, " +
+        "but this sleep-state code does not establish a wake or stage label."
+      );
+    }
+    return (
+      "Heart rate and breathing are sensor-reported. The Awake label is kept " +
+      "for compatibility and does not establish occupancy or wakefulness."
+    );
+  }
   return (
-    "Heart rate and breathing are measured directly by the sensor. " +
+    "Heart rate and breathing are sensor-reported measurements. " +
     "Sleep stage is the device's best guess."
   );
 }
 
-function describeNow(phase, code, hr, br, canShowLiveVitals, isFresh, isStale) {
+function describeNow(
+  phase,
+  code,
+  hr,
+  br,
+  canShowLiveVitals,
+  isFresh,
+  isStale,
+  occupancyConfirmed
+) {
   if (isStale) {
     return `${phase}. Status is stale, so vitals are not shown as live.`;
   }
@@ -157,6 +179,9 @@ function describeNow(phase, code, hr, br, canShowLiveVitals, isFresh, isStale) {
     return `${phase}. Waiting for a fresh status timestamp before showing live vitals.`;
   }
   if (code === 0) {
+    if (occupancyConfirmed) {
+      return "In bed. SleepRadar is not reporting a usable stage or live vitals.";
+    }
     return "Out of bed. Heart rate and breathing are not currently measured.";
   }
   if (!isInBedCode(code)) {
@@ -164,11 +189,24 @@ function describeNow(phase, code, hr, br, canShowLiveVitals, isFresh, isStale) {
   }
   const haveVitals = canShowLiveVitals && hr !== null && br !== null;
   if (code === 1 || code === 2) {
+    if (occupancyConfirmed) {
+      return haveVitals
+        ? `In bed — stage unknown; heart ${hr} bpm, breathing ${br} br/min.`
+        : "In bed — stage unknown.";
+    }
     return haveVitals
       ? `Awake in bed — heart ${hr} bpm, breathing ${br} br/min.`
       : "Awake in bed.";
   }
   return haveVitals ? `${phase} — heart ${hr} bpm, breathing ${br} br/min.` : `${phase}.`;
+}
+
+function displayPhase(code, occupancyConfirmed) {
+  if (occupancyConfirmed && code === 0) return "In bed";
+  if (occupancyConfirmed && (code === 1 || code === 2)) {
+    return "In bed — stage unknown";
+  }
+  return PHASES[code] || "Unknown";
 }
 
 // Treats non-numeric sensor states (e.g. a stringified "None" from a null
@@ -216,6 +254,11 @@ class SleepradarCard extends HTMLElement {
         throw new Error("bed_occupancy.entity is required");
       }
       const entity = bedOccupancy.entity.trim();
+      if (Object.values(this._entityIds).includes(entity)) {
+        throw new Error(
+          "bed_occupancy.entity must be independent from the configured SleepRadar entities"
+        );
+      }
       let occupiedStates = bedOccupancy.occupied_states;
       if (occupiedStates === undefined) {
         if (!entity.startsWith("binary_sensor.")) {
@@ -316,6 +359,7 @@ class SleepradarCard extends HTMLElement {
         return;
       }
     }
+    const occupancyConfirmed = Boolean(this._bedOccupancy);
 
     if (!stateObj || UNAVAILABLE_STATES.has(stateObj.state)) {
       this.shadowRoot.innerHTML = this._styles() + `
@@ -340,7 +384,7 @@ class SleepradarCard extends HTMLElement {
     // code 3 (REM) instead of surfacing them as unknown; require the whole
     // string to be a clean integer first.
     const code = /^-?\d+$/.test(stateObj.state) ? parseInt(stateObj.state, 10) : NaN;
-    const phase = PHASES[code] || "Unknown";
+    const phase = displayPhase(code, occupancyConfirmed);
     const hr = numericStateOrNull(hrObj);
     const br = numericStateOrNull(brObj);
 
@@ -355,18 +399,31 @@ class SleepradarCard extends HTMLElement {
 
     const freshness = describeFreshness(ageMs, isStale);
     const time = formatTime(stateObj.last_updated);
-    const readout = describeNow(phase, code, hr, br, canShowLiveVitals, isFresh, isStale);
+    const readout = describeNow(
+      phase,
+      code,
+      hr,
+      br,
+      canShowLiveVitals,
+      isFresh,
+      isStale,
+      occupancyConfirmed
+    );
     const badge = isStale ? "stale" : code === 0 ? "not measuring" : "";
     const badgeClass = badge === "not measuring" ? " sr-badge-neutral" : "";
     const phaseCaption =
       !isFresh
         ? "last reported"
-        : code === 0
+        : occupancyConfirmed && code === 0
+          ? "occupancy confirmed"
+          : code === 0
           ? "bed empty"
+          : occupancyConfirmed && (code === 1 || code === 2)
+            ? "unverified sleep code"
           : isInBedCode(code)
             ? "the sensor's best guess"
             : "unmapped code";
-    const footer = describeFooter(code, isFresh, isStale);
+    const footer = describeFooter(code, isFresh, isStale, occupancyConfirmed);
 
     this.shadowRoot.innerHTML = this._styles() + `
       <ha-card>
@@ -390,7 +447,13 @@ class SleepradarCard extends HTMLElement {
                 <span class="sr-unit">bpm</span>
               </div>
               <div class="sr-stat-status">${escapeHtml(
-                describeVitalStatus(code, isFresh, isStale, shownHr)
+                describeVitalStatus(
+                  code,
+                  isFresh,
+                  isStale,
+                  shownHr,
+                  occupancyConfirmed
+                )
               )}</div>
             </div>
             <div class="sr-stat">
@@ -399,7 +462,13 @@ class SleepradarCard extends HTMLElement {
                 <span class="sr-unit">br/min</span>
               </div>
               <div class="sr-stat-status">${escapeHtml(
-                describeVitalStatus(code, isFresh, isStale, shownBr)
+                describeVitalStatus(
+                  code,
+                  isFresh,
+                  isStale,
+                  shownBr,
+                  occupancyConfirmed
+                )
               )}</div>
             </div>
           </div>

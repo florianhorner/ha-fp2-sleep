@@ -4,13 +4,11 @@
 # - SleepRadar Card registered as /local/sleepradar-card.js
 # - ApexCharts Card
 # - Mushroom cards and sleep_tracking.yaml for the optional Cross-check section
+# - An independent occupancy source named binary_sensor.bed_occupied
 #
-# Pre-wired to the app's own default entities. Before importing, replace
-# PLACEHOLDER_BED_STATUS_ENTITY in the optional Cross-check section with your
-# separate bed-presence sensor, or delete that section. The independent
-# occupancy gate in the "Now" card is commented out; you can point it at the
-# same sensor if you enable it. The gate changes the live card only. "Last
-# night" remains raw Aqara MQTT telemetry stored by Recorder.
+# The occupancy entity must not be derived from the FP2 sleep-state sensor.
+# The gate changes the live card only. "Last night" remains raw sensor
+# telemetry stored by Recorder and therefore shows only indicative codes 3–5.
 
 - title: Sleep
   path: sleep
@@ -27,11 +25,10 @@
           icon: mdi:sleep
 
         - type: custom:sleepradar-card
-          # Optional independent occupancy gate. A binary_sensor defaults to
-          # occupied_states: ['on']; it is shown explicitly here for clarity.
-          # bed_occupancy:
-          #   entity: PLACEHOLDER_BED_STATUS_ENTITY
-          #   occupied_states: ['on']
+          # Fail closed unless an independent source confirms occupancy.
+          bed_occupancy:
+            entity: binary_sensor.bed_occupied
+            occupied_states: ['on']
 
     - type: grid
       column_span: 2
@@ -64,14 +61,18 @@
             markers:
               size: 0
             yaxis:
-              min: 2
+              min: 3
               max: 5
-              tickAmount: 3
+              tickAmount: 2
               reversed: true
               labels:
                 formatter: |
                   EVAL:function(value) {
-                    const phases = { 2: "Awake", 3: "REM", 4: "Light", 5: "Deep" };
+                    const phases = {
+                      3: "REM (indicative)",
+                      4: "Light (indicative)",
+                      5: "Deep (indicative)"
+                    };
                     return phases[Math.round(value)] ?? "";
                   }
           series:
@@ -83,8 +84,8 @@
               # sleep state and breathing, heart red for heart rate. Amber
               # #f5a623 is reserved for REM timeline segments, so not used here.
               color: '#5aa2ff'
-              # Out of bed (0) becomes a gap; codes 1 and 2 both read as Awake.
-              transform: "return x === null ? null : (Number(x) === 0 ? null : (Number(x) <= 2 ? 2 : Number(x)));"
+              # Codes 0–2 have no verified public meaning and become gaps.
+              transform: "return x === null || !Number.isFinite(Number(x)) || Number(x) < 3 || Number(x) > 5 ? null : Number(x);"
 
         - type: custom:apexcharts-card
           header:
@@ -144,31 +145,30 @@
               color: '#5aa2ff'
               unit: ' br/min'
 
-        # Native markdown card (no dependency): keep the honesty caption the
-        # SleepRadar Card ships with — measured vs estimated.
+        # Native markdown card (no dependency): describe what is reported and
+        # where the independent occupancy gate does and does not apply.
         - type: markdown
           content: >-
-            Heart rate and breathing are measured directly by the FP2. Sleep
-            stage is Aqara's estimate. These charts are raw MQTT telemetry from
-            Recorder and do not apply the live card's optional occupancy gate,
-            so vitals can read as retained while out of bed.
+            Heart rate and breathing are sensor-reported by the FP2. Codes 3–5
+            are shown as indicative sleep stages. These charts are raw MQTT
+            telemetry from Recorder and do not apply the live card's occupancy
+            gate, so retained values can still appear while the bed is empty.
 
     - type: grid
       column_span: 3
       cards:
-        # Optional: delete this whole grid section if you don't have a
-        # separate bed-presence/contact sensor to cross-check against.
+        # Optional: delete this grid if you do not need a visible cross-check.
         - type: heading
           heading: Cross-check
           heading_style: title
           icon: mdi:check-decagram-outline
 
         - type: custom:mushroom-template-card
-          entity: PLACEHOLDER_BED_STATUS_ENTITY
+          entity: binary_sensor.bed_occupied
           primary: FP2 vs bed status
           secondary: >-
             FP2: {{ states('sensor.fp2_sleep_phase') }} ·
-            Bed: {{ states('PLACEHOLDER_BED_STATUS_ENTITY') }}
+            Bed occupied: {{ states('binary_sensor.bed_occupied') }}
           icon: mdi:bed-clock
           icon_color: blue
           multiline_secondary: true

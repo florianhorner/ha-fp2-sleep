@@ -3,18 +3,21 @@
 ## Unreleased
 
 - Documents that the `sleep_state` 0-5 mapping is community-derived and
-  unverified, and that codes `0`/`1`/`2` should not be used as a wake or
-  occupancy signal. Codes `3`/`4`/`5` are consistent across sources. Docs and
-  comments only; no code and no label values changed.
+  unverified. With an independent occupancy gate active, codes `0`/`1`/`2` no
+  longer assert out-of-bed or awake state. No-gate behavior keeps its legacy
+  labels for compatibility.
 
-- Documents a measured case of sleep staging reported for an empty bed
-  (2.5 hours of light/deep/REM with an independent bed-zone sensor reading
-  empty throughout, plus a live-looking heart rate). Occupancy decisions
-  belong to the `bed_occupancy` gate with an independent sensor.
+- Adds a sanitized regression fixture for approximately 2.5 hours with 300
+  sleep-state updates across codes `4`/`5`/`3` and 301 sensor-reported
+  heart-rate updates collapsing to 27 consecutive value runs, 17 distinct
+  values, and a 50-77 bpm range while independent occupancy stayed empty. The
+  fixture contains aggregate evidence, not entity IDs or absolute timestamps.
 
 - Adds an optional, fail-closed `bed_occupancy` gate to the SleepRadar Card.
   It hides live vitals when independent occupancy is empty or uncertain while
-  leaving the app's MQTT telemetry and Recorder history unchanged.
+  leaving the app's MQTT telemetry and Recorder history unchanged. It rejects
+  direct reuse of a card data entity and trusts Home Assistant availability
+  without adding an occupancy-age timeout.
 
 ## 1.2.2
 
