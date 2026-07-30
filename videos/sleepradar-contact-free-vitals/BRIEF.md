@@ -3,7 +3,7 @@ schema_version: 1
 workflow: motion-graphics
 flow: automation
 storyboard: false
-message: "Heart rate and breathing are measured contact-free by the Aqara FP2 and exposed to Home Assistant"
+message: "Heart rate and breathing are sensor-reported measurement signals exposed contact-free to Home Assistant"
 destination: vertical-social
 aspect: "720x1280"
 language: en
@@ -11,7 +11,7 @@ audience: "Aqara FP2 owners who use Home Assistant"
 length: "6s"
 angle: measured-signals
 narration: false
-claim: "SleepRadar exposes the Aqara FP2's measured heart-rate and breathing signals to Home Assistant without a wearable."
+claim: "SleepRadar exposes the Aqara FP2's sensor-reported heart-rate and breathing measurement signals to Home Assistant without a wearable."
 opening_state: "Two labelled Home Assistant sensor cards are present but show no readings."
 payoff_state: "Both cards activate as measured contact-free signals while showing units but no invented numeric telemetry."
 motion_verb: activate
@@ -20,12 +20,13 @@ truth:
   source_refs:
     - "README.md:9-11"
     - "README.md:37-50"
+    - "DESIGN.md:12-20"
     - "aqara_fp2_sleep/aqara_fp2_sleep_poller.py:111-137"
-  checked_at: "2026-07-21"
-  baseline_commit: "995f81b402cbd15ed0500a6968a96d94c427933e"
+  checked_at: "2026-07-31"
+  baseline_commit: "5a02e00003a0d87c73ce38aa19df139baab20f42"
   release_tag: "v1.2.1"
   qualifiers:
-    - "The cards identify measured signals without claiming medical accuracy."
+    - "The visible word measured identifies a sensor-reported signal category, not independent validation or clinical accuracy."
     - "No personal or numerical telemetry is depicted."
   visible_required:
     - "Heart + breathing."
@@ -45,7 +46,9 @@ truth:
 Create GIF 3 in the approved five-GIF SleepRadar family. Open on the canonical
 SleepRadar mark and two subdued, unknown Home Assistant sensor cards. A single
 finite radar pulse activates Heart rate first and Breathing second, resolving
-to the concrete hook “Heart + breathing. Measured contact-free.”
+to the concrete hook “Heart + breathing. Measured contact-free.” The approved
+word “measured” names the signal category, not independently verified
+accuracy.
 
 ## Assets
 
@@ -60,15 +63,16 @@ to the concrete hook “Heart + breathing. Measured contact-free.”
 
 ## Product truth
 
-- Current baseline rechecked on 2026-07-21: `origin/main` at
-  `995f81b402cbd15ed0500a6968a96d94c427933e`; latest release `v1.2.1`, dated
-  2026-07-03.
+- Product truth was rechecked on 2026-07-31. The front-matter baseline pins the
+  implementation commit, so every repository source reference identifies
+  committed evidence. Latest release: `v1.2.1`, dated 2026-07-03.
 - `../../README.md:9-11` describes contact-free heart rate and breathing from
   an Aqara FP2 in Home Assistant.
-- `../../README.md:31-38` says heart rate and breathing are measured directly
-  by the sensor, while sleep stages are estimates.
-- `../../README.md:42-45` defines Heart rate in `bpm` and Respiration rate in
-  breaths/min as measured sensors.
+- The README identifies heart rate and breathing as sensor-reported
+  measurements, distinguishes that category from independent or clinical
+  accuracy, and identifies sleep stages as estimates.
+- The README defines Heart rate in `bpm` and Respiration rate in breaths/min as
+  sensor-reported measurement entities.
 
 ## Locked beat sheet
 
@@ -86,17 +90,19 @@ to the concrete hook “Heart + breathing. Measured contact-free.”
 ## Constraints
 
 - Silent, `720×1280`, 30 fps source timeline, exactly six seconds.
-- No numerical readings, personal telemetry, diagnosis, clinical precision,
-  medical framing, bed-empty claim, audio, gradients in authored UI/pulse,
-  random motion, timers, or infinite repeats.
+- No numerical readings, personal telemetry, independently validated or
+  clinical accuracy claim, diagnosis, medical framing, bed-empty claim, audio,
+  gradients in authored UI/pulse, random motion, timers, or infinite repeats.
 - Semantic red and blue accents are always paired with a visible unit and the
-  word “measured”; unknown states remain neutral gray.
+  word “measured”; that word identifies the signal category, while unknown
+  states remain neutral gray.
 - The canonical mark's geometry is the sole visual asset; its project-local
   fills are flattened to solid locked palette colors so the no-gradient rule is
   literal.
 
 ## Delivery
 
-The main production pass will run strict checks, snapshots, final rendering,
-binary-derived proof, size and loop verification, and localhost handoff. This
-source worker does not render or claim those gates.
+This truth-source refresh does not alter or rerender the approved binary and
+does not claim new binary proof. A future render-affecting change still requires
+strict checks, snapshots, final rendering, binary-derived proof, size and loop
+verification, and localhost handoff.

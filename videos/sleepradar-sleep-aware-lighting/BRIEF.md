@@ -19,13 +19,14 @@ uncertainty: "Whether the full trigger-condition-action chain remains readable w
 truth:
   source_refs:
     - "examples/automations.yaml:1-33"
-    - "examples/sleep_tracking.yaml:61-72"
-    - "README.md:206-220"
-  checked_at: "2026-07-21"
-  baseline_commit: "995f81b402cbd15ed0500a6968a96d94c427933e"
+    - "examples/sleep_tracking.yaml:73-89"
+    - "README.md:252-263"
+  checked_at: "2026-07-31"
+  baseline_commit: "5a02e00003a0d87c73ce38aa19df139baab20f42"
   release_tag: "v1.2.1"
   qualifiers:
     - "This is an optional Home Assistant comfort example, not built-in or safety-critical behavior."
+    - "The asleep helper requires independent occupancy plus indicative code 3, 4, or 5 and fails closed when occupancy is unknown."
   visible_required:
     - "Asleep?"
     - "Lights cap at 20%."
@@ -54,16 +55,17 @@ the documented Home Assistant behavior.
 
 ## Product truth
 
-- Product baseline rechecked on 2026-07-21: origin/main is
-  995f81b402cbd15ed0500a6968a96d94c427933e.
+- Product truth was rechecked on 2026-07-31. The front-matter baseline pins the
+  implementation commit, so every repository source reference identifies
+  committed evidence.
 - Latest release rechecked by the batch orchestrator: v1.2.1, published
   2026-07-03.
 - ../../examples/automations.yaml:14-33 is the canonical source for the alias
   Cap light brightness while asleep, the bedroom-light on trigger,
   binary_sensor.fp2_asleep equals on condition, and brightness_pct: 20 action.
-- ../../examples/sleep_tracking.yaml:61-72 defines binary_sensor.fp2_asleep from
-  the sensor-reported REM, Light sleep, or Deep sleep codes and preserves
-  unavailable-state handling.
+- `../../examples/sleep_tracking.yaml` defines `binary_sensor.fp2_asleep` from
+  confirmed independent occupancy plus indicative REM, Light sleep, or Deep
+  sleep codes and preserves unavailable-state handling.
 - The automation file itself labels these as optional examples. This GIF
   therefore says Optional Home Assistant example and comfort automation on
   screen.
@@ -90,7 +92,8 @@ script requests.
 ## Guardrails
 
 - Present this only as an optional Home Assistant comfort example.
-- Do not imply certainty beyond the helper's documented state mapping.
+- Do not imply certainty beyond the helper's independent-occupancy gate and
+  indicative code mapping.
 - Do not imply emergency, monitoring, diagnostic, clinical, or protective
   behavior.
 - Do not imply built-in automatic support beyond the example YAML.
@@ -113,6 +116,7 @@ script requests.
 
 ## Delivery
 
-This worker authors and lints source only. Final checks, snapshots, MP4/GIF
-rendering, binary-derived proof, hashes, loop metrics, and localhost handoff
-remain pending for the batch orchestrator.
+This truth-source refresh does not alter or rerender the approved binary and
+does not claim new binary proof. Any future render-affecting change still
+requires final checks, snapshots, MP4/GIF rendering, binary-derived proof,
+hashes, loop metrics, and localhost handoff.

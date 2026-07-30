@@ -1249,7 +1249,9 @@ def self_test() -> None:
     fabricated_tag["truth"]["release_tag"] = "not-a-real-release-tag"
     expect_truth_failure("fabricated release tag", fabricated_tag, "does not exist")
     stale_evidence = copy.deepcopy(managed_brief)
-    stale_evidence["truth"]["source_refs"] = ["videos/README.md:1"]
+    stale_evidence["truth"]["source_refs"] = [
+        "videos/__missing_truth_source__.md:1"
+    ]
     expect_truth_failure(
         "evidence absent from baseline", stale_evidence, "did not exist at baseline"
     )

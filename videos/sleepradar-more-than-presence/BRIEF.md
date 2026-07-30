@@ -34,7 +34,9 @@ is "Same sensor. Now 5 sleep signals."
 ## Notes
 
 - Canvas is exactly 720×1280.
-- Heart rate, breathing, body movement, and illuminance are measured signals.
+- Heart rate, breathing, body movement, and illuminance are sensor-reported
+  measurement signals. "Measured" names the signal category, not independent
+  validation or clinical accuracy.
 - Sleep stage is the sensor's estimate; do not imply medical precision.
 - No credentials, personal telemetry, medical language, narration, music, or
   unshipped Last Night/session-summary claims.
