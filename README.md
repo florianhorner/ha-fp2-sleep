@@ -275,16 +275,37 @@ sessionization is the next planned SleepRadar Card release.
 | `4` | Light sleep |
 | `5` | Deep sleep |
 
+**This mapping is community-derived and unverified.** Aqara publishes no
+documentation for the `sleep_state` resource — the FP2 FAQ and user manual are
+retired, and `opendoc.aqara.com` documents only "some special resources". Every
+published version of the 0–5 table traces back to a single community gist, and
+that gist disagrees with this one: it reads code `1` as *In Bed* rather than
+*Awake*. Codes `3`/`4`/`5` are consistent everywhere and are the ones worth
+relying on. Treat `0`, `1` and `2` as "SleepRadar cannot tell you much here"
+rather than as a wake/occupancy signal, and read the raw code from the
+attribute if you need to build your own logic.
+
 The optional template (`examples/sleep_tracking.yaml`) maps these
 automatically. The raw code stays available as an attribute.
 
 Heart rate and breathing are measured directly, but the FP2 can retain or
 report values when it incorrectly considers an empty bed occupied. The optional
 `bed_occupancy` gate keeps those values out of the live card; the raw entities
-and their history remain unchanged. Sleep stage scoring is the device's best
-estimate. In testing it matched expected sleep architecture, but some FP2 users
-report false "awake" readings. Treat stages as indicative and use an
-independent occupancy signal when false in-bed states matter.
+and their history remain unchanged.
+
+Sleep stage scoring is the device's best estimate, and it can be confidently
+wrong. In one measured case an independent bed-zone presence sensor read empty
+for two and a half hours while `sleep_state` cycled through light sleep, deep
+sleep and REM, and `heart_rate` kept publishing plausible varying values across
+that whole window (27 recorded values, 17 of them distinct, spanning 50-77 bpm).
+Nothing in the add-on or Home Assistant can detect that from the data alone —
+the readings look completely healthy. Other FP2 users report the same class of
+failure in the opposite direction (genuine sleep scored as awake).
+
+So treat stages as indicative, and use `bed_occupancy` with an **independent**
+occupancy signal (a bed sensor, a pressure mat, a separate presence zone) as
+the authority for whether anyone is in bed. Do not derive occupancy from
+`sleep_state` itself.
 
 ## Troubleshooting
 

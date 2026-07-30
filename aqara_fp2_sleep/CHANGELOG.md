@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Documents that the `sleep_state` 0-5 mapping is community-derived and
+  unverified, and that codes `0`/`1`/`2` should not be used as a wake or
+  occupancy signal. Codes `3`/`4`/`5` are consistent across sources. Docs and
+  comments only; no code and no label values changed.
+
+- Documents a measured case of sleep staging reported for an empty bed
+  (2.5 hours of light/deep/REM with an independent bed-zone sensor reading
+  empty throughout, plus a live-looking heart rate). Occupancy decisions
+  belong to the `bed_occupancy` gate with an independent sensor.
+
 - Adds an optional, fail-closed `bed_occupancy` gate to the SleepRadar Card.
   It hides live vitals when independent occupancy is empty or uncertain while
   leaving the app's MQTT telemetry and Recorder history unchanged.

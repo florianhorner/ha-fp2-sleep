@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- Documents that the `sleep_state` 0-5 mapping is community-derived and
+  unverified. Aqara publishes no documentation for the resource, and the single
+  community source every published table descends from reads code `1` as
+  "In Bed" rather than "Awake". Codes `3`/`4`/`5` are consistent across sources;
+  `0`/`1`/`2` should not be used as a wake or occupancy signal. README and the
+  card comment now say so. No code and no label values changed.
+
+- Documents a measured case of sleep staging reported for an empty bed:
+  an independent bed-zone presence sensor read empty for two and a half hours
+  while `sleep_state` cycled through light sleep, deep sleep and REM, and
+  `heart_rate` kept publishing plausible varying values throughout (27 recorded
+  values, 17 distinct, 50-77 bpm). Those readings are indistinguishable from
+  healthy ones. README now states this and directs occupancy decisions to the
+  `bed_occupancy` gate with an independent sensor.
+
 - Adds an optional, fail-closed `bed_occupancy` gate to the SleepRadar Card so
   independent occupancy can hide ghost vitals without changing MQTT or
   Recorder history. The optional dashboard now uses the production card for

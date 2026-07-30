@@ -22,8 +22,23 @@ const ENTITY_SUFFIXES = {
   respiration_rate: "respiration_rate",
 };
 
-// Raw Aqara sleep_state codes. Codes 1 and 2 are both "awake"; see README
-// "Sleep State Codes" and examples/sleep_tracking.yaml for the same mapping.
+// Raw Aqara sleep_state codes. Codes 1 and 2 are both treated as "awake"; see
+// README "Sleep State Codes" and examples/sleep_tracking.yaml for the same
+// mapping.
+//
+// This mapping is COMMUNITY-DERIVED AND UNVERIFIED. Aqara publishes no
+// documentation for the sleep_state resource — the FP2 FAQ and user manual are
+// retired and opendoc.aqara.com covers only "some special resources". Every
+// published 0-5 table descends from a single community gist, and that gist reads
+// code 1 as "In Bed", not "Awake", so the label on 1 here is a guess rather than
+// a spec. Codes 3/4/5 are consistent across every source and are the reliable
+// ones.
+//
+// Do not change these values without new first-party evidence: they are
+// duplicated into README.md and examples/, and scripts/validate_repository.py
+// enforces that all three stay in sync, so a guess here propagates everywhere.
+// Occupancy decisions belong to the bed_occupancy gate, never to these codes —
+// sleep_state can report full sleep staging for a demonstrably empty bed.
 const PHASES = {
   0: "Out of bed",
   1: "Awake",
