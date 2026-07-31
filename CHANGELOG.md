@@ -7,6 +7,16 @@
   coverage, documents the repository validation contract, and adds direct
   bug-report and security-support links.
 
+- Closes validator bypasses: CI gate patterns no longer match a gate split
+  across lines; the whitespace check and the Gitleaks repo-config self-test
+  check are line-structural instead of substring, with the self-test's control
+  order also enforced, so a commented-out or reordered control now fails;
+  per-job scans derive from `CI_KNOWN_RUN_STEPS` so a documented job cannot
+  escape them; unquoted `run:` scalars and unrecognized `scripts.run` shapes
+  fail closed; and the workflow `permissions` and required-job guards became
+  mutation-testable. Conductor setup falls back to bare `python3`, and the
+  validator CLI test no longer inherits `MQTT_NODE_ID`/`DEVICE_NAME`.
+
 - Adds the "Last night" feature GIF to the README dashboard section and tracks
   its reproducible production source in git: `videos/` now carries the frame
   contract, style guide, production playbooks, per-episode projects, template,
