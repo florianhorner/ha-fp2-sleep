@@ -108,17 +108,15 @@ Two steps are matched against executed command lines with comments stripped, so
 a script that only mentions the required text in a `#` comment fails: `Check
 whitespace` and `Self-test repo config detects and excludes correctly`. The
 latter also has its control order checked, because a scan hoisted above its own
-planted input proves nothing. The remaining content-checked steps (`Install
-dependencies`, `Audit runtime Python dependencies`, `Install Gitleaks`,
-`Self-test secret scanner`, `Scan current tree for secrets`, `Build add-on
-image`) are still matched by substring or unanchored regex against the raw body,
-so text inside a `#` comment satisfies them.
+planted input proves nothing. Other content-checked steps are matched against
+the raw body, which is a weaker assertion; strengthening them is tracked work.
 
-It does not currently enforce CI gate order, and additional `uses:` steps
-are allowed when SHA-pinned. It also does not check step- or job-level
-`if:`/`continue-on-error:`, per-job `permissions:` overrides, or `with:` inputs
-on `uses:` steps — a step or job can satisfy every name and command check while
-never executing, never failing the run, or holding a broader token grant. These
+Coverage is deliberately incomplete in known ways. It does not enforce CI gate
+order; it accepts additional SHA-pinned `uses:` steps without inspecting their
+inputs; and it does not check step- or job-level execution-control properties or
+per-job `permissions:` overrides. Treat a green validator run as evidence that
+the documented gates are present and correctly shaped, not as proof that every
+step executes or that a job holds no broader grant than intended. The open items
 are tracked in
 [TODOs](../TODOS.md#ci-workflow-validator-hardening-ship-review-2026-07-25). Separately, it requires Conductor to expose
 exactly one run command with the same gates in the same order. Unrecognized
@@ -127,9 +125,8 @@ carrying `args`, `options`, or `available_in` is rejected because those change
 what Conductor actually executes. Real TOML parsing prevents gate text in
 comments or unrelated strings from satisfying the Conductor check.
 
-Only `scripts.run` is validated. Sibling `[scripts]` keys are not checked,
-including `setup` — the command Conductor executes on workspace creation,
-before anyone reviews the branch. That gap is tracked in
+Only `scripts.run` is validated; sibling `[scripts]` keys, including `setup`,
+are not. Extending the pin to them is tracked in
 [TODOs](../TODOS.md#extend-step-validation-to-uses-steps-and-scriptssetup).
 
 Three human-facing mirrors are not parsed into the machine contract:

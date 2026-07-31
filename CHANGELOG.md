@@ -2,23 +2,20 @@
 
 ## Unreleased
 
-- Aligns Conductor's shared validation run with CI's `validate` job, requires
-  Python 3.11+ for the repository tooling (the app runtime is unchanged),
-  hardens validator CLI and Gitleaks controls with regression coverage,
-  documents the repository validation contract in
-  `docs/repository-validation.md`, and adds direct bug-report and
-  security-support links.
+- Contributor tooling only; no change to the add-on itself. The local
+  pre-PR validation chain now runs the same gates as CI's `validate` job from a
+  single shared list, so the two cannot drift apart. Repository tooling requires
+  Python 3.11+ (the add-on runtime is unchanged). Adds
+  `docs/repository-validation.md` describing what the validator checks, how the
+  local and CI lanes relate, and how to change a gate safely, plus direct
+  bug-report and security-policy links in the README.
 
-- Closes validator bypasses: CI gate patterns no longer match a gate split
-  across lines; the whitespace check and the Gitleaks repo-config self-test
-  check are line-structural instead of substring, with each planted input
-  required to precede the scan that reacts to it, so a commented-out control or
-  a scan hoisted above its own input now fails;
-  per-job scans derive from `CI_KNOWN_RUN_STEPS` so a documented job cannot
-  escape them; unquoted `run:` scalars and unrecognized `scripts.run` shapes
-  fail closed; and the workflow `permissions` and required-job guards became
-  mutation-testable. Conductor setup falls back to bare `python3`, and the
-  validator CLI test no longer inherits `MQTT_NODE_ID`/`DEVICE_NAME`.
+- Hardens the repository validator so its own checks assert behavior rather than
+  the presence of expected text, with regression coverage for each check, and
+  makes the CI secret-scanning controls prove both that the config detects a
+  planted value and that it excludes generated local state. Also adds a
+  command-line test suite for the validator and makes it independent of ambient
+  environment variables.
 
 - Adds the "Last night" feature GIF to the README dashboard section and tracks
   its reproducible production source in git: `videos/` now carries the frame
