@@ -19,13 +19,15 @@ uncertainty: "Whether the finite stage cadence is understood as possible current
 truth:
   source_refs:
     - "README.md:37-50"
-    - "README.md:278-301"
+    - "README.md:287-308"
     - "examples/sleep_tracking.yaml:10-44"
     - "https://opendoc.aqara.com/en/docs/developmanual/apiDocument/ResourceManagement.html"
     - "https://gist.github.com/Komzpa/396e66fb99592c14ba88e1bca21c11eb"
   checked_at: "2026-07-31"
-  baseline_commit: "5a02e00003a0d87c73ce38aa19df139baab20f42"
-  release_tag: "v1.2.1"
+  baseline_commit: "7b49e439626b103f297a59e383098aee00977d3c"
+  # Not v1.2.1: the indicative template labels this episode cites are not in
+  # that tag.
+  release_tag: "unreleased"
   qualifiers:
     - "Sleep stage is the sensor's best estimate, not a measured fact."
     - "Only codes 3, 4, and 5 appear; the public enumeration is community-derived and unverified."
@@ -61,14 +63,18 @@ attached to the card in every state.
 - Product truth was rechecked on 2026-07-31. The front-matter baseline pins the
   implementation commit, so every repository source reference identifies
   committed evidence.
-- Current released baseline: v1.2.1, published 2026-07-03.
+- Current released baseline: v1.2.1, published 2026-07-03. The gate-aware
+  labels this episode cites are unreleased.
 - README.md identifies sleep stages as the device’s best estimate at
   ../../README.md:37-42.
 - The README's community-derived, unverified table maps codes 3, 4, and 5 to
-  REM sleep, Light sleep, and Deep sleep; the episode makes no claim about
-  disputed codes 0, 1, or 2.
-- The shipped optional template uses the exact visible labels REM, Light sleep,
-  and Deep sleep at ../../examples/sleep_tracking.yaml:10-25.
+  REM, Light sleep, and Deep sleep; the episode makes no claim about disputed
+  codes 0, 1, or 2.
+- The approved binary shows the unsuffixed stage names REM, Light sleep, and
+  Deep sleep, which are the card's own labels
+  (../../card/sleepradar-card.js:37-44). The shipped optional template adds an
+  "(indicative)" qualifier to each at ../../examples/sleep_tracking.yaml:10-25;
+  the suffix is template-only and the episode is not rerendered for it.
 - Session duration, averaged vitals, and a segmented stage timeline are
   explicitly future work, not current card behavior, at
   ../../README.md:265-276.

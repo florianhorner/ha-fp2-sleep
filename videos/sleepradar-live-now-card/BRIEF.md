@@ -17,14 +17,21 @@ payoff_state: "The same no-gate card shows the public Light sleep, 56 bpm, and 1
 motion_verb: resolve
 uncertainty: "Whether the dense real-card truth copy remains readable at phone-feed scale."
 truth:
+  # Refs are line-ranged on purpose. A bare path is compared byte-for-byte
+  # against the baseline, so whole-file pinning a growing file -- above all
+  # tests/sleepradar-card.test.js -- makes "add a regression test" a
+  # build-breaking act. Each range below is the narrowest span that carries the
+  # claim it supports.
   source_refs:
     - "README.md:33-52"
-    - "README.md:176-215"
-    - "card/sleepradar-card.js"
-    - "tests/sleepradar-card.test.js"
+    - "README.md:180-215"
+    - "card/sleepradar-card.js:25-46"
+    - "card/sleepradar-card.js:217-224"
   checked_at: "2026-07-31"
-  baseline_commit: "5a02e00003a0d87c73ce38aa19df139baab20f42"
-  release_tag: "v1.2.1"
+  baseline_commit: "7b49e439626b103f297a59e383098aee00977d3c"
+  # Not v1.2.1: that tag predates the occupancy gate entirely, so it cannot
+  # certify the gate qualifiers below.
+  release_tag: "unreleased"
   qualifiers:
     - "Heart rate and breathing are sensor-reported measurements; measured names the signal category, not independent validation or clinical accuracy."
     - "The approved Out of bed opening is the legacy no-gate code-0 state; an independent occupancy gate can override that raw-code label."
