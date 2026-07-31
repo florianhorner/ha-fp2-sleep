@@ -92,7 +92,7 @@ class ValidateRepositoryCliTest(unittest.TestCase):
             with self.subTest(abbreviation=abbreviation):
                 result = self.run_validator(abbreviation)
 
-                self.assertEqual(result.returncode, 2, result.stdout)
+                self.assertEqual(result.returncode, 2, result.stderr)
                 self.assertIn("usage:", result.stderr)
                 self.assertIn(f"unrecognized arguments: {abbreviation}", result.stderr)
                 self.assertNotIn("SleepRadar validator self-test OK", result.stdout)

