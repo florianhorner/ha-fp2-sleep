@@ -184,11 +184,20 @@ bed_occupancy:
 `bed_occupancy` must be a mapping, and its `entity` is required. For a
 `binary_sensor.*`, you can omit `occupied_states`; it defaults to `["on"]`.
 For every other entity, `occupied_states` must be a non-empty list of its exact
-occupied state values. The card rejects an invalid gate configuration instead
-of silently ignoring it. It also rejects direct reuse of the configured sleep
-state, heart-rate, or respiration entity as the occupancy source. Home
-Assistant template aliases cannot be detected here, so the configured entity
-must still be independently sourced.
+occupied state values. Quote `on`/`off` — unquoted, YAML reads them as booleans
+and the card rejects them. The list may not contain `unknown`, `unavailable`,
+`none`, or an empty string (those always mean uncertain occupancy), and it may
+not contain both `on` and `off`, which would leave no state meaning the bed is
+empty. The card rejects an invalid gate configuration instead of silently
+ignoring it. It also rejects direct reuse of the configured sleep state,
+heart-rate, or respiration entity as the occupancy source, including via the
+`entities:` override block. Home Assistant template aliases cannot be detected
+here, so the configured entity must still be independently sourced.
+
+When the gate is closed, the card still reports the health of the sleep-state
+feed: a missing or unavailable sleep-state entity shows a **no sensor data**
+badge and a stale one shows **stale**, so a dead app does not look like an
+ordinary empty bed.
 
 With the gate enabled, confirmed occupancy is authoritative. Codes `3`–`5`
 show the mapped stage and fresh sensor-reported vitals. Code `0` shows **In
@@ -282,7 +291,7 @@ sessionization is the next planned SleepRadar Card release.
 | `0` | Out of bed | In bed; not measuring |
 | `1` | Awake | In bed — stage unknown |
 | `2` | Awake | In bed — stage unknown |
-| `3` | REM sleep | REM sleep |
+| `3` | REM | REM |
 | `4` | Light sleep | Light sleep |
 | `5` | Deep sleep | Deep sleep |
 

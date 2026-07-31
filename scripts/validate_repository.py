@@ -609,10 +609,7 @@ def private_string_matches(rel: str, text: str) -> list[str]:
 def check_private_strings_in_text(rel: str, text: str) -> None:
     matches = private_string_matches(rel, text)
     if matches:
-        fail(
-            f"{rel}: matched private strings: "
-            + ", ".join(sorted(matches))
-        )
+        fail(f"{rel}: matched private strings: " + ", ".join(sorted(matches)))
 
 
 def scan_private_strings() -> None:
@@ -793,9 +790,8 @@ def validate_examples() -> None:
             for match in entity_id.finditer(line):
                 value = match.group(0)
                 object_id = value.split(".", 1)[1]
-                if (
-                    value == OCCUPANCY_ENTITY
-                    or object_id.startswith(("aqara_fp2_sleep_", "fp2_"))
+                if value == OCCUPANCY_ENTITY or object_id.startswith(
+                    ("aqara_fp2_sleep_", "fp2_")
                 ):
                     continue
                 fail(
@@ -1036,6 +1032,19 @@ def validate_ghost_vitals_evidence() -> None:
     check_ghost_vitals_evidence(fixture, readme)
 
 
+def strip_js_comments(text: str) -> str:
+    """Drop JS comments so source-text guards cannot be satisfied by prose.
+
+    Only comments are removed, never string literals: several guarded fragments
+    are themselves string literals (e.g. `return "In bed - stage unknown";`).
+    The `(?<!:)` guard keeps `https://` inside a URL from being treated as the
+    start of a line comment.
+    """
+
+    without_blocks = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+    return re.sub(r"(?<!:)//[^\n]*", "", without_blocks)
+
+
 def check_card_phase_semantics(text: str) -> None:
     block = re.search(r"const PHASES\s*=\s*\{(.*?)\}", text, re.DOTALL)
     if not block:
@@ -1057,16 +1066,26 @@ def check_card_phase_semantics(text: str) -> None:
         )
 
     gated_contract = {
-        "occupied code 0": (
-            'if (occupancyConfirmed && code === 0) return "In bed";'
-        ),
+        "occupied code 0": ('if (occupancyConfirmed && code === 0) return "In bed";'),
         "occupied codes 1/2": 'return "In bed — stage unknown";',
         "direct self-reference rejection": (
             "if (Object.values(this._entityIds).includes(entity))"
         ),
+        "non-string override rejection": 'if (typeof override !== "string")',
+        "occupied_states cannot span both binary states": (
+            'normalizedStates.includes("on") && normalizedStates.includes("off")'
+        ),
     }
+    # Matched against comment-stripped source. A bare substring search over the
+    # raw file passes when the expected text sits in a comment while the real
+    # logic is gutted -- the contract this guard exists to enforce could be
+    # deleted with CI staying green. Executable behavior is pinned separately by
+    # tests/sleepradar-card.test.js; this check is drift detection on top.
+    executable = strip_js_comments(text)
     missing = [
-        label for label, fragment in gated_contract.items() if fragment not in text
+        label
+        for label, fragment in gated_contract.items()
+        if fragment not in executable
     ]
     if missing:
         fail(
@@ -1079,16 +1098,20 @@ def check_readme_phase_table(text: str) -> None:
     section = re.search(r"## Sleep State Codes(.*?)(?:\n## |\Z)", text, re.DOTALL)
     if not section:
         fail("README.md: could not find the '## Sleep State Codes' section")
-    expected = dict(LEGACY_UNGATED_PHASES)
-    expected.update(
+    # The table has two data columns and BOTH are contracts. Validating only the
+    # last one let the legacy column drift away from the card's PHASES map with
+    # CI green, so the legacy column is now pinned to its machine-checkable
+    # source instead of being documentation nobody checks.
+    expected_gated = dict(LEGACY_UNGATED_PHASES)
+    expected_gated.update(
         {
             0: "In bed; not measuring",
             1: "In bed — stage unknown",
             2: "In bed — stage unknown",
-            3: "REM sleep",
         }
     )
-    parsed = {}
+    parsed_legacy = {}
+    parsed_gated = {}
     for line in section.group(1).splitlines():
         if not line.strip().startswith("|"):
             continue
@@ -1096,11 +1119,22 @@ def check_readme_phase_table(text: str) -> None:
         code_match = re.fullmatch(r"`(\d+)`", cells[0]) if cells else None
         if not code_match:
             continue
-        parsed[int(code_match.group(1))] = cells[-1]
-    if parsed != expected:
+        if len(cells) != 3:
+            fail(
+                "README.md Sleep State Codes table must have a code column, a "
+                f"legacy column, and a gated column: {cells}"
+            )
+        parsed_legacy[int(code_match.group(1))] = cells[1]
+        parsed_gated[int(code_match.group(1))] = cells[2]
+    if parsed_legacy != LEGACY_UNGATED_PHASES:
+        fail(
+            "README.md legacy Sleep State Codes column drifted from the card's "
+            f"PHASES map: {parsed_legacy}"
+        )
+    if parsed_gated != expected_gated:
         fail(
             "README.md gated Sleep State Codes column drifted from "
-            f"published behavior: {parsed}"
+            f"published behavior: {parsed_gated}"
         )
 
 
@@ -1182,10 +1216,7 @@ def check_sleep_tracking_maps(text: str) -> None:
                 f"examples/sleep_tracking.yaml {name} state drifted from the "
                 "fail-closed occupancy contract"
             )
-        if (
-            normalize_template(availability)
-            != EXPECTED_SLEEP_TEMPLATE_AVAILABILITY
-        ):
+        if normalize_template(availability) != EXPECTED_SLEEP_TEMPLATE_AVAILABILITY:
             fail(
                 f"examples/sleep_tracking.yaml {name} availability drifted "
                 "from the fail-closed occupancy contract"
@@ -1222,9 +1253,7 @@ def check_dashboard_maps(text: str) -> None:
                 now_sections.append(cards)
 
     if len(now_sections) != 1:
-        fail(
-            "examples/dashboard-sleep.yaml must contain exactly one `Now` section"
-        )
+        fail("examples/dashboard-sleep.yaml must contain exactly one `Now` section")
     now_cards = [
         card
         for card in now_sections[0]
@@ -1670,13 +1699,60 @@ def run_self_test() -> None:
         ),
     )
     expect_fail(
-        "readme label",
-        lambda: check_readme_phase_table(
+        "card non-string override rejection",
+        lambda: check_card_phase_semantics(
+            mutate(card, 'if (typeof override !== "string")', "if (false)")
+        ),
+    )
+    expect_fail(
+        "card occupied_states both binary states",
+        lambda: check_card_phase_semantics(
             mutate(
-                readme,
-                "| `3` | REM sleep | REM sleep |",
-                "| `3` | REM sleep | Light sleep |",
+                card,
+                'normalizedStates.includes("on") && normalizedStates.includes("off")',
+                "false",
             )
+        ),
+    )
+    # The bypass this guard was blind to: gut the real logic, then re-introduce
+    # every expected fragment inside comments. Before comment-stripping this
+    # mutation PASSED, so the contract could be deleted with CI green.
+    expect_fail(
+        "card contract fragments hidden in comments",
+        lambda: check_card_phase_semantics(
+            '// if (occupancyConfirmed && code === 0) return "In bed";\n'
+            '// return "In bed — stage unknown";\n'
+            "// if (Object.values(this._entityIds).includes(entity))\n"
+            '// if (typeof override !== "string")\n'
+            '// normalizedStates.includes("on") && normalizedStates.includes("off")\n'
+            '/* if (occupancyConfirmed && code === 0) return "In bed"; */\n'
+            + mutate(
+                mutate(
+                    card,
+                    'if (occupancyConfirmed && code === 0) return "In bed";',
+                    'if (false) return "nope";',
+                ),
+                "if (Object.values(this._entityIds).includes(entity))",
+                "if (false)",
+            )
+        ),
+    )
+    expect_fail(
+        "readme gated label",
+        lambda: check_readme_phase_table(
+            mutate(readme, "| `3` | REM | REM |", "| `3` | REM | Light sleep |")
+        ),
+    )
+    expect_fail(
+        "readme legacy label",
+        lambda: check_readme_phase_table(
+            mutate(readme, "| `3` | REM | REM |", "| `3` | Light sleep | REM |")
+        ),
+    )
+    expect_fail(
+        "readme phase table loses a column",
+        lambda: check_readme_phase_table(
+            mutate(readme, "| `3` | REM | REM |", "| `3` | REM |")
         ),
     )
     expect_fail(
@@ -1730,10 +1806,8 @@ def run_self_test() -> None:
         lambda: check_sleep_tracking_maps(
             mutate(
                 tracking,
-                "{{ occupancy in ['on', 'off']\n"
-                "           and (occupancy == 'off'",
-                "{{ occupancy in ['on', 'off']\n"
-                "           or (occupancy == 'off'",
+                "{{ occupancy in ['on', 'off']\n           and (occupancy == 'off'",
+                "{{ occupancy in ['on', 'off']\n           or (occupancy == 'off'",
             )
         ),
     )
@@ -1847,6 +1921,123 @@ def run_self_test() -> None:
         lambda: check_ghost_vitals_evidence(
             ghost_vitals_fixture,
             mutate(readme, GHOST_VITALS_FIXTURE, "tests/fixtures/missing.json"),
+        ),
+    )
+    expect_fail(
+        "ghost-vitals malformed JSON",
+        lambda: check_ghost_vitals_evidence("{not json", readme),
+    )
+    expect_fail(
+        "ghost-vitals non-object root",
+        lambda: check_ghost_vitals_evidence("[]", readme),
+    )
+    for label, old, new in [
+        ("schema version", '"schema_version": 1', '"schema_version": 2'),
+        (
+            "evidence kind",
+            '"evidence_kind": "sanitized_aggregate"',
+            '"evidence_kind": "raw_export"',
+        ),
+        (
+            "stage interpretation",
+            '"interpretation": "indicative_only"',
+            '"interpretation": "verified_stages"',
+        ),
+        (
+            "code sequence",
+            '"reported_codes": [\n      4,\n      5,\n      3\n    ]',
+            '"reported_codes": [\n      3,\n      4,\n      5\n    ]',
+        ),
+        (
+            "recorder note",
+            "The source uses force_update, so Recorder can contain repeated",
+            "The source emits duplicate rows, so Recorder can contain repeated",
+        ),
+        (
+            "occupancy aggregate",
+            '"continuous_state": "empty"',
+            '"continuous_state": "occupied"',
+        ),
+    ]:
+        expect_fail(
+            f"ghost-vitals {label} drift",
+            lambda old=old, new=new: check_ghost_vitals_evidence(
+                mutate(ghost_vitals_fixture, old, new), readme
+            ),
+        )
+    for label, old, new in [
+        ("independence", "not be derived from", "not be sourced from"),
+        ("fail-closed wording", "fail closed", "stay available"),
+        (
+            "codes 0-2 guarantee",
+            "never assert an in-bed stage",
+            "may assert an in-bed stage",
+        ),
+        (
+            "codes 3-5 indicative",
+            "codes 3–5 are indicative",
+            "codes 3–5 are verified",
+        ),
+        ("vitals provenance", "sensor-reported.", "device-measured."),
+    ]:
+        expect_fail(
+            f"examples readme {label}",
+            lambda old=old, new=new: check_examples_readme_gate_contract(
+                mutate(examples_readme, old, new)
+            ),
+        )
+    expect_fail(
+        "automations non-list root",
+        lambda: check_automation_gates(yaml.safe_dump({"alias": "Cool down"})),
+    )
+    expect_fail(
+        "automations empty list",
+        lambda: check_automation_gates("[]"),
+    )
+    expect_fail(
+        "automations entry not a mapping",
+        lambda: check_automation_gates(yaml.safe_dump(["Cool down"])),
+    )
+    expect_fail(
+        "automations ungated helper",
+        lambda: check_automation_gates(
+            mutate(automations, "binary_sensor.fp2_asleep", "binary_sensor.some_helper")
+        ),
+    )
+    expect_fail(
+        "automations phase occupancy condition",
+        lambda: check_automation_gates(
+            mutate(automations, OCCUPANCY_ENTITY, "binary_sensor.derived_occupancy")
+        ),
+    )
+    expect_fail(
+        "dashboard gate occupied states",
+        lambda: check_dashboard_maps(
+            mutate(
+                dashboard, "occupied_states: ['on']", "occupied_states: ['on', 'off']"
+            )
+        ),
+    )
+    expect_fail(
+        "dashboard missing Now section",
+        lambda: check_dashboard_maps(
+            mutate(dashboard, "heading: Now", "heading: Later")
+        ),
+    )
+    expect_fail(
+        "sleep_tracking non-list root",
+        lambda: check_sleep_tracking_maps(
+            "template: |\n"
+            "  phases = {3: 'REM (indicative)', 4: 'Light sleep (indicative)', "
+            "5: 'Deep sleep (indicative)'}\n"
+            "  names = {3: 'REM (indicative)', 4: 'Light sleep (indicative)', "
+            "5: 'Deep sleep (indicative)'}\n"
+        ),
+    )
+    expect_fail(
+        "sleep_tracking missing template entries",
+        lambda: check_sleep_tracking_maps(
+            mutate(tracking, 'name: "FP2 Asleep"', 'name: "FP2 Sleeping"')
         ),
     )
     expect_fail(

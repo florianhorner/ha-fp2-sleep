@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Breaking for existing `examples/` template users.** The optional helpers now
+  require an independent `binary_sensor.bed_occupied` and go unavailable without
+  it, and the deep-sleep automation trigger is renamed to
+  `"Deep sleep (indicative)"`. Update existing copies or they stop firing. The
+  app's own MQTT entities and polling are unchanged.
+
 - Documents that the `sleep_state` 0-5 mapping is community-derived and
   unverified. With an independent occupancy gate active, codes `0`/`1`/`2` no
   longer assert out-of-bed or awake state. No-gate behavior keeps its legacy

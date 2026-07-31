@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Breaking for anyone already using the optional `examples/` templates.**
+  `examples/sleep_tracking.yaml` now requires an independent
+  `binary_sensor.bed_occupied`. Without it, `sensor.fp2_sleep_phase`,
+  `sensor.fp2_sleep_now`, and `binary_sensor.fp2_asleep` go unavailable and any
+  automation gated on them stops running. `examples/automations.yaml` also
+  renames the deep-sleep trigger state from `"Deep sleep"` to
+  `"Deep sleep (indicative)"`; an existing copy of that automation will silently
+  never fire again until it is updated. The five MQTT entities, polling, and
+  Recorder history are unchanged.
+
 - Documents that the `sleep_state` 0-5 mapping is community-derived and
   unverified. Aqara's public resource documentation does not publish the FP2
   enumeration, and the community mapping checked by this project reads code
