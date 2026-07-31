@@ -3,15 +3,17 @@
 ## Unreleased
 
 - Aligns Conductor's shared validation run with CI's `validate` job, requires
-  Python 3.11+, hardens validator CLI and Gitleaks controls with regression
-  coverage, documents the repository validation contract in
+  Python 3.11+ for the repository tooling (the app runtime is unchanged),
+  hardens validator CLI and Gitleaks controls with regression coverage,
+  documents the repository validation contract in
   `docs/repository-validation.md`, and adds direct bug-report and
   security-support links.
 
 - Closes validator bypasses: CI gate patterns no longer match a gate split
   across lines; the whitespace check and the Gitleaks repo-config self-test
-  check are line-structural instead of substring, with the self-test's control
-  order also enforced, so a commented-out or reordered control now fails;
+  check are line-structural instead of substring, with each planted input
+  required to precede the scan that reacts to it, so a commented-out control or
+  a scan hoisted above its own input now fails;
   per-job scans derive from `CI_KNOWN_RUN_STEPS` so a documented job cannot
   escape them; unquoted `run:` scalars and unrecognized `scripts.run` shapes
   fail closed; and the workflow `permissions` and required-job guards became

@@ -59,8 +59,9 @@ python3 -m pip install -r requirements-ci.txt
 
 Conductor's `setup` script tries `python3.12`, `python3.13`, `python3.11`, then
 bare `python3`, so a machine that exposes a modern interpreter under no other
-name still bootstraps; a too-old `python3` fails loudly on the validator's own
-version guard rather than producing a subtly non-CI-equivalent venv.
+name still bootstraps. A too-old `python3` still creates the venv, but the
+first validator gate in the run chain then fails loudly on the validator's own
+version guard, so a subtly non-CI-equivalent venv never passes silently.
 
 If the validator exits with a version error, the venv predates this rule —
 delete `.venv` and recreate it with a 3.11+ interpreter.

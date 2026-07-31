@@ -127,6 +127,11 @@ carrying `args`, `options`, or `available_in` is rejected because those change
 what Conductor actually executes. Real TOML parsing prevents gate text in
 comments or unrelated strings from satisfying the Conductor check.
 
+Only `scripts.run` is validated. Sibling `[scripts]` keys are not checked,
+including `setup` — the command Conductor executes on workspace creation,
+before anyone reviews the branch. That gap is tracked in
+[TODOs](../TODOS.md#extend-step-validation-to-uses-steps-and-scriptssetup).
+
 Three human-facing mirrors are not parsed into the machine contract:
 
 - the command sequence in [Contributing](../CONTRIBUTING.md);
@@ -226,9 +231,10 @@ python3 --version
 Recreate an old venv with Python 3.11 or newer, then reinstall
 `requirements-ci.txt`. CI pins Python 3.12. The shared Conductor setup tries
 Python 3.12, 3.13, 3.11, then bare `python3` — the last fallback covers
-machines that expose a modern interpreter under no versioned name, and an
-interpreter that is genuinely too old fails here with this message rather
-than producing a silently non-CI-equivalent venv.
+machines that expose a modern interpreter under no versioned name. An
+interpreter that is genuinely too old still creates the venv; the first
+validator gate in the run chain then fails here with this message, so a
+non-CI-equivalent venv never passes silently.
 
 ### A Conductor gate is missing, unexpected, or out of order
 
