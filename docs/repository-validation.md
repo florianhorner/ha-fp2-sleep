@@ -240,10 +240,10 @@ non-CI-equivalent venv never passes silently.
 
 Treat the first Conductor-chain error as the synchronization list. Update
 `CONDUCTOR_GATES`, the named CI step, `.conductor/settings.toml`,
-Contributing, and the pull request template in one change. Run the failing
-command directly, then rerun the full chain. Review CI order manually — the
-validator does not enforce it, though a duplicate step name within a job is
-now rejected automatically.
+Contributing, the pull request template, and `docs/repository-validation.md`
+in one change. Run the failing command directly, then rerun the full chain.
+Review CI order manually — the validator does not enforce it, though a
+duplicate step name within a job is now rejected automatically.
 
 ### Validation reports an unexpected MQTT node or device name
 
