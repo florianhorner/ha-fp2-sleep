@@ -16,7 +16,7 @@ The validator requires Python 3.11 or newer.
 | --- | --- | --- |
 | `python3 scripts/validate_repository.py` | Validate the current repository state. Stops at the first failure. | `SleepRadar package validation OK` |
 | `python3 scripts/validate_repository.py --self-test` | Exercise positive fixtures and deliberate mutations that prove validator guards still fail closed. Reports all failures together. | `SleepRadar validator self-test OK` |
-| `python3 tests/test_validate_repository_cli.py` | Test normal mode, self-test mode, help, and invalid option handling. | `OK` |
+| `python3 tests/test_validate_repository_cli.py` | Test normal mode, self-test mode, help, invalid option handling, and ambient-env isolation. | `OK` (on stderr) |
 | `python3 scripts/validate_repository.py --help` | Show the command-line interface without running validation. | Usage text |
 
 `--self-test` replaces normal repository validation; it does not include it.
@@ -81,17 +81,51 @@ Non-whitespace entries also own:
 CI's whitespace step is a special case because it normally checks a committed
 base-to-head range instead of the local working-tree form.
 
+`CI_KNOWN_RUN_STEPS` is the companion machine source for CI job structure: it
+maps each known job (`validate`, `security`, `docker-build`) to the named
+`run:` steps that job may contain, and `CI_JOB_NAMES` is derived from its keys.
+Every per-job check iterates that mapping, so documenting a job there is what
+brings it under the duplicate-name, SHA-pin, and unknown-step scans.
+
 The validator derives fully anchored CI command patterns from the named
-entries. It requires each named runnable gate and rejects an unknown named
-runnable step in any of the three CI jobs (`validate`, `security`,
-`docker-build`), and rejects a duplicate step name within any job
-(named-step lookups only ever inspect the first match, so a duplicate could
-otherwise smuggle an unvalidated step past every check keyed on that name).
+entries. Patterns allow only horizontal whitespace between tokens, so a step
+cannot satisfy its guard by splitting one gate across lines, which the shell
+would run as several commands. It also:
+
+- requires each named runnable gate;
+- rejects an undocumented top-level job — every check inspects jobs by name, so
+  an unlisted job (say `jobs.deploy`) would otherwise run entirely unreviewed
+  with its own unpinned actions and unvalidated steps;
+- rejects an unknown named runnable step in any known job;
+- rejects a duplicate step name within any job (named-step lookups only ever
+  inspect the first match, so a duplicate could otherwise smuggle an
+  unvalidated step past every check keyed on that name);
+- rejects an unquoted `run:` scalar, because YAML types `on` and `123` as
+  bool/int while GitHub Actions still executes them, which would skip every
+  run-step check.
+
+Two steps are matched against executed command lines with comments stripped, so
+a script that only mentions the required text in a `#` comment fails: `Check
+whitespace` and `Self-test repo config detects and excludes correctly`. The
+latter also has its control order checked, because a scan hoisted above its own
+planted input proves nothing. The remaining content-checked steps (`Install
+dependencies`, `Audit runtime Python dependencies`, `Install Gitleaks`,
+`Self-test secret scanner`, `Scan current tree for secrets`, `Build add-on
+image`) are still matched by substring or unanchored regex against the raw body,
+so text inside a `#` comment satisfies them.
+
 It does not currently enforce CI gate order, and additional `uses:` steps
-are allowed when SHA-pinned. Separately, it requires Conductor to expose
-exactly one run command with the same gates in the same order.
-Real TOML parsing prevents gate text in comments or unrelated strings from
-satisfying the Conductor check.
+are allowed when SHA-pinned. It also does not check step- or job-level
+`if:`/`continue-on-error:`, per-job `permissions:` overrides, or `with:` inputs
+on `uses:` steps — a step or job can satisfy every name and command check while
+never executing, never failing the run, or holding a broader token grant. These
+are tracked in
+[TODOs](../TODOS.md#ci-workflow-validator-hardening-ship-review-2026-07-25). Separately, it requires Conductor to expose
+exactly one run command with the same gates in the same order. Unrecognized
+`scripts.run` shapes fail closed rather than being skipped, and a run entry
+carrying `args`, `options`, or `available_in` is rejected because those change
+what Conductor actually executes. Real TOML parsing prevents gate text in
+comments or unrelated strings from satisfying the Conductor check.
 
 Three human-facing mirrors are not parsed into the machine contract:
 
@@ -145,7 +179,13 @@ The repository uses several independent layers:
   These controls do not exercise the repository-wide `appid` and `appkey`
   line-shape exceptions.
 - `gitleaks dir` scans the current tree, not Git history, and does not rely on
-  `.gitignore`.
+  `.gitignore`. Run it from the repository root with `.` as the target: the
+  `.gstack/` path allowlist is anchored to repository-relative paths, so
+  scanning an absolute path silently stops excluding generated state.
+- Local Gitleaks must match the pinned `GITLEAKS_VERSION`. `.gitleaks.toml`
+  uses the top-level `[[allowlists]]` array form, and older builds ignore
+  unknown config keys instead of failing, which drops every exception and
+  reports the public Aqara constants as leaks.
 - `pip-audit` checks the runtime requirements only. CI installs the audit tool
   separately because it is not a project dependency.
 
@@ -157,7 +197,15 @@ rule to the generated file shape and keep a positive detection control.
 The validator self-test uses current repository fixtures and in-memory
 mutations. It verifies real inputs pass, then changes one invariant at a time
 and requires `ValidationError`. It aggregates failures so one broken guard
-does not hide the next.
+does not hide the next: fixture builders that parse the real `ci.yml` and
+`.conductor/settings.toml` record an unavailable fixture and skip the
+mutations that depend on it, instead of raising and discarding the report.
+
+Guards must be reachable from an injected fixture to be covered. The
+workflow-level `permissions` grant moved into `validate_workflow_permissions()`,
+and required-job presence moved from `workflow_jobs()` into
+`validate_workflow()`, so both are now reachable from a mutated fixture. A guard
+with no possible `expect_fail` case can decay without the drift check noticing.
 
 The poller behavior test replaces MQTT, Aqara, logging, and sleep dependencies;
 it makes no network call. Self-test coverage is intentionally separate from
@@ -177,7 +225,10 @@ python3 --version
 
 Recreate an old venv with Python 3.11 or newer, then reinstall
 `requirements-ci.txt`. CI pins Python 3.12. The shared Conductor setup tries
-Python 3.12, 3.13, then 3.11.
+Python 3.12, 3.13, 3.11, then bare `python3` — the last fallback covers
+machines that expose a modern interpreter under no versioned name, and an
+interpreter that is genuinely too old fails here with this message rather
+than producing a silently non-CI-equivalent venv.
 
 ### A Conductor gate is missing, unexpected, or out of order
 
@@ -198,6 +249,10 @@ repository defaults:
 unset MQTT_NODE_ID DEVICE_NAME
 python3 scripts/validate_repository.py
 ```
+
+`tests/test_validate_repository_cli.py` strips both variables from the
+subprocess environment, so it stays hermetic regardless of the shell it runs
+in. Direct validator runs still read them.
 
 ### A Gitleaks control prints a detected secret
 

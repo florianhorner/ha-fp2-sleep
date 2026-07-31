@@ -57,6 +57,11 @@ python3 -m pip install --upgrade pip
 python3 -m pip install -r requirements-ci.txt
 ```
 
+Conductor's `setup` script tries `python3.12`, `python3.13`, `python3.11`, then
+bare `python3`, so a machine that exposes a modern interpreter under no other
+name still bootstraps; a too-old `python3` fails loudly on the validator's own
+version guard rather than producing a subtly non-CI-equivalent venv.
+
 If the validator exits with a version error, the venv predates this rule —
 delete `.venv` and recreate it with a 3.11+ interpreter.
 
@@ -94,6 +99,14 @@ Run the additional security checks when their tools are available:
 pip-audit -r aqara_fp2_sleep/requirements.txt --progress-spinner off
 gitleaks dir --no-banner --redact --verbose .
 ```
+
+Run Gitleaks **from the repository root, with `.` as the target**, and use a
+version matching the `GITLEAKS_VERSION` pin in `scripts/validate_repository.py`
+(CI installs it checksum-verified). `.gitleaks.toml` uses the top-level
+`[[allowlists]]` array form, which older builds silently ignore rather than
+reject — they drop every exception and report the public Aqara `appid`/`appkey`
+constants as leaks. Scanning an absolute path instead of `.` likewise breaks
+the repository-relative `.gstack/` path exclusion.
 
 CI also runs a Docker build with the add-on directory as the build context:
 
