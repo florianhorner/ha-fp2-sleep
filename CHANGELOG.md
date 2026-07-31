@@ -4,8 +4,9 @@
 
 - Aligns Conductor's shared validation run with CI's `validate` job, requires
   Python 3.11+, hardens validator CLI and Gitleaks controls with regression
-  coverage, documents the repository validation contract, and adds direct
-  bug-report and security-support links.
+  coverage, documents the repository validation contract in
+  `docs/repository-validation.md`, and adds direct bug-report and
+  security-support links.
 
 - Closes validator bypasses: CI gate patterns no longer match a gate split
   across lines; the whitespace check and the Gitleaks repo-config self-test
