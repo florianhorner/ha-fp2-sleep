@@ -146,6 +146,68 @@ assert.throws(
     }),
   /bed_occupancy\.occupied_states is required for non-binary entities/
 );
+
+// --- A gate that can never close is not a gate --------------------------------
+// Both of these passed shape validation before and produced a permanently-open
+// gate that rendered retained vitals over an empty bed.
+assert.throws(
+  () =>
+    new Card().setConfig({
+      bed_occupancy: {
+        entity: "binary_sensor.bed_occupied",
+        occupied_states: ["on", "off"],
+      },
+    }),
+  /must not contain both 'on' and 'off'/,
+  "listing both binary states leaves no state that means the bed is empty"
+);
+for (const reservedState of ["unknown", "unavailable", "none", "None"]) {
+  assert.throws(
+    () =>
+      new Card().setConfig({
+        bed_occupancy: {
+          entity: "sensor.example_bed_status",
+          occupied_states: ["Wach", reservedState],
+        },
+      }),
+    /must not contain unknown, unavailable, none, or empty states/,
+    `occupied_states must reject the reserved state ${reservedState}`
+  );
+}
+
+// --- Entity overrides cannot smuggle a self-referential gate -------------------
+// A non-string override is not strictly equal to the gate string, but coerces
+// to the same key on a hass.states lookup, so it must be rejected outright.
+for (const coercibleOverride of [
+  ["sensor.aqara_fp2_sleep_sleep_state"],
+  { toString: () => "sensor.aqara_fp2_sleep_sleep_state" },
+  42,
+]) {
+  assert.throws(
+    () =>
+      new Card().setConfig({
+        entities: { sleep_state: coercibleOverride },
+        bed_occupancy: {
+          entity: "sensor.aqara_fp2_sleep_sleep_state",
+          occupied_states: ["on"],
+        },
+      }),
+    /entities overrides must be entity id strings/,
+    "a non-string entity override must be rejected, not coerced"
+  );
+}
+assert.throws(
+  () =>
+    new Card().setConfig({
+      entities: { sleep_state: "sensor.custom_sleep_state " },
+      bed_occupancy: {
+        entity: " sensor.custom_sleep_state ",
+        occupied_states: ["on"],
+      },
+    }),
+  /bed_occupancy\.entity must be independent/,
+  "the self-reference check must normalize whitespace on both sides"
+);
 for (const sourceEntity of [
   "sensor.aqara_fp2_sleep_sleep_state",
   "sensor.aqara_fp2_sleep_heart_rate",
@@ -261,6 +323,54 @@ const emptyBedWithoutAqaraData = render(
 assert.match(emptyBedWithoutAqaraData, /Out of bed/);
 assert.doesNotMatch(emptyBedWithoutAqaraData, /No data from/);
 
+// --- The blocked card must not swallow sleep-state health ---------------------
+// The bed is empty most of the day, so this is the dominant display state. A
+// missing entity id or a dead poller must not look like a healthy empty bed.
+assert.match(
+  emptyBedWithoutAqaraData,
+  /class="sr-badge">no sensor data/,
+  "a closed gate with no sleep-state entity must still report the missing feed"
+);
+assert.match(
+  emptyBedWithoutAqaraData,
+  /not reporting a sleep state/,
+  "the blocked card must name the missing sleep-state feed in its footer"
+);
+assert.doesNotMatch(
+  emptyBedWithoutAqaraData,
+  /<div class="sr-badge sr-badge-neutral">/,
+  "a dead sleep-state feed must not render the benign not-measuring badge"
+);
+
+const emptyBedWithStaleAqaraData = render(
+  withOccupancy(
+    defaultStates({
+      sleepState: "3",
+      heartRate: "98765",
+      respirationRate: "87654",
+      updated: "2026-07-03T07:56:00.000Z",
+    }),
+    "Leer"
+  ),
+  occupancyConfig
+);
+assert.match(
+  emptyBedWithStaleAqaraData,
+  /class="sr-badge">stale/,
+  "a closed gate with a stale sleep-state feed must surface the stale badge"
+);
+assertValuesHidden(
+  emptyBedWithStaleAqaraData,
+  ["98765", "87654"],
+  "a stale blocked card must still hide retained vitals"
+);
+// A healthy empty bed stays calm — the fault badges above must not fire here.
+assert.match(
+  ghostVitalsBlocked,
+  /<div class="sr-badge sr-badge-neutral">not measuring/,
+  "a healthy empty bed keeps the neutral badge"
+);
+
 const occupiedCodeTwo = render(
   withOccupancy(
     defaultStates({
@@ -359,7 +469,14 @@ const missingOccupancy = render(
   occupancyConfig
 );
 assert.match(missingOccupancy, /Occupancy unknown/);
-assert.match(missingOccupancy, /sr-badge sr-badge-neutral">not measuring/);
+// A broken gate is a fault, not a calm empty bed: it must not wear the neutral
+// badge that means "the bed is empty and that is fine".
+assert.match(missingOccupancy, /class="sr-badge">occupancy fault/);
+assert.doesNotMatch(
+  missingOccupancy,
+  /<div class="sr-badge sr-badge-neutral">/,
+  "a missing occupancy entity must not render the benign not-measuring badge"
+);
 assert.equal(
   (missingOccupancy.match(/<div class="sr-stat-value">—/g) || []).length,
   2,
@@ -586,3 +703,361 @@ assert.doesNotMatch(
   />11\s*<span class="sr-unit">br\/min<\/span>/,
   "unknown freshness must not render retained breathing as live"
 );
+
+// --- Occupancy gate config validation edge cases --------------------------
+
+for (const invalidMapping of ["sensor.example_bed_status", 5, [], true, undefined]) {
+  assert.throws(
+    () => new Card().setConfig({ bed_occupancy: invalidMapping }),
+    /bed_occupancy must be a mapping/,
+    `bed_occupancy ${JSON.stringify(invalidMapping)} must fail closed as a mapping`
+  );
+}
+
+for (const invalidEntity of [42, "", "   ", null, {}, ["sensor.x"]]) {
+  assert.throws(
+    () =>
+      new Card().setConfig({
+        bed_occupancy: { entity: invalidEntity, occupied_states: ["on"] },
+      }),
+    /bed_occupancy\.entity is required/,
+    `bed_occupancy.entity ${JSON.stringify(invalidEntity)} must be rejected`
+  );
+}
+
+assert.throws(
+  () =>
+    new Card().setConfig({
+      bed_occupancy: {
+        entity: "  sensor.aqara_fp2_sleep_heart_rate  ",
+        occupied_states: ["on"],
+      },
+    }),
+  /bed_occupancy\.entity must be independent/,
+  "a padded gate entity must be trimmed before the self-reference check"
+);
+
+const mutableOccupiedStates = ["Wach"];
+const mutationCard = new Card();
+mutationCard.setConfig({
+  bed_occupancy: {
+    entity: "sensor.example_bed_status",
+    occupied_states: mutableOccupiedStates,
+  },
+});
+mutableOccupiedStates.length = 0;
+mutableOccupiedStates.push("Leer");
+mutationCard.hass = {
+  states: withOccupancy(
+    defaultStates({ sleepState: "3", updated: "2026-07-03T08:00:00.000Z" }),
+    "Wach"
+  ),
+};
+assert.match(
+  mutationCard.shadowRoot.innerHTML,
+  />54\s*<span class="sr-unit">bpm<\/span>/,
+  "occupied_states must be copied so later config mutation cannot flip the gate"
+);
+
+// An inverted helper (occupied when the binary sensor is "off") is a real
+// wiring shape; the explicit occupied_states list must win over the "on"
+// default that binary_sensor entities otherwise get.
+const invertedGateConfig = {
+  bed_occupancy: { entity: "binary_sensor.bed_empty", occupied_states: ["off"] },
+};
+function withInvertedGate(state) {
+  return {
+    ...defaultStates({
+      sleepState: "3",
+      heartRate: "98765",
+      respirationRate: "87654",
+      updated: "2026-07-03T08:00:00.000Z",
+    }),
+    "binary_sensor.bed_empty": {
+      state,
+      last_updated: "2026-07-03T08:00:00.000Z",
+    },
+  };
+}
+const invertedOccupied = render(withInvertedGate("off"), invertedGateConfig);
+assert.match(invertedOccupied, />98765\s*<span class="sr-unit">bpm<\/span>/);
+assert.match(invertedOccupied, />87654\s*<span class="sr-unit">br\/min<\/span>/);
+assert.doesNotMatch(invertedOccupied, /Occupancy unknown/);
+const invertedEmpty = render(withInvertedGate("on"), invertedGateConfig);
+assert.match(invertedEmpty, /Out of bed/);
+assertValuesHidden(
+  invertedEmpty,
+  ["98765", "87654"],
+  "an inverted gate reporting empty must hide retained vitals"
+);
+
+// --- Ghost-vitals incident regression -------------------------------------
+// tests/fixtures/ghost-vitals-incident.json records ~150 min of continuously
+// empty occupancy while the FP2 kept reporting sleep codes 4/5/3 and moving
+// heart rates. The gated card must surface neither the stage label nor the
+// vitals for any code in that recorded sequence.
+const ghostVitalsIncident = JSON.parse(
+  fs.readFileSync(path.join(__dirname, "fixtures/ghost-vitals-incident.json"), "utf8")
+);
+assert.equal(
+  ghostVitalsIncident.occupancy.continuous_state,
+  "empty",
+  "the incident fixture must describe a continuously empty bed"
+);
+const incidentHeartRate = String(ghostVitalsIncident.heart_rate.maximum_bpm);
+const incidentBreathing = String(ghostVitalsIncident.heart_rate.minimum_bpm);
+for (const incidentCode of ghostVitalsIncident.sleep_state.reported_codes) {
+  const incidentCard = render(
+    withOccupancy(
+      defaultStates({
+        sleepState: String(incidentCode),
+        heartRate: incidentHeartRate,
+        respirationRate: incidentBreathing,
+        updated: "2026-07-03T08:00:00.000Z",
+      }),
+      "Leer"
+    ),
+    occupancyConfig
+  );
+  assert.match(
+    incidentCard,
+    /Out of bed/,
+    `incident code ${incidentCode} must still read as out of bed`
+  );
+  for (const stageLabel of ["REM", "Light sleep", "Deep sleep"]) {
+    assert.doesNotMatch(
+      incidentCard,
+      new RegExp(stageLabel),
+      `incident code ${incidentCode} must not leak the stage label ${stageLabel}`
+    );
+  }
+  assert.equal(
+    (incidentCard.match(/<div class="sr-stat-value">—/g) || []).length,
+    2,
+    `incident code ${incidentCode} must render dashes for both vitals`
+  );
+  assertValuesHidden(
+    incidentCard,
+    [incidentHeartRate, incidentBreathing],
+    `incident code ${incidentCode} must hide ghost vitals`
+  );
+}
+
+// --- Gated rendering for codes the gate cannot relabel ---------------------
+
+for (const unmappedState of ["9", "3-bad", "-1"]) {
+  const gatedUnmapped = render(
+    withOccupancy(
+      defaultStates({
+        sleepState: unmappedState,
+        heartRate: "98765",
+        respirationRate: "87654",
+        updated: "2026-07-03T08:00:00.000Z",
+      }),
+      "Wach"
+    ),
+    occupancyConfig
+  );
+  assert.match(
+    gatedUnmapped,
+    /<div class="sr-phase">Unknown/,
+    `gated unmapped state ${unmappedState} must render as Unknown`
+  );
+  assert.match(gatedUnmapped, /unmapped code/);
+  assert.match(gatedUnmapped, /cannot map this sleep state yet/);
+  assert.doesNotMatch(
+    gatedUnmapped,
+    /Out of bed/,
+    `gated unmapped state ${unmappedState} must never claim an empty bed`
+  );
+  assertValuesHidden(
+    gatedUnmapped,
+    ["98765", "87654"],
+    `gated unmapped state ${unmappedState} must hide vitals`
+  );
+}
+
+for (const missingSleepState of [undefined, "unavailable", "None"]) {
+  const states =
+    missingSleepState === undefined
+      ? {}
+      : defaultStates({
+          sleepState: missingSleepState,
+          heartRate: "98765",
+          respirationRate: "87654",
+          updated: "2026-07-03T08:00:00.000Z",
+        });
+  const openGateNoData = render(withOccupancy(states, "Wach"), occupancyConfig);
+  assert.match(
+    openGateNoData,
+    /No data from sensor\.aqara_fp2_sleep_sleep_state yet/,
+    `an open gate with sleep state ${String(missingSleepState)} must still show onboarding help`
+  );
+  assertValuesHidden(
+    openGateNoData,
+    ["98765", "87654"],
+    "the onboarding card must not leak retained vitals"
+  );
+}
+
+const gatedFutureDated = render(
+  withOccupancy(
+    defaultStates({
+      sleepState: "3",
+      heartRate: "98765",
+      respirationRate: "87654",
+      updated: "2026-07-03T08:01:00.000Z",
+    }),
+    "Wach"
+  ),
+  occupancyConfig
+);
+assert.match(gatedFutureDated, /Freshness unknown/);
+assert.match(gatedFutureDated, /last reported/);
+assertValuesHidden(
+  gatedFutureDated,
+  ["98765", "87654"],
+  "confirmed occupancy must not override an unusable sleep-state timestamp"
+);
+
+const gatedCodeZeroStatus = render(
+  withOccupancy(
+    defaultStates({ sleepState: "0", updated: "2026-07-03T08:00:00.000Z" }),
+    "Wach"
+  ),
+  occupancyConfig
+);
+assert.match(gatedCodeZeroStatus, /Not measuring/);
+assert.doesNotMatch(
+  gatedCodeZeroStatus,
+  /Paused out of bed/,
+  "a confirmed-occupancy code 0 must not claim vitals are paused out of bed"
+);
+assert.match(gatedCodeZeroStatus, /Independent occupancy confirms someone is in bed/);
+
+for (const [gatedCode, gatedLabel] of [
+  ["3", "REM"],
+  ["4", "Light sleep"],
+  ["5", "Deep sleep"],
+]) {
+  const gatedStage = render(
+    withOccupancy(
+      defaultStates({ sleepState: gatedCode, updated: "2026-07-03T08:00:00.000Z" }),
+      "Schlafend"
+    ),
+    occupancyConfig
+  );
+  assert.match(
+    gatedStage,
+    new RegExp(`<div class="sr-phase">${gatedLabel}`),
+    `gated code ${gatedCode} must keep the ${gatedLabel} stage label`
+  );
+  assert.match(gatedStage, /the sensor's best guess/);
+  assert.match(gatedStage, /sensor-reported measurements/);
+  assert.match(gatedStage, /Live now/);
+  assert.match(
+    gatedStage,
+    new RegExp(`${gatedLabel} — heart 54 bpm, breathing 11 br\\/min`)
+  );
+}
+
+// The ungated footer wording changed from "measured directly by the sensor"
+// to "sensor-reported measurements"; pin it so it cannot drift back.
+const ungatedDeepSleep = render(
+  defaultStates({ sleepState: "5", updated: "2026-07-03T08:00:00.000Z" })
+);
+assert.match(ungatedDeepSleep, /sensor-reported measurements/);
+assert.match(ungatedDeepSleep, /Sleep stage is the device's best guess/);
+assert.doesNotMatch(
+  ungatedDeepSleep,
+  /measured directly by the sensor/,
+  "the ungated footer must not reassert direct measurement"
+);
+
+const gatedStaleCodeZero = render(
+  withOccupancy(
+    defaultStates({ sleepState: "0", updated: "2026-07-03T07:56:00.000Z" }),
+    "Wach"
+  ),
+  occupancyConfig
+);
+assert.match(gatedStaleCodeZero, /class="sr-badge">stale/);
+assert.doesNotMatch(
+  gatedStaleCodeZero,
+  /not measuring/,
+  "a stale gated card must show the stale badge, not the neutral one"
+);
+assert.match(gatedStaleCodeZero, /<div class="sr-phase">In bed/);
+assert.match(gatedStaleCodeZero, /last reported/);
+assert.doesNotMatch(gatedStaleCodeZero, /Out of bed/);
+
+// --- Blocked-card header contract -----------------------------------------
+
+assert.match(
+  missingOccupancy,
+  /sr-eyebrow">CURRENT STATUS<\/div>/,
+  "a missing gate entity leaves the blocked header without a timestamp segment"
+);
+assert.doesNotMatch(
+  ghostVitalsBlocked,
+  /CURRENT STATUS · (?:Updated|Stale|Freshness)/,
+  "the blocked card reports the gate timestamp, not sleep-state freshness"
+);
+assert.match(ghostVitalsBlocked, /sr-eyebrow">CURRENT STATUS · /);
+
+// --- Gate recovery and the cheap re-render guard ---------------------------
+
+const recoveryCard = new Card();
+recoveryCard.setConfig(occupancyConfig);
+recoveryCard.hass = {
+  states: withOccupancy(
+    defaultStates({ sleepState: "3", updated: "2026-07-03T08:00:00.000Z" }),
+    "Leer",
+    "2026-07-03T07:59:00.000Z"
+  ),
+};
+assert.match(recoveryCard.shadowRoot.innerHTML, /Out of bed/);
+recoveryCard.hass = {
+  states: withOccupancy(
+    defaultStates({ sleepState: "3", updated: "2026-07-03T08:00:00.000Z" }),
+    "Schlafend",
+    "2026-07-03T08:00:05.000Z"
+  ),
+};
+assert.doesNotMatch(
+  recoveryCard.shadowRoot.innerHTML,
+  /Out of bed/,
+  "reopening the gate must clear the blocked card"
+);
+assert.match(
+  recoveryCard.shadowRoot.innerHTML,
+  />54\s*<span class="sr-unit">bpm<\/span>/,
+  "reopening the gate must restore live vitals"
+);
+
+const guardCard = new Card();
+guardCard.setConfig(occupancyConfig);
+const guardStates = withOccupancy(
+  defaultStates({ sleepState: "3", updated: "2026-07-03T08:00:00.000Z" }),
+  "Schlafend"
+);
+guardCard.hass = { states: guardStates };
+guardCard.shadowRoot.innerHTML = "SENTINEL";
+guardCard.hass = { states: guardStates };
+assert.equal(
+  guardCard.shadowRoot.innerHTML,
+  "SENTINEL",
+  "an unchanged gated state must not repaint the card"
+);
+guardCard.hass = {
+  states: withOccupancy(
+    defaultStates({ sleepState: "3", updated: "2026-07-03T08:00:00.000Z" }),
+    "Leer"
+  ),
+};
+assert.notEqual(
+  guardCard.shadowRoot.innerHTML,
+  "SENTINEL",
+  "a gate-only change must invalidate the re-render guard"
+);
+assert.match(guardCard.shadowRoot.innerHTML, /Out of bed/);

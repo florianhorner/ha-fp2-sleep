@@ -94,6 +94,19 @@ function isInBedCode(code) {
   return IN_BED_SLEEP_CODES.has(code);
 }
 
+// Entity ids arrive from user YAML, so they are normalized once here and the
+// normalized value is what both hass.states lookups and the bed_occupancy
+// independence check see. Rejecting non-strings outright is deliberate: a
+// silent String() coercion is what let an array override slip past the
+// independence check while still resolving to a real entity.
+function resolveEntityId(override, fallback) {
+  if (override === undefined || override === null) return fallback;
+  if (typeof override !== "string") {
+    throw new Error("entities overrides must be entity id strings");
+  }
+  return override.trim() || fallback;
+}
+
 function formatAge(ageMs) {
   if (!Number.isFinite(ageMs) || ageMs < 0) return "";
   const seconds = Math.floor(ageMs / 1000);
@@ -238,10 +251,18 @@ class SleepradarCard extends HTMLElement {
     const nodeId = sanitizeNodeId(config && config.mqtt_node_id);
     const defaults = defaultEntities(nodeId);
     const overrides = (config && config.entities) || {};
+    // Overrides must be normalized to trimmed strings BEFORE they are compared
+    // against bed_occupancy.entity below. A non-string override (e.g. the
+    // one-element YAML array `sleep_state: [sensor.x]`) is not strictly equal
+    // to the gate string, but coerces to the same key on a hass.states lookup —
+    // so without this the gate could resolve to the very entity it arbitrates.
     this._entityIds = {
-      sleep_state: overrides.sleep_state || defaults.sleep_state,
-      heart_rate: overrides.heart_rate || defaults.heart_rate,
-      respiration_rate: overrides.respiration_rate || defaults.respiration_rate,
+      sleep_state: resolveEntityId(overrides.sleep_state, defaults.sleep_state),
+      heart_rate: resolveEntityId(overrides.heart_rate, defaults.heart_rate),
+      respiration_rate: resolveEntityId(
+        overrides.respiration_rate,
+        defaults.respiration_rate
+      ),
     };
     const hasBedOccupancyConfig =
       config && Object.prototype.hasOwnProperty.call(config, "bed_occupancy");
@@ -280,9 +301,28 @@ class SleepradarCard extends HTMLElement {
           "bed_occupancy.occupied_states must contain non-empty strings"
         );
       }
+      // Stored trimmed: the comparison at render time is a strict includes(),
+      // so an untrimmed " on " would validate here and then never match a real
+      // state — a gate that is silently dead rather than loudly wrong.
+      const normalizedStates = occupiedStates.map((state) => state.trim());
+      // A gate that treats every state as occupied is not a gate. Both of these
+      // passed shape validation before and produced a permanently-open gate
+      // that rendered retained vitals over an empty bed.
+      if (normalizedStates.some((state) => UNAVAILABLE_STATES.has(state))) {
+        throw new Error(
+          "bed_occupancy.occupied_states must not contain unknown, unavailable, " +
+            "none, or empty states; those always mean uncertain occupancy"
+        );
+      }
+      if (normalizedStates.includes("on") && normalizedStates.includes("off")) {
+        throw new Error(
+          "bed_occupancy.occupied_states must not contain both 'on' and 'off'; " +
+            "that leaves no state that means the bed is empty"
+        );
+      }
       this._bedOccupancy = {
         entity,
-        occupiedStates: [...occupiedStates],
+        occupiedStates: normalizedStates,
       };
     } else {
       this._bedOccupancy = null;
@@ -355,7 +395,15 @@ class SleepradarCard extends HTMLElement {
         occupancyIsKnown &&
         this._bedOccupancy.occupiedStates.includes(occupancyObj.state);
       if (!occupancyIsOccupied) {
-        this._renderOccupancyBlocked(!occupancyIsKnown, occupancyObj);
+        // The bed is empty most of the day, so this is the card's dominant
+        // display state. It must not also swallow the sleep-state health
+        // signals: a missing entity id or a dead poller would otherwise look
+        // exactly like a healthy empty bed for ~16h a day.
+        this._renderOccupancyBlocked(
+          !occupancyIsKnown,
+          occupancyObj,
+          this._sleepStateHealth(stateObj)
+        );
         return;
       }
     }
@@ -479,17 +527,55 @@ class SleepradarCard extends HTMLElement {
       </ha-card>`;
   }
 
-  _renderOccupancyBlocked(isUnknown, occupancyObj) {
+  // Health of the sleep-state feed, evaluated independently of the occupancy
+  // gate so the blocked card can report it. Returns "ok" only when the entity
+  // exists, is available, and its timestamp is inside the stale window.
+  _sleepStateHealth(stateObj) {
+    if (!stateObj || UNAVAILABLE_STATES.has(stateObj.state)) {
+      return {
+        status: "missing",
+        note:
+          "SleepRadar is not reporting a sleep state. Check that the app is " +
+          "running and that this card points at the right entity id.",
+      };
+    }
+    const ageMs = Date.now() - parseTimestampMs(stateObj.last_updated);
+    const staleAfterMs = this._pollIntervalSeconds * 1000 * 3;
+    if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs > staleAfterMs) {
+      return {
+        status: "stale",
+        note:
+          "The sleep-state feed is stale. Occupancy is still being read, but " +
+          "check the app and MQTT.",
+      };
+    }
+    return { status: "ok", note: "" };
+  }
+
+  _renderOccupancyBlocked(isUnknown, occupancyObj, sleepHealth) {
+    const health = sleepHealth || { status: "ok", note: "" };
     const phase = isUnknown ? "Occupancy unknown" : "Out of bed";
     const phaseCaption = isUnknown ? "occupancy unavailable" : "bed empty";
     const readout = isUnknown
       ? "Occupancy unknown. Heart rate and breathing are not shown."
       : "Out of bed. Heart rate and breathing are not currently measured.";
     const vitalStatus = isUnknown ? "Occupancy unknown" : "Paused out of bed";
-    const footer = isUnknown
+    const baseFooter = isUnknown
       ? "Heart rate and breathing are hidden because the independent bed-occupancy state is unavailable."
       : "Heart rate and breathing are hidden while the independent bed-occupancy sensor reports the bed is empty.";
+    const footer = health.note ? `${baseFooter} ${health.note}` : baseFooter;
     const time = formatTime(occupancyObj && occupancyObj.last_updated);
+    // An empty bed is expected and stays calm; a broken gate or a dead
+    // sleep-state feed is a fault and must not wear the same neutral badge.
+    // Each badge carries its own word, so the state never depends on hue alone.
+    const badge = isUnknown
+      ? "occupancy fault"
+      : health.status === "stale"
+        ? "stale"
+        : health.status === "missing"
+          ? "no sensor data"
+          : "not measuring";
+    const badgeClass = badge === "not measuring" ? " sr-badge-neutral" : "";
 
     this.shadowRoot.innerHTML = this._styles() + `
       <ha-card>
@@ -503,7 +589,7 @@ class SleepradarCard extends HTMLElement {
                 <span class="sr-caption">${escapeHtml(phaseCaption)}</span>
               </div>
             </div>
-            <div class="sr-badge sr-badge-neutral">not measuring</div>
+            <div class="sr-badge${badgeClass}">${escapeHtml(badge)}</div>
           </div>
           <div class="sr-readout">${escapeHtml(readout)}</div>
           <div class="sr-stats">
