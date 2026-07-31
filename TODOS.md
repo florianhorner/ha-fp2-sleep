@@ -175,6 +175,98 @@ cycle; none blocks the current CI or falsifies published binaries today.
 
 **Effort:** M **Priority:** P2 **Depends on:** shipped Quiet Proof Loops PR
 
+## Occupancy gate (pre-ship review squad, 2026-07-31)
+
+### Stop trusting `last_updated` as measurement freshness
+
+**What:** The card's `isFresh`/`isStale` calculation reads
+`sensor.aqara_fp2_sleep_sleep_state.last_updated`, but the app publishes with
+MQTT `force_update: true` (required by `scripts/validate_repository.py`), so Home
+Assistant rewrites `last_updated` **and** `last_changed` on every poll even when
+the value is byte-identical. "Live now" therefore means "the poller is alive",
+never "this value is current". Either publish a source-level sample timestamp or
+sample id from the Aqara payload and consume that, or drop the freshness and
+live-vitals claims where no trustworthy measurement timestamp exists.
+
+**Why:** Two independent adversarial reviews landed on this, and it is the
+mechanism behind the original ghost-vitals incident. The occupancy gate now
+covers the empty-bed case, but an occupied bed with a wedged poller still renders
+retained vitals as `Live now`.
+
+**Effort:** M **Priority:** P1 **Depends on:** poller payload inspection
+
+### Classify unrecognized occupancy states as unknown, not empty
+
+**What:** `_render` treats any occupancy state outside `occupied_states` as "the
+bed is empty" unless it is in `UNAVAILABLE_STATES`. A sensor reporting `Off`
+(capital O), `offline`, `error`, or `calibrating` renders **Out of bed** with the
+footer "the independent bed-occupancy sensor reports the bed is empty" — a
+positive claim the sensor never made. Add an explicit `unoccupied_states` and
+classify everything outside both sets as `Occupancy unknown`.
+
+**Why:** Safe direction (vitals stay hidden) but the card fabricates a claim
+about a third-party sensor. Reproduced by two reviewers.
+
+**Effort:** S **Priority:** P2 **Depends on:** none
+
+### Reconcile the card and the template on codes 1/2
+
+**What:** With occupancy confirmed and raw code `1`/`2`, the card renders live
+heart rate and breathing (`IN_BED_SLEEP_CODES` still contains 1 and 2), while
+`examples/sleep_tracking.yaml` gates vitals on `code in [3, 4, 5]` and leaves
+`binary_sensor.fp2_asleep` off. Two shipped surfaces, two answers, for codes the
+project itself declares to have no verified meaning. The validator pins each
+independently and never cross-checks them.
+
+**Why:** Whichever answer is right, publishing both invites a support question
+nobody can answer from the docs.
+
+**Effort:** S **Priority:** P2 **Depends on:** decision on what codes 1/2 mean
+
+### Remaining fail-open guards in `scripts/validate_repository.py`
+
+**What:** Comment-stripping fixed `check_card_phase_semantics`, but the same
+substring-instead-of-parse shape survives elsewhere: `check_dashboard_maps`
+regexes the raw YAML for `const phases` (a comment satisfies it),
+`check_automation_gates` substring-matches `json.dumps` of a whole automation so
+a free-text `alias` counts as a gate, `check_examples_readme_gate_contract`
+matches six phrases anywhere in a whitespace-normalized blob (a "do NOT do this"
+block passes), and `check_ghost_vitals_evidence` requires bare two-digit tokens
+(`27`, `17`, `50`, `77`) that any incidental digits satisfy. Each was reproduced.
+Also: `run_self_test` is a single 477-line function and the module is ~1900
+lines; split by contract area.
+
+**Why:** A guard that can be satisfied by prose is a guard that will be, and this
+file is the repo's only CI-enforced contract layer.
+
+**Effort:** M **Priority:** P2 **Depends on:** none
+
+### Drop `.context` from the privacy scanner's SKIP_DIRS
+
+**What:** `.gitignore` now excludes the agent working-notes directory, but
+`scripts/validate_repository.py` still lists `.context` in `SKIP_DIRS`, so the
+privacy scan skips it. An ignore
+list and a scan-skip list should not be the same trust decision — scan tracked
+files via `git ls-files` instead of skipping by directory name.
+
+**Why:** Defense in depth on a public repo about a real bedroom. The ignore rule
+is the fix; this is the second layer.
+
+**Effort:** S **Priority:** P2 **Depends on:** none
+
+### Make `aqara_fp2_sleep/Dockerfile`'s version fallback undriftable
+
+**What:** `config.yaml` says `1.2.2`, `Dockerfile` says `ARG BUILD_VERSION=1.2.1`.
+Benign today — CI and the HA Supervisor both pass `--build-arg` explicitly, so
+the default is unreachable — but it can silently claim a wrong release. Change
+the fallback to `dev` and leave `config.yaml` the single source of truth.
+Separately, `aqara_fp2_sleep_poller.py` hardcodes `sw_version` /
+`ORIGIN["sw"]` as `1.0.0`, so every user's HA device page shows `1.0.0`.
+
+**Why:** Same class, both pre-existing, neither covered by a validator.
+
+**Effort:** S **Priority:** P3 **Depends on:** none
+
 ## Completed
 
 ### Real "Last night" dashboard view
