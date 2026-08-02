@@ -4,18 +4,19 @@
 
 - Contributor tooling only; no change to the add-on itself. The local
   pre-PR validation chain now runs the same gates as CI's `validate` job from a
-  single shared list, so the two cannot drift apart. Repository tooling requires
-  Python 3.11+ (the add-on runtime is unchanged). Adds
+  single shared list, reducing the chance of gate-membership drift between
+  them. Repository tooling requires Python 3.11+ (the add-on runtime is
+  unchanged). Adds
   `docs/repository-validation.md` describing what the validator checks, how the
   local and CI lanes relate, and how to change a gate safely, plus direct
   bug-report and security-policy links in the README.
 
 - Hardens the repository validator so its own checks assert behavior rather than
-  the presence of expected text, with regression coverage for each check, and
-  makes the CI secret-scanning controls prove both that the config detects a
-  planted value and that it excludes generated local state. Also adds a
-  command-line test suite for the validator and makes it independent of ambient
-  environment variables.
+  the presence of expected text, with regression coverage for the new guard
+  paths (coverage is not exhaustive), and makes the CI secret-scanning controls
+  prove both that the config detects a planted value and that it excludes
+  generated local state. Also adds a command-line test suite for the validator
+  and makes it independent of ambient environment variables.
 
 - Adds the "Last night" feature GIF to the README dashboard section and tracks
   its reproducible production source in git: `videos/` now carries the frame
