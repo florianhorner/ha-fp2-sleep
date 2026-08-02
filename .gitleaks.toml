@@ -1,5 +1,12 @@
 # gitleaks config for SleepRadar.
 #
+# Requires a Gitleaks build that supports the top-level `[[allowlists]]` array
+# form used below (verified on 8.30.x, the version CI pins in
+# GITLEAKS_VERSION). Older builds tolerate unknown config keys instead of
+# rejecting them, so they silently drop EVERY exception here and report the
+# Aqara constants as leaks. Match the pinned version locally; see
+# CONTRIBUTING.md.
+#
 # The "appid" and "appkey" values embedded in
 # aqara_fp2_sleep/aqara_fp2_sleep_poller.py are the Aqara Home app's PUBLIC
 # built-in constants (one set per region: CN/EU/USA/RU/KR). They are NOT user
@@ -14,7 +21,7 @@
 [extend]
 useDefault = true
 
-[allowlist]
+[[allowlists]]
 description = "Aqara public app constants (appid/appkey), not user secrets"
 regexTarget = "line"
 regexes = [
@@ -25,4 +32,29 @@ regexes = [
   # shapes cannot hold a real credential.
   '''expected_failure="[a-z][a-z .-]{2,30}"''',
   '''key == "profile_file"''',
+]
+
+# Conductor/gstack writes local tool state here. `gitleaks dir` does NOT honor
+# .gitignore, so without this the documented local scan fails on generated
+# noise. Scoped to the specific generated filenames rather than the whole
+# directory: a path-wide rule prunes the file walk, so anything a future tool
+# dropped in .gstack/ would be invisible to Gitleaks' full secret ruleset.
+# Repository validation separately forbids tracking .gstack paths, and
+# scripts/validate_repository.py's privacy scan still walks .gstack/*.json
+# and *.txt content for the narrower PRIVATE_PATTERNS set (it does not skip
+# .gstack/ — see SKIP_DIRS) — that scan is independent of this allowlist.
+# Note the extension asymmetry: TEXT_SUFFIXES covers .json but NOT .log or
+# .jsonl, so for those two the residual controls are .gitignore plus
+# validate_tracked_paths()' rejection of tracked .gstack paths — the privacy
+# scan does not read them.
+[[allowlists]]
+description = "Generated Conductor/gstack tool state"
+# Generated tool state is always a log or a JSON document. Anything else that
+# appears under .gstack/ (a stray .env, .pem, .key, .txt) is still scanned.
+# The `^` anchor matches the repository-relative paths Gitleaks reports for
+# `gitleaks dir .` run FROM the repository root — the documented invocation.
+# Scanning an absolute path (`gitleaks dir /path/to/repo`) yields paths this
+# never matches, so generated state is reported instead of excluded.
+paths = [
+  '''^\.gstack/(?:[A-Za-z0-9._-]+/)*[A-Za-z0-9._-]+\.(?:log|jsonl|json)$''',
 ]

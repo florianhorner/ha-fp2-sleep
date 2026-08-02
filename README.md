@@ -297,6 +297,19 @@ If required fields are blank, SleepRadar logs the missing field and waits about
 - Check actual entity IDs. See the Entity ID note in
   [The SleepRadar Card](#the-sleepradar-card).
 
+## Support
+
+For normal problems,
+[open the bug report form](https://github.com/florianhorner/ha-fp2-sleep/issues/new?template=bug_report.yml).
+For vulnerabilities, read the [security policy](SECURITY.md) and
+[report them privately](https://github.com/florianhorner/ha-fp2-sleep/security/advisories/new).
+
+## Contributing
+
+See [Contributing](CONTRIBUTING.md) for local setup and the pre-PR checks.
+The [repository validation reference](docs/repository-validation.md) explains
+gate ownership, CI and Conductor boundaries, and how to change a check safely.
+
 ## Security and Privacy
 
 Your Aqara credentials are stored in Home Assistant app options only. They are
@@ -308,4 +321,4 @@ from the Aqara Home app, not user credentials.
 SleepRadar re-authenticates when the session token expires but cannot
 guarantee the private API keeps working indefinitely.
 
-See `SECURITY.md` before opening an issue with logs.
+Follow the [security policy](SECURITY.md) before sharing logs.

@@ -12,6 +12,11 @@ __pycache__/
 *.local.md
 .gstack/
 
+# Scratch dir for the CI Gitleaks config self-test. CI cleans it up via trap;
+# this keeps an aborted local reproduction from leaving a planted fake
+# credential inside the prospective commit surface.
+.gitleaks-selftest/
+
 # Quiet Proof Loops: source is versioned; generated production output is not.
 videos/**/renders/
 videos/**/snapshots/

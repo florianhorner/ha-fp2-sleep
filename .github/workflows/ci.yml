@@ -52,6 +52,9 @@ jobs:
       - name: Validator drift self-test
         run: python3 scripts/validate_repository.py --self-test
 
+      - name: Test validator CLI
+        run: python3 tests/test_validate_repository_cli.py
+
       - name: Validate GIF sources
         run: python3 videos/validate-gif-batch.py
 
@@ -104,6 +107,23 @@ jobs:
             echo "Gitleaks self-test failed: fake secret was not detected" >&2
             exit 1
           fi
+
+      - name: Self-test repo config detects and excludes correctly
+        run: |
+          # The step above scans a temp dir, so it exercises the DEFAULT
+          # ruleset. This one scans "." so .gitleaks.toml is actually loaded,
+          # and asserts both directions: a planted secret in a normal path
+          # must fail, the same secret under generated .gstack/ state must not.
+          trap 'rm -rf .gitleaks-selftest .gstack/gitleaks-generated-state-self-test.json' EXIT
+          mkdir -p .gitleaks-selftest .gstack
+          printf 'api_key = "%s%s"\n' 'abcd1234efgh5678ijkl9012mnop3456' 'qrst7890uvwx' > .gitleaks-selftest/planted.txt
+          if gitleaks dir --no-banner --redact .; then
+            echo "Gitleaks config self-test failed: .gitleaks.toml did not detect a planted secret" >&2
+            exit 1
+          fi
+          rm -rf .gitleaks-selftest
+          printf 'api_key = "%s%s"\n' 'abcd1234efgh5678ijkl9012mnop3456' 'qrst7890uvwx' > .gstack/gitleaks-generated-state-self-test.json
+          gitleaks dir --no-banner --redact .
 
       - name: Scan current tree for secrets
         run: gitleaks dir --no-banner --redact --verbose .
