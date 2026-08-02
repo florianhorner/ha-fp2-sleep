@@ -574,6 +574,16 @@ def validate_workflow(jobs=None) -> None:
             ".github/workflows/ci.yml Check whitespace step must define "
             "BASE_SHA and HEAD_SHA in env"
         )
+    expected_whitespace_env = {
+        "BASE_SHA": "${{ github.event.pull_request.base.sha || github.event.before }}",
+        "HEAD_SHA": "${{ github.sha }}",
+    }
+    for variable, expected in expected_whitespace_env.items():
+        if whitespace_env.get(variable) != expected:
+            fail(
+                ".github/workflows/ci.yml Check whitespace step must derive "
+                f"{variable} from the GitHub event ({expected!r})"
+            )
     whitespace_lines = shell_command_lines(step_run(validate_steps, "Check whitespace"))
     for required in ['git diff --check "$BASE_SHA...$HEAD_SHA"', "git diff --check"]:
         if required not in whitespace_lines:
@@ -2101,6 +2111,20 @@ def run_self_test() -> None:
                     lambda steps: set_step_env(steps, "Check whitespace", {}),
                 )
             ),
+        )
+        expect_fail_matching(
+            "workflow whitespace step with static refs",
+            lambda: validate_workflow(
+                workflow_with(
+                    "validate",
+                    lambda steps: set_step_env(
+                        steps,
+                        "Check whitespace",
+                        {"BASE_SHA": "HEAD", "HEAD_SHA": "HEAD"},
+                    ),
+                )
+            ),
+            "derive BASE_SHA from the GitHub event",
         )
         # YAML types `on`, `yes` and `off` as bools, all legal GitHub job ids.
         # Sorting a mixed-type set must report the actionable failure rather
