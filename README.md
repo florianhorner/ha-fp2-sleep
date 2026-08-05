@@ -204,10 +204,14 @@ show the mapped stage and fresh sensor-reported vitals. Code `0` shows **In
 bed**, the existing **not measuring** badge, and dashes; codes `1` and `2` show
 **In bed — stage unknown** and may show fresh sensor-reported vitals. A
 concrete non-occupied state overrides every Aqara code with **Out of bed**,
-**not measuring**, and dashes. A missing entity or an `unknown`, `unavailable`,
-or otherwise invalid occupancy value renders **Occupancy unknown** and hides
-the vitals. This is fail-closed: uncertain occupancy never exposes retained
-values as live.
+**not measuring**, and dashes. A missing entity, a non-string state, or an
+`unknown`, `unavailable`, `none`, or empty value renders **Occupancy unknown**
+and hides the vitals. Any other state that is simply not listed in
+`occupied_states` — including device-specific ones like `offline` or
+`calibrating` — is treated as not occupied and renders **Out of bed**; the card
+does not claim the sensor reported an empty bed, only that it is not reporting
+an occupied one. Either way this is fail-closed: occupancy that is not
+positively confirmed never exposes retained values as live.
 
 The gate trusts Home Assistant's current state and availability. It has no
 occupancy-age timeout because stable binary sensors may legitimately remain

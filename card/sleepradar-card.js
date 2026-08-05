@@ -562,7 +562,12 @@ class SleepradarCard extends HTMLElement {
     const vitalStatus = isUnknown ? "Occupancy unknown" : "Paused out of bed";
     const baseFooter = isUnknown
       ? "Heart rate and breathing are hidden because the independent bed-occupancy state is unavailable."
-      : "Heart rate and breathing are hidden while the independent bed-occupancy sensor reports the bed is empty.";
+      : // Deliberately does not say the sensor "reports the bed is empty". Any
+        // state outside occupied_states lands here, including device states
+        // like offline, error or calibrating, and attributing an empty-bed
+        // reading to the sensor in those cases would be a claim it never made.
+        "Heart rate and breathing are hidden because the independent " +
+        "bed-occupancy sensor is not reporting an occupied state.";
     const footer = health.note ? `${baseFooter} ${health.note}` : baseFooter;
     const time = formatTime(occupancyObj && occupancyObj.last_updated);
     // An empty bed is expected and stays calm; a broken gate or a dead

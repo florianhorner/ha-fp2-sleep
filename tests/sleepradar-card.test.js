@@ -804,15 +804,21 @@ assert.equal(
   "empty",
   "the incident fixture must describe a continuously empty bed"
 );
+// The fixture is a sanitized aggregate and records no respiration figures, so
+// the breathing sentinel reuses the heart-rate range's other end. Both values
+// only ever feed "this must not appear anywhere in the render" assertions —
+// nothing here claims the FP2 reported them as a breathing rate.
 const incidentHeartRate = String(ghostVitalsIncident.heart_rate.maximum_bpm);
-const incidentBreathing = String(ghostVitalsIncident.heart_rate.minimum_bpm);
+const incidentBreathingSentinel = String(
+  ghostVitalsIncident.heart_rate.minimum_bpm
+);
 for (const incidentCode of ghostVitalsIncident.sleep_state.reported_codes) {
   const incidentCard = render(
     withOccupancy(
       defaultStates({
         sleepState: String(incidentCode),
         heartRate: incidentHeartRate,
-        respirationRate: incidentBreathing,
+        respirationRate: incidentBreathingSentinel,
         updated: "2026-07-03T08:00:00.000Z",
       }),
       "Leer"
@@ -838,7 +844,7 @@ for (const incidentCode of ghostVitalsIncident.sleep_state.reported_codes) {
   );
   assertValuesHidden(
     incidentCard,
-    [incidentHeartRate, incidentBreathing],
+    [incidentHeartRate, incidentBreathingSentinel],
     `incident code ${incidentCode} must hide ghost vitals`
   );
 }
