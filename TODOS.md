@@ -175,6 +175,26 @@ cycle; none blocks the current CI or falsifies published binaries today.
 
 **Effort:** M **Priority:** P2 **Depends on:** shipped Quiet Proof Loops PR
 
+### Make `baseline_commit` survive a squash merge
+
+**What:** Gap (5) above stopped being hypothetical. PR #34 squash-merged on
+2026-08-06 and every one of the five managed briefs pinned a branch commit, so
+all five `baseline_commit` values ceased to exist the moment the branch was
+squashed and `main` CI went red on `Validate GIF sources` with `commit does not
+exist in this repository`. A brief cannot pin its own merge commit, because that
+commit does not exist until after the merge — so the pin is guaranteed stale
+exactly once per PR, every PR, and the only remedy is a follow-up commit. Options:
+resolve a missing `baseline_commit` to the merge-base with `main` instead of
+failing; accept a tag or `unreleased` in place of a commit; or have CI re-pin
+automatically post-merge.
+
+**Why:** As built, the pin has never caught a false claim in this repo. It has
+only ever caught its own staleness, four times in one session, and once it took
+`main` down. A guard whose only observed failure mode is self-inflicted is
+costing more than it protects.
+
+**Effort:** M **Priority:** P1 **Depends on:** none
+
 ## Occupancy gate (pre-ship review squad, 2026-07-31)
 
 ### Stop trusting `last_updated` as measurement freshness
