@@ -21,8 +21,8 @@ truth:
     - "examples/automations.yaml:1-33"
     - "examples/sleep_tracking.yaml:73-89"
     - "README.md:252-263"
-  checked_at: "2026-07-31"
-  baseline_commit: "5a02e00003a0d87c73ce38aa19df139baab20f42"
+  checked_at: "2026-08-06"
+  baseline_commit: "906f6dcce80f206e624b7e205c0e54334745483b"
   release_tag: "v1.2.1"
   qualifiers:
     - "This is an optional Home Assistant comfort example, not built-in or safety-critical behavior."

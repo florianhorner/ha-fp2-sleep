@@ -27,8 +27,8 @@ truth:
     - "README.md:176-220"
     - "card/sleepradar-card.js:25-46"
     - "card/sleepradar-card.js:217-224"
-  checked_at: "2026-08-05"
-  baseline_commit: "f6df0eb7be3f080fb628bff187ce7873ce6f86cd"
+  checked_at: "2026-08-06"
+  baseline_commit: "906f6dcce80f206e624b7e205c0e54334745483b"
   # Not v1.2.1: that tag predates the occupancy gate entirely, so it cannot
   # certify the gate qualifiers below.
   release_tag: "unreleased"

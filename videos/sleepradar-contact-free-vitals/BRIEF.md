@@ -22,8 +22,8 @@ truth:
     - "README.md:37-50"
     - "DESIGN.md:12-20"
     - "aqara_fp2_sleep/aqara_fp2_sleep_poller.py:111-137"
-  checked_at: "2026-07-31"
-  baseline_commit: "5a02e00003a0d87c73ce38aa19df139baab20f42"
+  checked_at: "2026-08-06"
+  baseline_commit: "906f6dcce80f206e624b7e205c0e54334745483b"
   release_tag: "v1.2.1"
   qualifiers:
     - "The visible word measured identifies a sensor-reported signal category, not independent validation or clinical accuracy."

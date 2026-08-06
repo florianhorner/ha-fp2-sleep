@@ -23,8 +23,8 @@ truth:
     - "examples/sleep_tracking.yaml:10-44"
     - "https://opendoc.aqara.com/en/docs/developmanual/apiDocument/ResourceManagement.html"
     - "https://gist.github.com/Komzpa/396e66fb99592c14ba88e1bca21c11eb"
-  checked_at: "2026-07-31"
-  baseline_commit: "7b49e439626b103f297a59e383098aee00977d3c"
+  checked_at: "2026-08-06"
+  baseline_commit: "906f6dcce80f206e624b7e205c0e54334745483b"
   # Not v1.2.1: the indicative template labels this episode cites are not in
   # that tag.
   release_tag: "unreleased"

@@ -23,8 +23,8 @@ truth:
     - "examples/dashboard-sleep.yaml:13-88"
     - "examples/dashboard-sleep.yaml:90-155"
     - "TODOS.md:98-110"
-  checked_at: "2026-07-31"
-  baseline_commit: "5a02e00003a0d87c73ce38aa19df139baab20f42"
+  checked_at: "2026-08-06"
+  baseline_commit: "906f6dcce80f206e624b7e205c0e54334745483b"
   release_tag: "unreleased"
   qualifiers:
     - "This is an optional dashboard example that requires one night of Recorder history."
