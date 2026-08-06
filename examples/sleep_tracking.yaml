@@ -1,72 +1,89 @@
 # Optional template helpers for SleepRadar.
 #
-# Pre-wired to the app's own default entity IDs (sensor.aqara_fp2_sleep_*).
-# Copy this in as-is unless you changed mqtt_node_id from the default
-# "aqara_fp2_sleep" in the app configuration — in that case, update the
-# three states('sensor.aqara_fp2_sleep_*') references below to match.
+# These helpers require an independent occupancy source exposed as
+# binary_sensor.bed_occupied. Create or rename that entity before copying this
+# file. It must not be derived from sensor.aqara_fp2_sleep_sleep_state.
+#
+# The raw SleepRadar entities use the default mqtt_node_id "aqara_fp2_sleep".
+# If you changed mqtt_node_id, update the sensor.aqara_fp2_sleep_* references.
 
 - sensor:
-    # Plain sleep stage. Aqara codes 1 and 2 are both "awake", so we show a
-    # single "Awake" instead of the confusing "in bed" vs "awake" split. The
-    # raw code stays available as an attribute.
+    # Occupancy is authoritative for in/out-of-bed. Raw codes 0, 1, and 2 do
+    # not have a verified public meaning, so an occupied bed reports an unknown
+    # stage for those values. Codes 3–5 are indicative sensor-reported stages.
     - name: "FP2 Sleep Phase"
       unique_id: fp2_sleep_phase
       state: >
+        {% set occupancy = states('binary_sensor.bed_occupied') %}
         {% set code = states('sensor.aqara_fp2_sleep_sleep_state') | int(-1) %}
         {% set phases = {
-          0: 'Out of bed',
-          1: 'Awake',
-          2: 'Awake',
-          3: 'REM',
-          4: 'Light sleep',
-          5: 'Deep sleep'
+          3: 'REM (indicative)',
+          4: 'Light sleep (indicative)',
+          5: 'Deep sleep (indicative)'
         } %}
-        {{ phases.get(code, 'Unknown') }}
+        {% if occupancy == 'off' %}Out of bed
+        {% elif occupancy == 'on' %}{{ phases.get(code, 'In bed — stage unknown') }}
+        {% else %}Unknown{% endif %}
       icon: >
         {% set phase = this.state | default('Unknown') %}
-        {% if phase == 'Deep sleep' %} mdi:weather-night
-        {% elif phase == 'Light sleep' %} mdi:power-sleep
-        {% elif phase == 'REM' %} mdi:brain
-        {% elif phase == 'Awake' %} mdi:eye
+        {% if phase == 'Deep sleep (indicative)' %} mdi:weather-night
+        {% elif phase == 'Light sleep (indicative)' %} mdi:power-sleep
+        {% elif phase == 'REM (indicative)' %} mdi:brain
+        {% elif phase == 'In bed — stage unknown' %} mdi:bed
         {% elif phase == 'Out of bed' %} mdi:bed-empty
         {% else %} mdi:help-circle-outline
         {% endif %}
       attributes:
         raw_code: "{{ states('sensor.aqara_fp2_sleep_sleep_state') }}"
+        occupancy_gate: "{{ states('binary_sensor.bed_occupied') }}"
       availability: >
-        {{ states('sensor.aqara_fp2_sleep_sleep_state')
-           not in ['unavailable', 'unknown', 'none', none] }}
+        {% set occupancy = states('binary_sensor.bed_occupied') %}
+        {% set raw = states('sensor.aqara_fp2_sleep_sleep_state') %}
+        {{ occupancy in ['on', 'off']
+           and (occupancy == 'off'
+                or raw not in ['unavailable', 'unknown', 'none', none]) }}
 
-    # Plain-language live read: what the sensor sees right now, in one line.
-    # Good as the primary text of a Mushroom template card.
+    # Plain-language live read. Vitals are shown only when independent
+    # occupancy is confirmed and the sensor reports an indicative stage.
     - name: "FP2 Sleep Now"
       unique_id: fp2_sleep_now
       state: >
+        {% set occupancy = states('binary_sensor.bed_occupied') %}
         {% set code = states('sensor.aqara_fp2_sleep_sleep_state') | int(-1) %}
         {% set hr = states('sensor.aqara_fp2_sleep_heart_rate') %}
         {% set br = states('sensor.aqara_fp2_sleep_respiration_rate') %}
         {% set names = {
-          0: 'Out of bed', 1: 'Awake in bed', 2: 'Awake in bed',
-          3: 'REM', 4: 'Light sleep', 5: 'Deep sleep'
+          3: 'REM (indicative)',
+          4: 'Light sleep (indicative)',
+          5: 'Deep sleep (indicative)'
         } %}
-        {% set phase = names.get(code, 'Unknown') %}
-        {% if code in [1, 2, 3, 4, 5] %}
-        {{ phase }} - heart {{ hr }}, breathing {{ br }}
-        {% else %}{{ phase }}{% endif %}
+        {% if occupancy == 'off' %}Out of bed
+        {% elif occupancy == 'on' and code in [3, 4, 5] %}
+        {{ names[code] }} - heart {{ hr }}, breathing {{ br }}
+        {% elif occupancy == 'on' %}In bed — stage unknown
+        {% else %}Unknown{% endif %}
       icon: mdi:bed-clock
       availability: >
-        {{ states('sensor.aqara_fp2_sleep_sleep_state')
-           not in ['unavailable', 'unknown', 'none', none] }}
+        {% set occupancy = states('binary_sensor.bed_occupied') %}
+        {% set raw = states('sensor.aqara_fp2_sleep_sleep_state') %}
+        {{ occupancy in ['on', 'off']
+           and (occupancy == 'off'
+                or raw not in ['unavailable', 'unknown', 'none', none]) }}
 
 - binary_sensor:
-    # "Asleep" = the sensor reports a sleep stage (REM, light, or deep).
+    # "Asleep" requires both independent occupancy and an indicative sensor
+    # stage. Unknown occupancy makes this helper unavailable (fail closed).
     - name: "FP2 Asleep"
       unique_id: fp2_asleep
       state: >
+        {% set occupancy = states('binary_sensor.bed_occupied') %}
         {% set code = states('sensor.aqara_fp2_sleep_sleep_state') | int(-1) %}
-        {{ code in [3, 4, 5] }}
+        {{ occupancy == 'on' and code in [3, 4, 5] }}
       icon: >
         {{ 'mdi:sleep' if this.state == 'on' else 'mdi:sleep-off' }}
       availability: >
-        {{ states('sensor.aqara_fp2_sleep_sleep_state')
-           not in ['unavailable', 'unknown', 'none', none] }}
+        {% set occupancy = states('binary_sensor.bed_occupied') %}
+        {% set raw = states('sensor.aqara_fp2_sleep_sleep_state') %}
+        {{ occupancy in ['on', 'off']
+           and (occupancy == 'off'
+                or raw not in ['unavailable', 'unknown', 'none', none]) }}

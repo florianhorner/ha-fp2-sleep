@@ -15,8 +15,10 @@ generic hooks, stale renders, missing proof, or undefined delivery criteria.
 
 - Fetch and inspect current `origin/main`, then compare the claim with the
   latest released tag. Record the commit and tag in the GIF's `BRIEF.md`.
-- Verify exact entity counts, names, availability, and measured-versus-estimated
-  semantics in runtime source, README, and automated guards.
+- Verify exact entity counts, names, availability, and
+  sensor-reported-measurement-versus-estimate semantics in runtime source,
+  README, and automated guards. A visible `measured` label names the signal
+  category; it does not establish independent or clinical accuracy.
 - Distinguish the complete product surface from a card or dashboard that shows
   only a subset. Never infer the product surface from a single presentation.
 - Use no medical, diagnostic, or safety language. Automations are comfort
@@ -95,10 +97,13 @@ generic hooks, stale renders, missing proof, or undefined delivery criteria.
 
 - **GIF 2 — Live Now card:** the bundled card reads three of the five published
   sensors: sleep stage, heart rate, and breathing. Do not depict all five as
-  card-visible. Preserve unavailable, stale, and out-of-bed honesty.
-- **GIF 3 — measured heart rate and breathing:** both are measured directly by
-  the sensor. Do not imply clinical accuracy, diagnosis, or continuous values
-  while the bed is empty.
+  card-visible. Preserve unavailable, stale, and out-of-bed honesty. The
+  approved empty-bed opening is explicitly the legacy no-gate code-`0` state;
+  an optional independent gate can override that raw-code label.
+- **GIF 3 — measured heart rate and breathing:** both are sensor-reported
+  measurement signals. The approved visible word `measured` identifies that
+  category; it does not imply independent validation, clinical accuracy,
+  diagnosis, or continuous values while the bed is empty.
 - **GIF 4 — sleep-stage estimates:** say “estimate”, “best guess”, or equivalent
   on-screen. Never present stage scoring as measured fact.
 - **GIF 5 — sleep-aware automations:** show only shipped, supportable Home

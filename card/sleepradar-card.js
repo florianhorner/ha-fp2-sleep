@@ -22,8 +22,18 @@ const ENTITY_SUFFIXES = {
   respiration_rate: "respiration_rate",
 };
 
-// Raw Aqara sleep_state codes. Codes 1 and 2 are both "awake"; see README
-// "Sleep State Codes" and examples/sleep_tracking.yaml for the same mapping.
+// Legacy raw Aqara sleep_state labels used when no independent occupancy gate
+// is configured. Codes 1 and 2 remain "Awake" in that compatibility mode.
+//
+// This mapping is COMMUNITY-DERIVED AND UNVERIFIED. Aqara's public resource
+// documentation does not publish the FP2 sleep_state enumeration. The
+// community mapping reviewed by this project reads code 1 as "In Bed", not
+// "Awake", so the legacy label is a compatibility choice rather than a spec.
+// The reviewed labels for codes 3/4/5 agree; that is label consistency, not a
+// claim that the device's stage estimate is accurate.
+//
+// With bed_occupancy configured, independent occupancy is authoritative:
+// code 0 cannot claim an empty bed, and codes 1/2 cannot claim wakefulness.
 const PHASES = {
   0: "Out of bed",
   1: "Awake",
@@ -84,6 +94,19 @@ function isInBedCode(code) {
   return IN_BED_SLEEP_CODES.has(code);
 }
 
+// Entity ids arrive from user YAML, so they are normalized once here and the
+// normalized value is what both hass.states lookups and the bed_occupancy
+// independence check see. Rejecting non-strings outright is deliberate: a
+// silent String() coercion is what let an array override slip past the
+// independence check while still resolving to a real entity.
+function resolveEntityId(override, fallback) {
+  if (override === undefined || override === null) return fallback;
+  if (typeof override !== "string") {
+    throw new Error("entities overrides must be entity id strings");
+  }
+  return override.trim() || fallback;
+}
+
 function formatAge(ageMs) {
   if (!Number.isFinite(ageMs) || ageMs < 0) return "";
   const seconds = Math.floor(ageMs / 1000);
@@ -103,16 +126,16 @@ function describeFreshness(ageMs, isStale) {
   return `${isStale ? "Stale" : "Updated"} ${age}`;
 }
 
-function describeVitalStatus(code, isFresh, isStale, value) {
+function describeVitalStatus(code, isFresh, isStale, value, occupancyConfirmed) {
   if (isInBedCode(code) && isFresh && value !== null) return "Live now";
   if (isInBedCode(code) && isFresh) return "No value reported";
   if (isStale) return "Status stale";
   if (!isFresh) return "Freshness unknown";
-  if (code === 0) return "Paused out of bed";
+  if (code === 0) return occupancyConfirmed ? "Not measuring" : "Paused out of bed";
   return "Sleep state unknown";
 }
 
-function describeFooter(code, isFresh, isStale) {
+function describeFooter(code, isFresh, isStale, occupancyConfirmed) {
   if (isStale) {
     return "Status is stale. Check the app and MQTT before trusting live vitals.";
   }
@@ -120,6 +143,12 @@ function describeFooter(code, isFresh, isStale) {
     return "SleepRadar needs a fresh sleep-state timestamp before showing live vitals.";
   }
   if (code === 0) {
+    if (occupancyConfirmed) {
+      return (
+        "Independent occupancy confirms someone is in bed, but SleepRadar " +
+        "is not reporting a usable stage or live vitals."
+      );
+    }
     return (
       "Heart rate and breathing are hidden while the bed is empty because " +
       "the FP2 can retain its last in-bed values."
@@ -128,13 +157,34 @@ function describeFooter(code, isFresh, isStale) {
   if (!isInBedCode(code)) {
     return "SleepRadar needs a mapped in-bed sleep state before showing live vitals.";
   }
+  if (code === 1 || code === 2) {
+    if (occupancyConfirmed) {
+      return (
+        "Heart rate and breathing are sensor-reported. Occupancy is confirmed, " +
+        "but this sleep-state code does not establish a wake or stage label."
+      );
+    }
+    return (
+      "Heart rate and breathing are sensor-reported. The Awake label is kept " +
+      "for compatibility and does not establish occupancy or wakefulness."
+    );
+  }
   return (
-    "Heart rate and breathing are measured directly by the sensor. " +
+    "Heart rate and breathing are sensor-reported measurements. " +
     "Sleep stage is the device's best guess."
   );
 }
 
-function describeNow(phase, code, hr, br, canShowLiveVitals, isFresh, isStale) {
+function describeNow(
+  phase,
+  code,
+  hr,
+  br,
+  canShowLiveVitals,
+  isFresh,
+  isStale,
+  occupancyConfirmed
+) {
   if (isStale) {
     return `${phase}. Status is stale, so vitals are not shown as live.`;
   }
@@ -142,6 +192,9 @@ function describeNow(phase, code, hr, br, canShowLiveVitals, isFresh, isStale) {
     return `${phase}. Waiting for a fresh status timestamp before showing live vitals.`;
   }
   if (code === 0) {
+    if (occupancyConfirmed) {
+      return "In bed. SleepRadar is not reporting a usable stage or live vitals.";
+    }
     return "Out of bed. Heart rate and breathing are not currently measured.";
   }
   if (!isInBedCode(code)) {
@@ -149,11 +202,24 @@ function describeNow(phase, code, hr, br, canShowLiveVitals, isFresh, isStale) {
   }
   const haveVitals = canShowLiveVitals && hr !== null && br !== null;
   if (code === 1 || code === 2) {
+    if (occupancyConfirmed) {
+      return haveVitals
+        ? `In bed — stage unknown; heart ${hr} bpm, breathing ${br} br/min.`
+        : "In bed — stage unknown.";
+    }
     return haveVitals
       ? `Awake in bed — heart ${hr} bpm, breathing ${br} br/min.`
       : "Awake in bed.";
   }
   return haveVitals ? `${phase} — heart ${hr} bpm, breathing ${br} br/min.` : `${phase}.`;
+}
+
+function displayPhase(code, occupancyConfirmed) {
+  if (occupancyConfirmed && code === 0) return "In bed";
+  if (occupancyConfirmed && (code === 1 || code === 2)) {
+    return "In bed — stage unknown";
+  }
+  return PHASES[code] || "Unknown";
 }
 
 // Treats non-numeric sensor states (e.g. a stringified "None" from a null
@@ -185,11 +251,82 @@ class SleepradarCard extends HTMLElement {
     const nodeId = sanitizeNodeId(config && config.mqtt_node_id);
     const defaults = defaultEntities(nodeId);
     const overrides = (config && config.entities) || {};
+    // Overrides must be normalized to trimmed strings BEFORE they are compared
+    // against bed_occupancy.entity below. A non-string override (e.g. the
+    // one-element YAML array `sleep_state: [sensor.x]`) is not strictly equal
+    // to the gate string, but coerces to the same key on a hass.states lookup —
+    // so without this the gate could resolve to the very entity it arbitrates.
     this._entityIds = {
-      sleep_state: overrides.sleep_state || defaults.sleep_state,
-      heart_rate: overrides.heart_rate || defaults.heart_rate,
-      respiration_rate: overrides.respiration_rate || defaults.respiration_rate,
+      sleep_state: resolveEntityId(overrides.sleep_state, defaults.sleep_state),
+      heart_rate: resolveEntityId(overrides.heart_rate, defaults.heart_rate),
+      respiration_rate: resolveEntityId(
+        overrides.respiration_rate,
+        defaults.respiration_rate
+      ),
     };
+    const hasBedOccupancyConfig =
+      config && Object.prototype.hasOwnProperty.call(config, "bed_occupancy");
+    if (hasBedOccupancyConfig) {
+      const bedOccupancy = config.bed_occupancy;
+      if (!bedOccupancy || typeof bedOccupancy !== "object" || Array.isArray(bedOccupancy)) {
+        throw new Error("bed_occupancy must be a mapping");
+      }
+      if (typeof bedOccupancy.entity !== "string" || !bedOccupancy.entity.trim()) {
+        throw new Error("bed_occupancy.entity is required");
+      }
+      const entity = bedOccupancy.entity.trim();
+      if (Object.values(this._entityIds).includes(entity)) {
+        throw new Error(
+          "bed_occupancy.entity must be independent from the configured SleepRadar entities"
+        );
+      }
+      let occupiedStates = bedOccupancy.occupied_states;
+      if (occupiedStates === undefined) {
+        if (!entity.startsWith("binary_sensor.")) {
+          throw new Error(
+            "bed_occupancy.occupied_states is required for non-binary entities"
+          );
+        }
+        occupiedStates = ["on"];
+      }
+      if (!Array.isArray(occupiedStates) || occupiedStates.length === 0) {
+        throw new Error("bed_occupancy.occupied_states must be a non-empty array");
+      }
+      if (
+        occupiedStates.some(
+          (state) => typeof state !== "string" || state.trim().length === 0
+        )
+      ) {
+        throw new Error(
+          "bed_occupancy.occupied_states must contain non-empty strings"
+        );
+      }
+      // Stored trimmed: the comparison at render time is a strict includes(),
+      // so an untrimmed " on " would validate here and then never match a real
+      // state — a gate that is silently dead rather than loudly wrong.
+      const normalizedStates = occupiedStates.map((state) => state.trim());
+      // A gate that treats every state as occupied is not a gate. Both of these
+      // passed shape validation before and produced a permanently-open gate
+      // that rendered retained vitals over an empty bed.
+      if (normalizedStates.some((state) => UNAVAILABLE_STATES.has(state))) {
+        throw new Error(
+          "bed_occupancy.occupied_states must not contain unknown, unavailable, " +
+            "none, or empty states; those always mean uncertain occupancy"
+        );
+      }
+      if (normalizedStates.includes("on") && normalizedStates.includes("off")) {
+        throw new Error(
+          "bed_occupancy.occupied_states must not contain both 'on' and 'off'; " +
+            "that leaves no state that means the bed is empty"
+        );
+      }
+      this._bedOccupancy = {
+        entity,
+        occupiedStates: normalizedStates,
+      };
+    } else {
+      this._bedOccupancy = null;
+    }
     const pollIntervalSeconds = Number(config && config.poll_interval_seconds);
     this._pollIntervalSeconds =
       Number.isFinite(pollIntervalSeconds) && pollIntervalSeconds > 0 ? pollIntervalSeconds : 60;
@@ -232,15 +369,45 @@ class SleepradarCard extends HTMLElement {
     const stateObj = this._hass.states[this._entityIds.sleep_state];
     const hrObj = this._hass.states[this._entityIds.heart_rate];
     const brObj = this._hass.states[this._entityIds.respiration_rate];
+    const occupancyObj = this._bedOccupancy
+      ? this._hass.states[this._bedOccupancy.entity]
+      : null;
 
     // Cheap re-render guard: skip DOM work if nothing relevant changed.
-    const signature = JSON.stringify([
+    const signatureValues = [
       stateObj && [stateObj.state, stateObj.last_updated],
       hrObj && [hrObj.state, hrObj.last_updated],
       brObj && [brObj.state, brObj.last_updated],
-    ]);
+    ];
+    if (this._bedOccupancy) {
+      signatureValues.push(occupancyObj && [occupancyObj.state, occupancyObj.last_updated]);
+    }
+    const signature = JSON.stringify(signatureValues);
     if (signature === this._lastSignature) return;
     this._lastSignature = signature;
+
+    if (this._bedOccupancy) {
+      const occupancyIsKnown =
+        occupancyObj &&
+        typeof occupancyObj.state === "string" &&
+        !UNAVAILABLE_STATES.has(occupancyObj.state);
+      const occupancyIsOccupied =
+        occupancyIsKnown &&
+        this._bedOccupancy.occupiedStates.includes(occupancyObj.state);
+      if (!occupancyIsOccupied) {
+        // The bed is empty most of the day, so this is the card's dominant
+        // display state. It must not also swallow the sleep-state health
+        // signals: a missing entity id or a dead poller would otherwise look
+        // exactly like a healthy empty bed for ~16h a day.
+        this._renderOccupancyBlocked(
+          !occupancyIsKnown,
+          occupancyObj,
+          this._sleepStateHealth(stateObj)
+        );
+        return;
+      }
+    }
+    const occupancyConfirmed = Boolean(this._bedOccupancy);
 
     if (!stateObj || UNAVAILABLE_STATES.has(stateObj.state)) {
       this.shadowRoot.innerHTML = this._styles() + `
@@ -265,7 +432,7 @@ class SleepradarCard extends HTMLElement {
     // code 3 (REM) instead of surfacing them as unknown; require the whole
     // string to be a clean integer first.
     const code = /^-?\d+$/.test(stateObj.state) ? parseInt(stateObj.state, 10) : NaN;
-    const phase = PHASES[code] || "Unknown";
+    const phase = displayPhase(code, occupancyConfirmed);
     const hr = numericStateOrNull(hrObj);
     const br = numericStateOrNull(brObj);
 
@@ -280,18 +447,31 @@ class SleepradarCard extends HTMLElement {
 
     const freshness = describeFreshness(ageMs, isStale);
     const time = formatTime(stateObj.last_updated);
-    const readout = describeNow(phase, code, hr, br, canShowLiveVitals, isFresh, isStale);
+    const readout = describeNow(
+      phase,
+      code,
+      hr,
+      br,
+      canShowLiveVitals,
+      isFresh,
+      isStale,
+      occupancyConfirmed
+    );
     const badge = isStale ? "stale" : code === 0 ? "not measuring" : "";
     const badgeClass = badge === "not measuring" ? " sr-badge-neutral" : "";
     const phaseCaption =
       !isFresh
         ? "last reported"
-        : code === 0
+        : occupancyConfirmed && code === 0
+          ? "occupancy confirmed"
+          : code === 0
           ? "bed empty"
+          : occupancyConfirmed && (code === 1 || code === 2)
+            ? "unverified sleep code"
           : isInBedCode(code)
             ? "the sensor's best guess"
             : "unmapped code";
-    const footer = describeFooter(code, isFresh, isStale);
+    const footer = describeFooter(code, isFresh, isStale, occupancyConfirmed);
 
     this.shadowRoot.innerHTML = this._styles() + `
       <ha-card>
@@ -315,7 +495,13 @@ class SleepradarCard extends HTMLElement {
                 <span class="sr-unit">bpm</span>
               </div>
               <div class="sr-stat-status">${escapeHtml(
-                describeVitalStatus(code, isFresh, isStale, shownHr)
+                describeVitalStatus(
+                  code,
+                  isFresh,
+                  isStale,
+                  shownHr,
+                  occupancyConfirmed
+                )
               )}</div>
             </div>
             <div class="sr-stat">
@@ -324,8 +510,107 @@ class SleepradarCard extends HTMLElement {
                 <span class="sr-unit">br/min</span>
               </div>
               <div class="sr-stat-status">${escapeHtml(
-                describeVitalStatus(code, isFresh, isStale, shownBr)
+                describeVitalStatus(
+                  code,
+                  isFresh,
+                  isStale,
+                  shownBr,
+                  occupancyConfirmed
+                )
               )}</div>
+            </div>
+          </div>
+          <div class="sr-footer">
+            ${escapeHtml(footer)}
+          </div>
+        </div>
+      </ha-card>`;
+  }
+
+  // Health of the sleep-state feed, evaluated independently of the occupancy
+  // gate so the blocked card can report it. Returns "ok" only when the entity
+  // exists, is available, and its timestamp is inside the stale window.
+  _sleepStateHealth(stateObj) {
+    if (!stateObj || UNAVAILABLE_STATES.has(stateObj.state)) {
+      return {
+        status: "missing",
+        note:
+          "SleepRadar is not reporting a sleep state. Check that the app is " +
+          "running and that this card points at the right entity id.",
+      };
+    }
+    const ageMs = Date.now() - parseTimestampMs(stateObj.last_updated);
+    const staleAfterMs = this._pollIntervalSeconds * 1000 * 3;
+    if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs > staleAfterMs) {
+      return {
+        status: "stale",
+        note:
+          "The sleep-state feed is stale. Occupancy is still being read, but " +
+          "check the app and MQTT.",
+      };
+    }
+    return { status: "ok", note: "" };
+  }
+
+  _renderOccupancyBlocked(isUnknown, occupancyObj, sleepHealth) {
+    const health = sleepHealth || { status: "ok", note: "" };
+    const phase = isUnknown ? "Occupancy unknown" : "Out of bed";
+    const phaseCaption = isUnknown ? "occupancy unavailable" : "bed empty";
+    const readout = isUnknown
+      ? "Occupancy unknown. Heart rate and breathing are not shown."
+      : "Out of bed. Heart rate and breathing are not currently measured.";
+    const vitalStatus = isUnknown ? "Occupancy unknown" : "Paused out of bed";
+    const baseFooter = isUnknown
+      ? "Heart rate and breathing are hidden because the independent bed-occupancy state is unavailable."
+      : // Deliberately does not say the sensor "reports the bed is empty". Any
+        // state outside occupied_states lands here, including device states
+        // like offline, error or calibrating, and attributing an empty-bed
+        // reading to the sensor in those cases would be a claim it never made.
+        "Heart rate and breathing are hidden because the independent " +
+        "bed-occupancy sensor is not reporting an occupied state.";
+    const footer = health.note ? `${baseFooter} ${health.note}` : baseFooter;
+    const time = formatTime(occupancyObj && occupancyObj.last_updated);
+    // An empty bed is expected and stays calm; a broken gate or a dead
+    // sleep-state feed is a fault and must not wear the same neutral badge.
+    // Each badge carries its own word, so the state never depends on hue alone.
+    const badge = isUnknown
+      ? "occupancy fault"
+      : health.status === "stale"
+        ? "stale"
+        : health.status === "missing"
+          ? "no sensor data"
+          : "not measuring";
+    const badgeClass = badge === "not measuring" ? " sr-badge-neutral" : "";
+
+    this.shadowRoot.innerHTML = this._styles() + `
+      <ha-card>
+        <div class="sr-card">
+          <div class="sr-header">
+            <div class="sr-header-left">
+              <div class="sr-eyebrow">CURRENT STATUS${
+                time ? ` · ${escapeHtml(time)}` : ""
+              }</div>
+              <div class="sr-phase">${escapeHtml(phase)}
+                <span class="sr-caption">${escapeHtml(phaseCaption)}</span>
+              </div>
+            </div>
+            <div class="sr-badge${badgeClass}">${escapeHtml(badge)}</div>
+          </div>
+          <div class="sr-readout">${escapeHtml(readout)}</div>
+          <div class="sr-stats">
+            <div class="sr-stat">
+              <div class="sr-stat-label">Heart rate</div>
+              <div class="sr-stat-value">—
+                <span class="sr-unit">bpm</span>
+              </div>
+              <div class="sr-stat-status">${escapeHtml(vitalStatus)}</div>
+            </div>
+            <div class="sr-stat">
+              <div class="sr-stat-label">Breathing</div>
+              <div class="sr-stat-value">—
+                <span class="sr-unit">br/min</span>
+              </div>
+              <div class="sr-stat-status">${escapeHtml(vitalStatus)}</div>
             </div>
           </div>
           <div class="sr-footer">

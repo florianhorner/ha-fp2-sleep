@@ -19,13 +19,18 @@ uncertainty: "Whether the finite stage cadence is understood as possible current
 truth:
   source_refs:
     - "README.md:37-50"
-    - "README.md:232-247"
-    - "examples/sleep_tracking.yaml:8-38"
-  checked_at: "2026-07-21"
-  baseline_commit: "995f81b402cbd15ed0500a6968a96d94c427933e"
-  release_tag: "v1.2.1"
+    - "README.md:287-308"
+    - "examples/sleep_tracking.yaml:10-44"
+    - "https://opendoc.aqara.com/en/docs/developmanual/apiDocument/ResourceManagement.html"
+    - "https://gist.github.com/Komzpa/396e66fb99592c14ba88e1bca21c11eb"
+  checked_at: "2026-07-31"
+  baseline_commit: "7b49e439626b103f297a59e383098aee00977d3c"
+  # Not v1.2.1: the indicative template labels this episode cites are not in
+  # that tag.
+  release_tag: "unreleased"
   qualifiers:
     - "Sleep stage is the sensor's best estimate, not a measured fact."
+    - "Only codes 3, 4, and 5 appear; the public enumeration is community-derived and unverified."
   visible_required:
     - "Sleep stages."
     - "The sensor's best guess."
@@ -55,20 +60,24 @@ attached to the card in every state.
 
 ## Locked product truth
 
-- Repository baseline rechecked on 2026-07-21:
-  origin/main at 995f81b402cbd15ed0500a6968a96d94c427933e.
-- Current released baseline rechecked on 2026-07-21:
-  v1.2.1, published 2026-07-03. The local release history starts its v1.2.1
-  entry at ../../CHANGELOG.md:55.
+- Product truth was rechecked on 2026-07-31. The front-matter baseline pins the
+  implementation commit, so every repository source reference identifies
+  committed evidence.
+- Current released baseline: v1.2.1, published 2026-07-03. The gate-aware
+  labels this episode cites are unreleased.
 - README.md identifies sleep stages as the device’s best estimate at
-  ../../README.md:35-36.
-- README.md maps codes 3, 4, and 5 to REM sleep, Light sleep, and Deep sleep at
-  ../../README.md:224-233.
-- The shipped optional template uses the exact visible labels REM, Light sleep,
-  and Deep sleep at ../../examples/sleep_tracking.yaml:8-24.
+  ../../README.md:37-42.
+- The README's community-derived, unverified table maps codes 3, 4, and 5 to
+  REM, Light sleep, and Deep sleep; the episode makes no claim about disputed
+  codes 0, 1, or 2.
+- The approved binary shows the unsuffixed stage names REM, Light sleep, and
+  Deep sleep, which are the card's own labels
+  (../../card/sleepradar-card.js:37-44). The shipped optional template adds an
+  "(indicative)" qualifier to each at ../../examples/sleep_tracking.yaml:10-25;
+  the suffix is template-only and the episode is not rerendered for it.
 - Session duration, averaged vitals, and a segmented stage timeline are
   explicitly future work, not current card behavior, at
-  ../../README.md:212-222.
+  ../../README.md:265-276.
 
 ## Beat sheet
 
@@ -96,7 +105,8 @@ attached to the card in every state.
 
 ## Truth guard
 
-The composition presents one current-stage estimate only. It includes no
+The composition presents one current-stage estimate using only codes `3`–`5`.
+The enumeration remains community-derived and unverified. It includes no
 history view, duration, average, night summary, session summary, numeric
 reading, or factual-scoring wording. The estimate qualifier is communicated by
 both text and an outlined shape and remains visible at frame zero, throughout
@@ -104,7 +114,6 @@ the cycle, during the payoff hold, and after the exact return.
 
 ## Delivery state
 
-Source project only. Inter Variable and GSAP 3.14.2 are pinned as local project
-assets for self-contained checks and rendering. Final MP4, GIF, snapshots,
-binary-derived proof, hashes, and loop metrics are intentionally pending the
-batch render and verification stage.
+Inter Variable and GSAP 3.14.2 remain pinned as local project assets. This
+truth-source refresh does not alter or rerender the approved binary, refresh
+hashes, or claim new binary proof.

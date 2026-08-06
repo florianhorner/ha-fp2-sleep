@@ -1,6 +1,6 @@
 # SleepRadar GIF Batch Plan
 
-Updated: 2026-07-18
+Updated: 2026-07-31
 
 ## Objective
 
@@ -26,9 +26,14 @@ the evergreen decision system in `frame.md`, `GIF-STYLE-GUIDE.md`, and
 | Lock hooks and beat sheets | Complete | Four frame-zero-readable hooks and six-second shot plans are locked |
 | Author and render GIFs 2–5 | Complete | Four isolated HyperFrames `0.7.61` projects produced silent 30 fps MP4 masters and 15 fps GIFs |
 | Run final-binary QA | Complete | All artifacts pass source checks, strict composition checks, hashes, artifact-derived proof, hard budget, and loop thresholds |
-| Consolidated user review | Ready for review | Localhost package is complete; response is `GO ALL` or `REDO <GIF> <dimension>` |
+| Future render handoff | Gated | Requires a pinned source baseline and green source validation; it does not require rerendering unchanged approved binaries |
+| Refresh truth after occupancy-gate change | Complete — `5a02e00` | Claims and source references were rechecked on 2026-07-31; each managed episode pins implementation commit `5a02e00003a0d87c73ce38aa19df139baab20f42` |
 
-## Production gate record
+The 2026-07-31 work changes documentation and source-truth metadata only. It
+does not alter, rerender, republish, or claim fresh binary verification for an
+approved episode.
+
+## Historical production gate record (2026-07-18)
 
 - Repository baseline reconfirmed at `origin/main`
   `a03399c6d72799a015c559ad0a72d4c1b6811ea3`, release `v1.2.1`.
@@ -68,17 +73,20 @@ the evergreen decision system in `frame.md`, `GIF-STYLE-GUIDE.md`, and
 - **Must show:** sleep stage, heart rate, and breathing inside the real card
   hierarchy.
 - **Must preserve:** unavailable, stale, and out-of-bed honesty.
+- **Configuration scope:** the approved empty-bed opening demonstrates the
+  legacy no-gate code-`0` label. The optional independent gate may override
+  that raw-code label and does not require rerendering this approved episode.
 - **Must not imply:** that body movement and illuminance are displayed in the
   Live Now card, even though they remain published entities.
 
 ### GIF 3 — Measured heart rate and breathing
 
-- **Single claim:** heart rate and breathing are measured contact-free by the
-  FP2 and exposed to Home Assistant.
-- **Must show:** both values as measured signals with restrained, non-medical
-  language.
-- **Must not imply:** clinical accuracy, diagnosis, continuous readings while
-  the bed is empty, or invented personal telemetry.
+- **Single claim:** heart rate and breathing are sensor-reported measurement
+  signals exposed to Home Assistant without a wearable.
+- **Must show:** both values with the approved visible `measured` category and
+  restrained, non-medical language.
+- **Must not imply:** independent validation, clinical accuracy, diagnosis,
+  continuous readings while the bed is empty, or invented personal telemetry.
 
 ### GIF 4 — Honestly labelled sleep-stage estimates
 

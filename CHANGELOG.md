@@ -2,6 +2,43 @@
 
 ## Unreleased
 
+- **Breaking for anyone already using the optional `examples/` templates.**
+  `examples/sleep_tracking.yaml` now requires an independent
+  `binary_sensor.bed_occupied`. Without it, `sensor.fp2_sleep_phase`,
+  `sensor.fp2_sleep_now`, and `binary_sensor.fp2_asleep` go unavailable and any
+  automation gated on them stops running. `examples/automations.yaml` also
+  renames the deep-sleep trigger state from `"Deep sleep"` to
+  `"Deep sleep (indicative)"`; an existing copy of that automation will silently
+  never fire again until it is updated. The five MQTT entities, polling, and
+  Recorder history are unchanged.
+
+- Documents that the `sleep_state` 0-5 mapping is community-derived and
+  unverified. Aqara's public resource documentation does not publish the FP2
+  enumeration, and the community mapping checked by this project reads code
+  `1` as "In Bed" rather than "Awake". Codes `0`/`1`/`2` are no longer treated
+  as occupancy or wake authority when an independent occupancy gate is active;
+  the legacy no-gate labels remain backward-compatible.
+
+- Adds a privacy-safe regression fixture for an approximately 2.5-hour
+  ghost-vitals incident: 300 sleep-state updates across codes `4`/`5`/`3` and
+  301 heart-rate updates collapsing to 27 consecutive value runs, 17 distinct
+  values, and a 50-77 bpm range while independent occupancy stayed empty.
+  Absolute timestamps and entity IDs are omitted.
+
+- Adds an optional, fail-closed `bed_occupancy` gate to the SleepRadar Card so
+  independent occupancy can hide ghost vitals without changing MQTT or
+  Recorder history. Confirmed occupancy makes codes `0`/`1`/`2` render as
+  in-bed with no asserted wake stage, direct self-reference is rejected, and
+  the documented contract trusts Home Assistant availability without imposing
+  an occupancy-age timeout. The optional dashboard now uses the production card
+  for its live view and labels its previous-night charts as raw Aqara telemetry.
+
+- Refreshes the affected Quiet Proof Loops briefs against the occupancy-gate
+  contract and clarifies that their visible "measured" label names a
+  sensor-reported signal category, not independently validated accuracy. The
+  approved GIF/MP4 binaries and their hashes are unchanged; no rerender is
+  implied.
+
 - Contributor tooling only; no change to the add-on itself. The local
   pre-PR validation chain now runs the same gates as CI's `validate` job from a
   single shared list, reducing the chance of gate-membership drift between

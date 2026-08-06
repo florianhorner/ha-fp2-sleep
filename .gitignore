@@ -11,6 +11,11 @@ __pycache__/
 # Internal handover / working notes — never published
 *.local.md
 .gstack/
+# Agent working notes. These hold real entity ids, HA URLs and device ids, and
+# the privacy scanner skips this directory, so an ignore rule that only exists
+# in a machine-local .git/info/exclude is not a boundary — a fresh clone would
+# happily publish them.
+.context/
 
 # Scratch dir for the CI Gitleaks config self-test. CI cleans it up via trap;
 # this keeps an aborted local reproduction from leaving a planted fake

@@ -1,20 +1,20 @@
 # Optional example automations for SleepRadar.
 #
-# These show what becomes possible once sleep data is real Home Assistant
-# entities: the room reacts to raw, measured data instead of a statistical
-# guess about whether someone is asleep.
+# These show what becomes possible once sleep data is available as Home
+# Assistant entities. They act only when a separate
+# binary_sensor.bed_occupied confirms occupancy.
 #
 # They use binary_sensor.fp2_asleep and sensor.fp2_sleep_phase from
-# sleep_tracking.yaml. "Asleep" means the sensor reports REM, light, or deep
-# sleep. Stage scoring is the device's best guess, so pair a stage condition
-# with a time window if you want it more robust.
+# sleep_tracking.yaml. "Asleep" requires confirmed occupancy plus an indicative
+# code 3, 4, or 5. If the occupancy source is unknown or unavailable, the
+# helper fails closed and these automations do not run.
 #
 # Replace every PLACEHOLDER_* value with your own entity IDs.
 
 - alias: "Cap light brightness while asleep"
   description: >-
-    When a bedroom light turns on while someone is asleep, hold it to a low
-    brightness instead of full. 2026-06-28: example for the OSS app.
+    When a bedroom light turns on while occupied sleep is indicated, hold it
+    to a low brightness instead of full.
   trigger:
     - platform: state
       entity_id: PLACEHOLDER_BEDROOM_LIGHT
@@ -34,8 +34,8 @@
 
 - alias: "Hold the vacuum until awake"
   description: >-
-    If the robot vacuum starts cleaning while someone is asleep, send it back
-    to the dock. 2026-06-28: example for the OSS app.
+    If the robot vacuum starts while occupied sleep is indicated, send it back
+    to the dock.
   trigger:
     - platform: state
       entity_id: PLACEHOLDER_VACUUM
@@ -53,12 +53,16 @@
 
 - alias: "Cool down during deep sleep"
   description: >-
-    Nudge the bedroom thermostat down when deep sleep starts. Stage is the
-    sensor's best guess, so this is comfort, not safety. 2026-06-28: example.
+    Nudge the bedroom thermostat down when occupied deep sleep is indicated.
+    This is a comfort example, not a safety control.
   trigger:
     - platform: state
       entity_id: sensor.fp2_sleep_phase
-      to: "Deep sleep"
+      to: "Deep sleep (indicative)"
+  condition:
+    - condition: state
+      entity_id: binary_sensor.bed_occupied
+      state: "on"
   action:
     - alias: "Lower the target temperature"
       service: climate.set_temperature

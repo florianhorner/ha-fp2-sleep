@@ -13,23 +13,22 @@ angle: dashboard-structure-proof
 narration: false
 claim: "The current repository's optional dashboard puts sleep state, heart rate, and breathing history for the previous night into one Home Assistant view."
 opening_state: "A compact Last night dashboard outline shows three collapsed, labelled history rails with no values or traces."
-payoff_state: "The rails expand into three configured panels with the previous-night window, units, stage labels, and measured-versus-estimated qualifiers."
+payoff_state: "The rails expand into three configured panels with the previous-night window, units, stage labels, and sensor-reported-measurement-versus-estimate qualifiers."
 motion_verb: expand
 uncertainty: "Whether viewers understand this as a structural proof of the configured dashboard rather than proof of one real recorded night."
 truth:
   source_refs:
-    - "README.md:224-228"
-    - "examples/README.md:30-36"
-    - "examples/dashboard-sleep.yaml:73-121"
-    - "examples/dashboard-sleep.yaml:123-179"
-    - "examples/dashboard-sleep.yaml:181-187"
+    - "README.md:223-250"
+    - "examples/README.md:25-40"
+    - "examples/dashboard-sleep.yaml:13-88"
+    - "examples/dashboard-sleep.yaml:90-155"
     - "TODOS.md:98-110"
-  checked_at: "2026-07-21"
-  baseline_commit: "995f81b402cbd15ed0500a6968a96d94c427933e"
+  checked_at: "2026-07-31"
+  baseline_commit: "5a02e00003a0d87c73ce38aa19df139baab20f42"
   release_tag: "unreleased"
   qualifiers:
     - "This is an optional dashboard example that requires one night of Recorder history."
-    - "Heart rate and breathing are measured; sleep stage is Aqara's estimate."
+    - "Heart rate and breathing are sensor-reported measurements; measured names the signal category, not independent validation or clinical accuracy."
     - "The composition shows configured structure, not plotted or invented telemetry."
   visible_required:
     - "SleepRadar"
@@ -62,7 +61,8 @@ inventing overnight telemetry. The frame-zero hook is:
 Three collapsed, labelled rails expand into the exact topology configured in
 the optional dashboard example. No graph trace, readout, cursor, or personal
 value appears. The visible footer keeps the Recorder requirement and
-measured-versus-estimated distinction attached.
+sensor-reported-measurement-versus-estimate distinction attached. The approved
+visible word “measured” names the signal category and is not an accuracy claim.
 
 A small static SleepRadar mark-and-name lockup identifies the detached clip
 without adding another motion beat or competing with the proof hook.
@@ -71,6 +71,11 @@ This is a workflow validation episode, not a replacement for the real-data
 overnight retrospective still selected in `TODOS.md`. The dashboard exists on
 the current repository baseline but remains in the Unreleased changelog
 section, so the clip does not attribute it to `v1.2.1`.
+
+Truth sources were rechecked on 2026-07-31. The front-matter baseline pins the
+implementation commit, so every repository source reference identifies
+committed evidence. This documentation-only truth refresh does not alter or
+rerender the approved binary, refresh its hashes, or claim new binary proof.
 
 ## Beat sheet
 
