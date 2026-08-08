@@ -11,6 +11,30 @@
 #
 # Replace every PLACEHOLDER_* value with your own entity IDs.
 
+- alias: "Tell me when SleepRadar stops"
+  description: >-
+    Push a notification when the app flags a connection problem. Without
+    something like this the failure is silent: the app keeps showing as
+    started, the sensors just go unavailable, and a night of data is gone
+    before anyone notices. The app also raises a Home Assistant notification
+    on its own; this one reaches your phone.
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.aqara_fp2_sleep_connection_problem
+      to: "on"
+      # A DNS blip clears itself on the next poll. Waiting a few minutes keeps
+      # this from firing at 03:00 for something already fixed.
+      for: "00:05:00"
+  action:
+    - alias: "Send the cause to my phone"
+      service: notify.PLACEHOLDER_NOTIFY_SERVICE
+      data:
+        title: "SleepRadar stopped"
+        message: >-
+          {{ state_attr('binary_sensor.aqara_fp2_sleep_connection_problem',
+          'cause') | default('SleepRadar cannot reach the Aqara cloud.', true) }}
+  mode: single
+
 - alias: "Cap light brightness while asleep"
   description: >-
     When a bedroom light turns on while occupied sleep is indicated, hold it
