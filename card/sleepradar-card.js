@@ -22,10 +22,10 @@ const ENTITY_SUFFIXES = {
   respiration_rate: "respiration_rate",
 };
 
-// The app's diagnostic entity. Deliberately outside ENTITY_SUFFIXES: those are
-// all sensor.* vitals that the card requires, this is a binary_sensor.* that
-// only explains an outage. Absent (older app, or the user renamed it) the card
-// behaves exactly as before.
+// The app's diagnostic entity. Kept outside ENTITY_SUFFIXES: those are all
+// sensor.* vitals that the card requires, this is a binary_sensor.* that only
+// explains an outage. Absent (older app, or the user renamed it) the card
+// behaves as it did before.
 const PROBLEM_SUFFIX = "connection_problem";
 
 // Legacy raw Aqara sleep_state labels used when no independent occupancy gate
@@ -271,8 +271,8 @@ class SleepradarCard extends HTMLElement {
       ),
     };
     // Not part of _entityIds: that object is what bed_occupancy.entity is
-    // checked against for independence, and the diagnostic entity is not a
-    // signal the occupancy gate could ever be confused with.
+    // checked against for independence, and the diagnostic entity carries no
+    // occupancy signal to be confused with.
     this._problemEntityId = resolveEntityId(
       overrides.connection_problem,
       `binary_sensor.${nodeId}_${PROBLEM_SUFFIX}`
@@ -396,8 +396,9 @@ class SleepradarCard extends HTMLElement {
       signatureValues.push(occupancyObj && [occupancyObj.state, occupancyObj.last_updated]);
     }
     // The diagnostic entity changes the rendered text without any vitals
-    // changing — an outage freezes all three of them by definition. Leaving it
-    // out of the signature would pin the card on the pre-outage wording.
+    // changing, since an outage freezes all three of them by definition.
+    // Leaving it out of the signature would pin the card on the pre-outage
+    // wording.
     const problemObj = this._hass.states[this._problemEntityId];
     signatureValues.push(
       problemObj && [problemObj.state, problemObj.attributes && problemObj.attributes.cause]
@@ -430,7 +431,7 @@ class SleepradarCard extends HTMLElement {
     const occupancyConfirmed = Boolean(this._bedOccupancy);
 
     if (!stateObj || UNAVAILABLE_STATES.has(stateObj.state)) {
-      // When the app has told us why it stopped, say that instead of the
+      // When the app has published why it stopped, show that instead of the
       // entity-id troubleshooting walkthrough. "No data yet" sends users
       // hunting for a config mistake that isn't there.
       const problemCause = this._connectionProblemCause();
@@ -557,15 +558,15 @@ class SleepradarCard extends HTMLElement {
 
   // The app's own explanation for why data stopped, when it published one.
   // Returns null when there is no problem, or when the diagnostic entity is
-  // absent (older app, renamed entity) — callers then keep the generic
-  // wording, which is what the card said before this entity existed.
+  // absent (older app, renamed entity). Callers then keep the generic wording,
+  // which is what the card said before this entity existed.
   _connectionProblemCause() {
     const obj = this._hass && this._hass.states[this._problemEntityId];
     if (!obj || UNAVAILABLE_STATES.has(obj.state)) return null;
     if (String(obj.state).toLowerCase() !== "on") return null;
     const cause = obj.attributes && obj.attributes.cause;
     if (typeof cause !== "string" || !cause.trim()) {
-      // The flag is set but carries no text. Still better than silence.
+      // The flag is set but carries no text, so name the likeliest cause.
       return "SleepRadar cannot reach the Aqara cloud. Check the app log.";
     }
     return cause.trim();
@@ -592,7 +593,8 @@ class SleepradarCard extends HTMLElement {
         // A crashed poller flips the problem flag through the MQTT will
         // immediately, but the vitals stay available until expire_after (up to
         // 3 poll intervals). In that window the feed reads as merely stale
-        // while the app has already said why it died — so prefer the cause.
+        // although the app has already published why it died, so prefer the
+        // cause.
         note:
           this._connectionProblemCause() ||
           "The sleep-state feed is stale. Occupancy is still being read, but " +

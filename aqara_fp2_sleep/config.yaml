@@ -10,10 +10,10 @@ init: false
 startup: application
 boot: auto
 hassio_api: false
-# Used for exactly one thing: raising and dismissing the persistent
-# notification that names why the Aqara connection is down and how to fix it.
-# Without it the only signal is five sensors going unavailable with no reason
-# attached. The add-on runs fine if the call is refused; see call_core_service.
+# Used for one thing: raising and dismissing the persistent notification that
+# names why the Aqara connection is down and how to fix it. Without it the only
+# signal is five sensors going unavailable with no reason attached. The add-on
+# runs fine if the call is refused; see call_core_service.
 homeassistant_api: true
 services:
   - mqtt:need

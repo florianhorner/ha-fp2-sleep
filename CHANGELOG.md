@@ -10,10 +10,10 @@
 
 - Raises a Home Assistant notification naming the cause and the fix when the
   Aqara connection fails, updates it if the cause changes, and dismisses it on
-  recovery. This requires `homeassistant_api: true` on the app, which is new.
-  **Existing installs must approve that access once after updating**; until
+  recovery. Needs the new `homeassistant_api: true` permission, used for that
+  call only. **Existing installs must approve it once after updating**; until
   then the diagnostic entity still works, the notification is skipped, and the
-  log says so at `warning`. It is used for that call only.
+  log says so at `warning`.
 
 - Names the cause of a failed sign-in instead of passing through Aqara's
   "Request failed. Please try again." Code `106` now reports that the
@@ -28,8 +28,8 @@
   keeps running and recovers on its own, so `fatal` described a crash that
   never happened.
 
-- The SleepRadar Card shows the reported cause instead of the generic "no data
-  yet" message when the app has flagged a connection problem. Accepts an
+- Shows the reported cause in the SleepRadar Card instead of the generic "no
+  data yet" message once the app has flagged a connection problem. Accepts an
   optional `entities.connection_problem` override.
 
 - Adds an example automation that forwards a connection problem to a notify

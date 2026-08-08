@@ -1125,7 +1125,7 @@ assert.match(
   "a cleared problem flag must not render a stale cause"
 );
 
-// Flag set but no cause text: still better than silence.
+// Flag set but no cause text: fall back to naming the likeliest cause.
 const causelessHtml = render(
   withProblem(defaultStates({ sleepState: "unavailable", updated: NOW }))
 );
@@ -1170,7 +1170,7 @@ assert.match(
 );
 
 // The occupancy-blocked card has its own health line; it must carry the cause
-// too, otherwise the dominant daytime display state swallows the outage.
+// too, or the most common daytime display state hides the outage.
 const blockedHtml = render(
   withProblem(
     withOccupancy(

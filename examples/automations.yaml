@@ -13,11 +13,11 @@
 
 - alias: "Tell me when SleepRadar stops"
   description: >-
-    Push a notification when the app flags a connection problem. Without
-    something like this the failure is silent: the app keeps showing as
-    started, the sensors just go unavailable, and a night of data is gone
-    before anyone notices. The app also raises a Home Assistant notification
-    on its own; this one reaches your phone.
+    Push a notification when the app flags a connection problem. Nothing else
+    tells you: the app still shows as started while the sensors go
+    unavailable, so a night of data is lost before anyone looks. The app
+    raises a Home Assistant notification on its own; this one reaches your
+    phone.
   trigger:
     - platform: state
       entity_id: binary_sensor.aqara_fp2_sleep_connection_problem

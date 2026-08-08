@@ -1859,13 +1859,13 @@ def check_automation_gates(text: str) -> None:
         uses_phase_helper = "sensor.fp2_sleep_phase" in serialized
         # An automation that only watches the diagnostic entity is not acting
         # on sleep data, so the occupancy gate has nothing to arbitrate. The
-        # exemption is deliberately narrow: touch any sleep signal — raw
-        # sensor or template helper — and the gate applies again, so this
-        # cannot be used to smuggle in an ungated sleep automation.
+        # exemption is narrow on purpose: touch any sleep signal, raw sensor or
+        # template helper, and the gate applies again, so this cannot be used
+        # to smuggle in an ungated sleep automation.
         #
         # Matched on entity-id *suffix*, not on the default node id: a custom
         # mqtt_node_id (sensor.bedroom_fp2_sleep_state) is still sleep data,
-        # and an earlier version of this check let exactly that through.
+        # and an earlier version of this check let that through.
         watches_diagnostics = "_connection_problem" in serialized
         without_diagnostics = serialized.replace("_connection_problem", "")
         touches_sleep_data = (
@@ -1914,8 +1914,8 @@ def check_examples_readme_gate_contract(text: str) -> None:
 def check_recorder_entities(text: str, expected_entity_ids, diagnostic_entity_id) -> None:
     data = yaml.safe_load(text) or {}
     entities = set((data.get("include") or {}).get("entities") or [])
-    # The diagnostic entity is recorded alongside the vitals so an outage can
-    # still be explained after the retained state has moved on.
+    # The diagnostic entity is recorded alongside the vitals so a past outage
+    # still comes with a reason after the retained state has moved on.
     expected = set(expected_entity_ids) | {diagnostic_entity_id}
     if entities != expected:
         fail(
@@ -1986,8 +1986,8 @@ def check_login_failure_falls_through_to_retry_loop() -> None:
     except SystemExit as exc:
         fail(f"startup login failure must not exit immediately: {exc}")
 
-    # Level matters. This path keeps running and recovers on its own once the
-    # options are corrected, so calling it "fatal" told users to expect a
+    # The log level matters here. This path keeps running and recovers on its
+    # own once the options are corrected, so "fatal" told users to expect a
     # crash that never came, and buried the one line that names the fix.
     hints = [
         event
@@ -2005,8 +2005,8 @@ def check_login_failure_falls_through_to_retry_loop() -> None:
         fail("startup login failure must log the startup hint at error level")
     if not any(event[0] == "res_query" for event in events):
         fail("startup login failure did not fall through to the retry poll loop")
-    # The whole point of the diagnostic entity: a login the user must fix is
-    # published as a problem, not merely logged.
+    # A login the user has to fix is published as a problem, not only logged.
+    # That is what the diagnostic entity is for.
     if not any(
         event[0] == "publish" and event[1] and event[1][0] == module.PROBLEM_STATE_TOPIC
         and event[1][1] == "ON"
@@ -2070,7 +2070,7 @@ def check_problem_entity_is_independent() -> None:
     if "availability_topic" in payload:
         fail(
             "the problem entity must not hang off AVAIL_TOPIC: it would go "
-            "unavailable exactly when it has something to say"
+            "unavailable at the moment its reason is needed"
         )
     if "expire_after" in payload:
         fail(
@@ -2087,7 +2087,7 @@ def check_problem_entity_is_independent() -> None:
         fail("the problem entity must expose its cause via json_attributes_topic")
 
     # The will is the only thing that flags an ungraceful death, since this
-    # entity deliberately has no expire_after.
+    # entity has no expire_after.
     wills = []
 
     class WillClient:
@@ -2117,8 +2117,8 @@ def check_problem_entity_is_independent() -> None:
     if (module.PROBLEM_STATE_TOPIC, "ON", True) not in wills:
         fail(f"MQTT will must flag a problem on ungraceful death, got {wills}")
 
-    # A correct payload nobody publishes is not an entity. Home Assistant only
-    # creates it if the discovery message actually goes out.
+    # A correct payload is not enough: Home Assistant only creates the entity
+    # if the discovery message actually goes out.
     discovery = []
 
     class DiscoveryClient:
@@ -2163,8 +2163,8 @@ def check_health_grace_and_notifications() -> None:
 
     health = module.Health(FakeClient())
 
-    # A single DNS blip must not page anyone at 03:00, and the flag must fire
-    # on exactly the Nth consecutive failure — not merely "eventually".
+    # A single DNS blip must not raise a notification, and the flag must fire
+    # on the Nth consecutive failure rather than merely "eventually".
     grace = module.TRANSIENT_FAILURE_GRACE
     for attempt in range(1, grace + 1):
         health.failed("transient", "cannot reach Aqara", -1)
@@ -2189,9 +2189,9 @@ def check_health_grace_and_notifications() -> None:
             f"payload; got {published[published_during_outage:]}"
         )
 
-    # A blip that turns out to be a rejected region must update the text. This
-    # is the difference between "wait, it clears on its own" and "fix your
-    # region", on the surface the user actually reads.
+    # A blip that turns out to be a rejected region must update the text, on
+    # the surface the user actually reads: "wait, it clears on its own" and
+    # "fix your region" call for different actions.
     health.failed("permanent", "Aqara rejected the sign-in (code 106)", 106)
     if len(notifications) == raised:
         fail("a changed cause must update the notification, not keep the old text")
@@ -2206,8 +2206,8 @@ def check_health_grace_and_notifications() -> None:
 
     # Steady-state healthy polls must be silent. The attributes carry a
     # last_successful_poll timestamp, so republishing them every interval
-    # writes a retained update per poll to an entity this repo recommends for
-    # Recorder — 1440 rows a day saying nothing changed.
+    # writes a retained update per poll, 1440 a day, to an entity this repo
+    # recommends for Recorder.
     published.clear()
     notifications.clear()
     for _ in range(5):
@@ -2321,8 +2321,8 @@ def check_notification_failure_is_soft() -> None:
     if module.call_core_service("persistent_notification", "create", {}) is not False:
         fail("call_core_service must no-op without a Supervisor token")
 
-    # An undelivered notification is the exact silence this feature removes, so
-    # it must be loud in the log rather than swallowed at debug.
+    # An undelivered notification is itself an outage the user cannot see, so
+    # it belongs at warning rather than swallowed at debug.
     logged = []
     module.log = lambda level, msg: logged.append((level, msg))
     module.call_core_service = lambda domain, service, payload: False
@@ -2342,8 +2342,8 @@ def check_addon_permissions(config=None) -> None:
     """Pin the add-on's permission surface.
 
     This add-on holds Aqara cloud credentials. Every one of these keys widens
-    what a compromise reaches, so a change must be a deliberate edit here and
-    not a quiet flip in config.yaml.
+    what a compromise reaches, so changing one has to be an edit here and not
+    only a flip in config.yaml.
     """
     if config is None:
         config = yaml.safe_load((ROOT / "aqara_fp2_sleep/config.yaml").read_text())
@@ -2358,7 +2358,7 @@ def check_addon_permissions(config=None) -> None:
         if got != want:
             fail(
                 f"add-on permission {key} is {got!r}, expected {want!r}. "
-                "Changing a permission is a deliberate decision: update "
+                "A permission change needs a matching update to "
                 "check_addon_permissions in the same commit."
             )
     for key in ("host_network", "host_pid", "privileged", "full_access", "auth_api"):

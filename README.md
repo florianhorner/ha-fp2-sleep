@@ -353,8 +353,8 @@ the authority for whether anyone is in bed. Do not derive occupancy from
 ### Login Fails
 
 **The app still shows as `started` when the sign-in is permanently failing.**
-The process is alive and retrying; only the sensors go unavailable. Do not read
-the green "started" badge as proof that data is flowing — read the
+The process is alive and retrying; only the sensors go unavailable. The
+"started" badge is not proof that data is flowing. Read the
 `binary_sensor.aqara_fp2_sleep_connection_problem` entity or the app log.
 
 Use the Aqara Home app account (mobile app email), not the Aqara webshop
@@ -362,7 +362,7 @@ account. Check `aqara_area` first: an Aqara Home account only exists in the
 region it was created in, so the wrong region rejects an otherwise correct
 password.
 
-**`code=106` — "Request failed. Please try again."** This is Aqara's text for a
+**`code=106`, "Request failed. Please try again."** This is Aqara's text for a
 rejected sign-in, and retrying does not help. It is what a wrong `aqara_area`
 looks like. Set the region to match the account, then restart the app. If the
 region was already correct, check `aqara_username` and `aqara_password` next.
@@ -381,14 +381,14 @@ SleepRadar publishes a diagnostic entity,
 `binary_sensor.aqara_fp2_sleep_connection_problem` (or
 `binary_sensor.<mqtt_node_id>_connection_problem` if you changed
 `mqtt_node_id`). It turns **on** when data stops, and its `cause` attribute
-carries the reason in plain language. It is
-deliberately independent of the five vitals sensors, so it stays readable while
-they are unavailable, and its state survives a Home Assistant restart.
+carries the reason in plain language. It does not depend on the five vitals
+sensors, so it stays readable while they are unavailable, and its state
+survives a Home Assistant restart.
 
 The app also raises a Home Assistant notification naming the cause and the fix,
 updates it if the cause changes, and dismisses it once the connection recovers.
 
-Two timing details worth knowing:
+Two timing details:
 
 - If the app is **updated from a version without Home Assistant API access**,
   approve that access once in the Configuration tab. Until then the diagnostic
@@ -403,8 +403,8 @@ Neither reaches your phone on its own. `examples/automations.yaml` has a
 ready-made automation that forwards the cause to a notify service, with a
 five-minute delay so a brief network blip does not wake you.
 
-This matters more than ordinary downtime: the failure window is overnight, and
-a night that was not recorded cannot be measured again.
+These outages happen overnight, and there is no backfill: a night SleepRadar
+did not record stays missing.
 
 ### Sensors Do Not Appear
 

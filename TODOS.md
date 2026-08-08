@@ -19,9 +19,9 @@ integration's translation files. Creating a Repairs issue therefore requires
 shipping a companion custom integration.
 
 **The tradeoff:** a second install step spends SleepRadar's one-click-packaging
-wedge to buy a nicer error card. It also does not stay small — once an
+wedge to buy a nicer error card. It also does not stay small. Once an
 integration exists it can own the entities directly and MQTT stops being
-necessary, which is a different product with a different release train.
+necessary, which is a different product on its own release train.
 
 **Decide after:** seeing whether real users adopt the notify automation in
 `examples/automations.yaml`. If the notification proves too weak, or an

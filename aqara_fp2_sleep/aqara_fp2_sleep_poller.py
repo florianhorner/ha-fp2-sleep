@@ -103,10 +103,10 @@ CORE_API = os.environ.get("CORE_API", "http://supervisor/core/api")
 
 # Consecutive transient failures tolerated before the diagnostic entity flips
 # to a problem. DNS blips against the Aqara endpoints are common enough on this
-# hardware (URLError / Errno -3) that flagging the first one would page people
-# at 03:00 for something that heals itself on the next poll. A real outage
-# still surfaces within TRANSIENT_FAILURE_GRACE * POLL_INTERVAL seconds.
-# A permanent rejection never waits for this grace.
+# hardware (URLError / Errno -3) that flagging the first one would notify the
+# user about something the next poll fixes. A real outage still surfaces within
+# TRANSIENT_FAILURE_GRACE * POLL_INTERVAL seconds. A permanent rejection never
+# waits for this grace.
 TRANSIENT_FAILURE_GRACE = max(1, int(os.environ.get("TRANSIENT_FAILURE_GRACE", "3")))
 
 # Backoff between login attempts after Aqara has *rejected* the credentials, as
@@ -116,11 +116,11 @@ TRANSIENT_FAILURE_GRACE = max(1, int(os.environ.get("TRANSIENT_FAILURE_GRACE", "
 AUTH_RETRY_BACKOFF = max(INTERVAL, 60)
 AUTH_RETRY_BACKOFF_MAX = 1800
 
-# Aqara answers a rejected login with code 106 and the unhelpful text "Request
-# failed. Please try again." — which is what a wrong region looks like, because
-# an Aqara Home account only exists in the region it was created in. Codes
-# below are the ones observed in the field; everything else is classified
-# structurally by is_transient_code().
+# Aqara answers a rejected login with code 106 and the text "Request failed.
+# Please try again.", which is what a wrong region looks like: an Aqara Home
+# account only exists in the region it was created in. The codes below are the
+# ones observed in the field; everything else is classified structurally by
+# is_transient_code().
 AQARA_CODE_ACCOUNT_REJECTED = 106
 
 # Failures that mean "Aqara did not answer" rather than "Aqara said no".
@@ -142,9 +142,8 @@ AVAIL_TOPIC = f"aqara/{NODE}/status"
 
 # Diagnostic surface. The vitals sensors go `unavailable` when anything breaks,
 # which tells a user that something is wrong but never what or how to fix it.
-# These topics carry the reason. They are deliberately NOT gated by
-# AVAIL_TOPIC: an entity that goes unavailable at exactly the moment it has
-# something to say is useless.
+# These topics carry the reason, so they are not gated by AVAIL_TOPIC: gating
+# them would blank the reason at the moment it is needed.
 PROBLEM_STATE_TOPIC = f"aqara/{NODE}/problem"
 PROBLEM_ATTR_TOPIC = f"aqara/{NODE}/problem/attributes"
 PROBLEM_OBJECT_ID = f"{NODE}_connection_problem"
@@ -346,11 +345,11 @@ def discovery_payload(
 def problem_discovery_payload():
     """Discovery for the diagnostic entity.
 
-    Three deliberate differences from the vitals sensors:
+    Three differences from the vitals sensors, all on purpose:
 
     - no `availability_topic`. The vitals hang off AVAIL_TOPIC and go
       unavailable on any failure. This entity exists to explain that failure,
-      so gating it on the same topic would blank it exactly when it matters.
+      so gating it on the same topic would blank it when it is needed.
     - no `expire_after`. The vitals expire so a dead poller stops showing a
       stale heart rate. This one must stay readable, and process death is
       covered by the MQTT will instead (see make_mqtt).
@@ -479,8 +478,7 @@ def is_transient_code(code):
     """True when Aqara failed to answer, false when Aqara answered "no".
 
     The distinction decides whether a human has to do something. A DNS blip
-    heals itself; a rejected password never does, no matter how often it is
-    retried.
+    clears on the next poll; a rejected password never does.
     """
     return code == -1 or code in TRANSIENT_HTTP_CODES
 
@@ -576,9 +574,9 @@ def notify_problem(cause):
         },
     )
     if not delivered:
-        # Loud, because a silently undelivered notification is the exact
-        # failure mode this feature exists to remove. Bounded: notify_problem
-        # only runs when the cause changes.
+        # Warning rather than debug: an undelivered notification is itself an
+        # outage the user cannot see. Bounded, because notify_problem only runs
+        # when the cause changes.
         log(
             "warning",
             "Could not raise the Home Assistant notification; the diagnostic "
@@ -590,7 +588,7 @@ def notify_problem(cause):
 
 
 def clear_problem_notification():
-    """Dismiss the problem notification, so a fixed problem clears itself."""
+    """Dismiss the problem notification once the problem is fixed."""
     return call_core_service(
         "persistent_notification", "dismiss", {"notification_id": NOTIFICATION_ID}
     )
@@ -652,8 +650,8 @@ class Health:
         if self.problem is False:
             # Steady-state healthy: publish nothing. last_success is tracked in
             # memory and shipped with the next failure, which is the only time
-            # it answers a question. Republishing it every poll would write a
-            # retained attribute update per interval — 1440 a day on an entity
+            # anyone asks for it. Republishing it every poll would write a
+            # retained attribute update per interval, 1440 a day, on an entity
             # this repo tells people to put in Recorder.
             return
         if self.problem:
@@ -683,13 +681,13 @@ class Health:
 
         # Re-notify when the *reason* changes, not just on the first failure.
         # A blip that turns out to be a rejected region would otherwise leave
-        # the notification reading "often clears on its own" forever, which is
-        # the opposite of what this feature is for. Unchanged causes stay
-        # quiet, so an ongoing outage still does not re-notify every poll.
+        # the notification reading "often clears on its own" for the rest of
+        # the outage. An unchanged cause stays silent, so an ongoing outage
+        # does not re-notify every poll.
         changed = self.problem is not True or cause != self.cause
         if not changed:
             # Nothing in the payload differs, and it is retained, so the broker
-            # is already serving the current truth. Republishing it every poll
+            # is already serving the current state. Republishing it every poll
             # would write a Recorder row per interval for the whole outage.
             return
         publish_problem(
@@ -746,18 +744,18 @@ def main():
     if not login_ok:
         startup_error = last_error(aqara)
         kind, cause = describe_login_failure(startup_error)
-        # Deliberately not "fatal": this process keeps running and recovers on
-        # its own once the options are corrected. Calling it fatal told users
-        # to expect a crash that never came.
+        # Not "fatal": this process keeps running and recovers on its own once
+        # the options are corrected. Calling it fatal told users to expect a
+        # crash that never came.
         log(
             "error",
             f"Aqara login failed at startup. {cause} The add-on keeps retrying; "
             "the sensors stay unavailable until the sign-in succeeds.",
         )
         # Flag it now rather than after the first poll. A rejected sign-in at
-        # boot is already certain, and waiting a full poll interval to say so
-        # is a whole interval of the silence this entity exists to end.
-        # Transient failures still go through the grace window inside Health.
+        # boot is already certain, so waiting a full poll interval to say so
+        # would leave the user without an answer for no reason. Transient
+        # failures still go through the grace window inside Health.
         health.failed(kind, cause, startup_error.get("code"))
 
     auth_wait = 0
@@ -813,10 +811,10 @@ def main():
 
         interruptible_sleep(INTERVAL)
 
-    # A deliberate stop is not a problem, and a problem that was already
-    # flagged does not stop being one. Either way the retained diagnostic
-    # state is left exactly as it was; the MQTT will only fires on an
-    # ungraceful death, which is the case that genuinely needs flagging.
+    # A requested stop is not a problem, and a problem that was already flagged
+    # does not stop being one. Either way the retained diagnostic state is left
+    # as it is; the MQTT will fires only on an ungraceful death, which is the
+    # case that needs flagging.
     log("info", "Shutting down; marking offline.")
     client.publish(AVAIL_TOPIC, "offline", qos=1, retain=True)
     client.loop_stop()
