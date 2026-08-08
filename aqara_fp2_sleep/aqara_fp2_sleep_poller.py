@@ -673,12 +673,16 @@ class Health:
         # the opposite of what this feature is for. Unchanged causes stay
         # quiet, so an ongoing outage still does not re-notify every poll.
         changed = self.problem is not True or cause != self.cause
+        if not changed:
+            # Nothing in the payload differs, and it is retained, so the broker
+            # is already serving the current truth. Republishing it every poll
+            # would write a Recorder row per interval for the whole outage.
+            return
         publish_problem(
             self.client, True, cause=cause, code=code, last_success=self.last_success
         )
-        if changed:
-            log("error", f"Flagging a connection problem: {cause}")
-            notify_problem(cause)
+        log("error", f"Flagging a connection problem: {cause}")
+        notify_problem(cause)
         self.problem = True
         self.cause = cause
 

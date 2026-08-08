@@ -2176,9 +2176,18 @@ def check_health_grace_and_notifications() -> None:
         if attempt == grace and not notifications:
             fail(f"the {grace}th consecutive transient failure must be flagged")
     raised = len(notifications)
+    published_during_outage = len(published)
     health.failed("transient", "cannot reach Aqara", -1)
     if len(notifications) != raised:
         fail("an ongoing problem must not re-notify every poll interval")
+    # Same reasoning as the healthy path: the payload is retained and nothing
+    # in it changed, so republishing writes a Recorder row per poll for the
+    # entire outage.
+    if len(published) != published_during_outage:
+        fail(
+            "an unchanged ongoing problem must not republish the retained "
+            f"payload; got {published[published_during_outage:]}"
+        )
 
     # A blip that turns out to be a rejected region must update the text. This
     # is the difference between "wait, it clears on its own" and "fix your
