@@ -1067,3 +1067,177 @@ assert.notEqual(
   "a gate-only change must invalidate the re-render guard"
 );
 assert.match(guardCard.shadowRoot.innerHTML, /Out of bed/);
+
+// --- connection problem -----------------------------------------------------
+//
+// The failure this covers: an eight-hour Aqara outage where the app detected
+// the cause on the first poll, and the card still told the user to go check
+// their entity ids. When the app has published a reason, the card must say it.
+
+function withProblem(states, { state = "on", cause } = {}) {
+  return {
+    ...states,
+    "binary_sensor.aqara_fp2_sleep_connection_problem": {
+      state,
+      last_updated: "2026-07-03T08:00:00.000Z",
+      attributes: cause === undefined ? {} : { cause },
+    },
+  };
+}
+
+const outageCause =
+  "Aqara rejected the sign-in (code 106). The configured region is USA.";
+const outageStates = withProblem(
+  defaultStates({ sleepState: "unavailable", updated: NOW }),
+  { cause: outageCause }
+);
+
+const outageHtml = render(outageStates);
+assert.match(
+  outageHtml,
+  /Aqara rejected the sign-in \(code 106\)/,
+  "the card must show the app's reported cause for an outage"
+);
+assert.doesNotMatch(
+  outageHtml,
+  /check Developer Tools/,
+  "a known outage must not send the user hunting for a wrong entity id"
+);
+
+// Without the diagnostic entity (older app, renamed entity) nothing changes.
+const legacyHtml = render(defaultStates({ sleepState: "unavailable", updated: NOW }));
+assert.match(
+  legacyHtml,
+  /No data from sensor\.aqara_fp2_sleep_sleep_state yet/,
+  "without the diagnostic entity the card keeps its original empty state"
+);
+
+// Problem flag off means the entity is healthy; do not hijack the empty state.
+const clearedHtml = render(
+  withProblem(defaultStates({ sleepState: "unavailable", updated: NOW }), {
+    state: "off",
+    cause: outageCause,
+  })
+);
+assert.match(
+  clearedHtml,
+  /No data from sensor\.aqara_fp2_sleep_sleep_state yet/,
+  "a cleared problem flag must not render a stale cause"
+);
+
+// Flag set but no cause text: still better than silence.
+const causelessHtml = render(
+  withProblem(defaultStates({ sleepState: "unavailable", updated: NOW }))
+);
+assert.match(
+  causelessHtml,
+  /cannot reach the Aqara cloud/,
+  "a problem without a cause attribute still explains itself"
+);
+
+// The cause is user-controlled text reaching innerHTML; it must be escaped.
+const injectionHtml = render(
+  withProblem(defaultStates({ sleepState: "unavailable", updated: NOW }), {
+    cause: '<img src=x onerror="alert(1)">',
+  })
+);
+assert.doesNotMatch(
+  injectionHtml,
+  /<img src=x/,
+  "the cause attribute must be html-escaped before it reaches innerHTML"
+);
+assert.match(injectionHtml, /&lt;img src=x/);
+
+// An outage freezes every vitals sensor by definition, so the diagnostic
+// entity is the only thing that changes. It must invalidate the re-render
+// guard on its own or the card stays pinned on the pre-outage wording.
+const problemGuardCard = new Card();
+problemGuardCard.setConfig({});
+const frozen = defaultStates({ sleepState: "unavailable", updated: NOW });
+problemGuardCard.hass = { states: withProblem(frozen, { cause: "first cause" }) };
+problemGuardCard.shadowRoot.innerHTML = "SENTINEL";
+problemGuardCard.hass = { states: withProblem(frozen, { cause: "first cause" }) };
+assert.equal(
+  problemGuardCard.shadowRoot.innerHTML,
+  "SENTINEL",
+  "an unchanged problem state must not repaint the card"
+);
+problemGuardCard.hass = { states: withProblem(frozen, { cause: "second cause" }) };
+assert.match(
+  problemGuardCard.shadowRoot.innerHTML,
+  /second cause/,
+  "a cause-only change must invalidate the re-render guard"
+);
+
+// The occupancy-blocked card has its own health line; it must carry the cause
+// too, otherwise the dominant daytime display state swallows the outage.
+const blockedHtml = render(
+  withProblem(
+    withOccupancy(
+      defaultStates({ sleepState: "unavailable", updated: NOW }),
+      "Leer"
+    ),
+    { cause: outageCause }
+  ),
+  occupancyConfig
+);
+assert.match(
+  blockedHtml,
+  /code 106/,
+  "the occupancy-blocked card must also report the connection cause"
+);
+
+// An explicit override is honoured.
+const overrideHtml = render(
+  {
+    ...defaultStates({ sleepState: "unavailable", updated: NOW }),
+    "binary_sensor.custom_problem": {
+      state: "on",
+      last_updated: NOW,
+      attributes: { cause: "custom entity cause" },
+    },
+  },
+  { entities: { connection_problem: "binary_sensor.custom_problem" } }
+);
+assert.match(
+  overrideHtml,
+  /custom entity cause/,
+  "entities.connection_problem must override the default entity id"
+);
+
+// A crashed poller flips the problem flag through the MQTT will straight away,
+// but the vitals keep their last value until expire_after (up to 3 poll
+// intervals). In that window the card must name the cause rather than report a
+// merely "stale" feed.
+const staleUpdated = "2026-07-03T07:50:00.000Z"; // ~10 min old at NOW
+const staleHtml = render(
+  withProblem(
+    withOccupancy(
+      defaultStates({ sleepState: "3", updated: staleUpdated }),
+      "Leer"
+    ),
+    { cause: "SleepRadar stopped: the app is not running." }
+  ),
+  occupancyConfig
+);
+assert.match(
+  staleHtml,
+  /SleepRadar stopped: the app is not running\./,
+  "the stale path must report a known connection cause"
+);
+assert.doesNotMatch(
+  staleHtml,
+  /The sleep-state feed is stale\./,
+  "a known cause must replace the generic stale note"
+);
+
+// Stale with no problem flagged keeps the original wording.
+const staleNoProblemHtml = render(
+  withOccupancy(defaultStates({ sleepState: "3", updated: staleUpdated }), "Leer"),
+  occupancyConfig
+);
+assert.match(
+  staleNoProblemHtml,
+  /The sleep-state feed is stale\./,
+  "without a flagged problem the stale note is unchanged"
+);
