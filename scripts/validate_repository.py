@@ -2195,6 +2195,22 @@ def check_health_grace_and_notifications() -> None:
     if (module.PROBLEM_STATE_TOPIC, "OFF") not in published:
         fail("recovery must publish OFF to the problem topic")
 
+    # Steady-state healthy polls must be silent. The attributes carry a
+    # last_successful_poll timestamp, so republishing them every interval
+    # writes a retained update per poll to an entity this repo recommends for
+    # Recorder — 1440 rows a day saying nothing changed.
+    published.clear()
+    notifications.clear()
+    for _ in range(5):
+        health.recovered()
+    if published:
+        fail(
+            "an already-healthy poll must not republish the problem topic; "
+            f"got {published}"
+        )
+    if notifications:
+        fail(f"an already-healthy poll must not touch notifications: {notifications}")
+
     # A rejected credential is flagged immediately: retrying cannot fix it.
     fresh = module.Health(FakeClient())
     notifications.clear()

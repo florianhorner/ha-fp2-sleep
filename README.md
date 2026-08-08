@@ -378,8 +378,10 @@ If required fields are blank, SleepRadar logs the missing field and waits about
 ### Know When It Stops
 
 SleepRadar publishes a diagnostic entity,
-`binary_sensor.aqara_fp2_sleep_connection_problem`. It turns **on** when data
-stops, and its `cause` attribute carries the reason in plain language. It is
+`binary_sensor.aqara_fp2_sleep_connection_problem` (or
+`binary_sensor.<mqtt_node_id>_connection_problem` if you changed
+`mqtt_node_id`). It turns **on** when data stops, and its `cause` attribute
+carries the reason in plain language. It is
 deliberately independent of the five vitals sensors, so it stays readable while
 they are unavailable, and its state survives a Home Assistant restart.
 

@@ -640,15 +640,19 @@ class Health:
     def recovered(self):
         self.transient_streak = 0
         self.last_success = time.strftime("%Y-%m-%dT%H:%M:%S%z")
-        if self.problem is not False:
-            if self.problem:
-                log("info", "Aqara connection recovered; clearing the problem flag")
-            publish_problem(self.client, False, last_success=self.last_success)
-            clear_problem_notification()
-            self.problem = False
-            self.cause = None
+        if self.problem is False:
+            # Steady-state healthy: publish nothing. last_success is tracked in
+            # memory and shipped with the next failure, which is the only time
+            # it answers a question. Republishing it every poll would write a
+            # retained attribute update per interval — 1440 a day on an entity
+            # this repo tells people to put in Recorder.
             return
+        if self.problem:
+            log("info", "Aqara connection recovered; clearing the problem flag")
         publish_problem(self.client, False, last_success=self.last_success)
+        clear_problem_notification()
+        self.problem = False
+        self.cause = None
 
     def failed(self, kind, cause, code):
         if kind == "transient":
