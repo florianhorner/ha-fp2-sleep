@@ -590,6 +590,7 @@ def notify_problem(cause):
 
 
 def clear_problem_notification():
+    """Dismiss the problem notification, so a fixed problem clears itself."""
     return call_core_service(
         "persistent_notification", "dismiss", {"notification_id": NOTIFICATION_ID}
     )
@@ -631,13 +632,21 @@ class Health:
     """
 
     def __init__(self, client):
+        """Track health state without publishing anything yet.
+
+        `problem` is tri-state on purpose: None means nothing has been
+        published this run, so the first result always writes, whichever way it
+        goes. False and True are the two published states, and both transitions
+        between them are what gates publishing and notifying.
+        """
         self.client = client
-        self.problem = None  # None = nothing published yet
+        self.problem = None
         self.cause = None
         self.transient_streak = 0
         self.last_success = None
 
     def recovered(self):
+        """Record a successful poll, clearing a problem if one was flagged."""
         self.transient_streak = 0
         self.last_success = time.strftime("%Y-%m-%dT%H:%M:%S%z")
         if self.problem is False:
@@ -655,6 +664,11 @@ class Health:
         self.cause = None
 
     def failed(self, kind, cause, code):
+        """Record a failed poll, flagging a problem once it counts.
+
+        Transient failures only count after TRANSIENT_FAILURE_GRACE of them in
+        a row; permanent ones count immediately.
+        """
         if kind == "transient":
             self.transient_streak += 1
             if self.transient_streak < TRANSIENT_FAILURE_GRACE:
