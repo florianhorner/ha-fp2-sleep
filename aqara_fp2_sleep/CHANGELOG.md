@@ -1,6 +1,26 @@
 # Changelog
 
-## Unreleased
+## 1.3.0
+
+- Adds `binary_sensor.aqara_fp2_sleep_connection_problem`, a diagnostic entity
+  that turns on when data stops and names the reason in its `cause` attribute.
+  It stays readable while the five sensors are unavailable.
+
+- Raises a Home Assistant notification with the cause and the fix when the
+  Aqara connection fails, updates it if the cause changes, and dismisses it on
+  recovery. Needs the new `homeassistant_api: true` permission, used for that
+  call only. **Approve it once after updating**; until then the diagnostic
+  entity still works and the notification is skipped with a `warning` in the
+  log.
+
+- Reports why a sign-in was rejected instead of repeating Aqara's "Request
+  failed. Please try again." Code `106` now points at `aqara_area`.
+
+- Backs off between retries after Aqara rejects the credentials, instead of
+  re-attempting the sign-in every poll interval.
+
+- Logs a failed startup sign-in at `error` instead of `fatal`. The app keeps
+  running and recovers once the options are corrected.
 
 - **Breaking for existing `examples/` template users.** The optional helpers now
   require an independent `binary_sensor.bed_occupied` and go unavailable without

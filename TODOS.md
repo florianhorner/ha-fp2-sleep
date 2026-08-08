@@ -1,5 +1,35 @@
 # TODOS
 
+## Diagnostics
+
+### Decide whether HA Repairs is worth a companion integration
+
+**What:** The connection problem currently surfaces as an MQTT diagnostic entity
+plus a `persistent_notification`. Home Assistant's Repairs panel is the better
+surface (proper issue card, `is_fixable: True` for a guided region picker,
+`learn_more_url`, native dismiss semantics).
+
+**Why not already done:** Repairs is closed to add-ons. Verified against the
+installed core on 2026-08-08: the WebSocket API exposes only
+`repairs/get_issue_data`, `repairs/ignore_issue`, `repairs/list_issues`; the
+HTTP views (`/api/repairs/issues/fix`) only run an *existing* issue's fix flow;
+and `async_create_issue()` takes `hass`, so it is in-process only. Its
+`translation_key` argument also means the fix text has to live in a registered
+integration's translation files. Creating a Repairs issue therefore requires
+shipping a companion custom integration.
+
+**The tradeoff:** a second install step spends SleepRadar's one-click-packaging
+wedge to buy a nicer error card. It also does not stay small — once an
+integration exists it can own the entities directly and MQTT stops being
+necessary, which is a different product with a different release train.
+
+**Decide after:** seeing whether real users adopt the notify automation in
+`examples/automations.yaml`. If the notification proves too weak, or an
+integration becomes justified for other reasons, Repairs comes with it free.
+Do not ship an integration *for* the error card.
+
+**Effort:** L **Priority:** P3 **Depends on:** adoption signal
+
 ## Poller
 
 ### Revisit Supervisor watchdog support with a health endpoint
