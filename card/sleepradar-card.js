@@ -22,6 +22,12 @@ const ENTITY_SUFFIXES = {
   respiration_rate: "respiration_rate",
 };
 
+// The app's diagnostic entity. Kept outside ENTITY_SUFFIXES: those are all
+// sensor.* vitals that the card requires, this is a binary_sensor.* that only
+// explains an outage. Absent (older app, or the user renamed it) the card
+// behaves as it did before.
+const PROBLEM_SUFFIX = "connection_problem";
+
 // Legacy raw Aqara sleep_state labels used when no independent occupancy gate
 // is configured. Codes 1 and 2 remain "Awake" in that compatibility mode.
 //
@@ -264,6 +270,13 @@ class SleepradarCard extends HTMLElement {
         defaults.respiration_rate
       ),
     };
+    // Not part of _entityIds: that object is what bed_occupancy.entity is
+    // checked against for independence, and the diagnostic entity carries no
+    // occupancy signal to be confused with.
+    this._problemEntityId = resolveEntityId(
+      overrides.connection_problem,
+      `binary_sensor.${nodeId}_${PROBLEM_SUFFIX}`
+    );
     const hasBedOccupancyConfig =
       config && Object.prototype.hasOwnProperty.call(config, "bed_occupancy");
     if (hasBedOccupancyConfig) {
@@ -382,6 +395,14 @@ class SleepradarCard extends HTMLElement {
     if (this._bedOccupancy) {
       signatureValues.push(occupancyObj && [occupancyObj.state, occupancyObj.last_updated]);
     }
+    // The diagnostic entity changes the rendered text without any vitals
+    // changing, since an outage freezes all three of them by definition.
+    // Leaving it out of the signature would pin the card on the pre-outage
+    // wording.
+    const problemObj = this._hass.states[this._problemEntityId];
+    signatureValues.push(
+      problemObj && [problemObj.state, problemObj.attributes && problemObj.attributes.cause]
+    );
     const signature = JSON.stringify(signatureValues);
     if (signature === this._lastSignature) return;
     this._lastSignature = signature;
@@ -410,18 +431,26 @@ class SleepradarCard extends HTMLElement {
     const occupancyConfirmed = Boolean(this._bedOccupancy);
 
     if (!stateObj || UNAVAILABLE_STATES.has(stateObj.state)) {
-      this.shadowRoot.innerHTML = this._styles() + `
-        <ha-card>
-          <div class="sr-empty">
-            <div class="sr-empty-title">SleepRadar</div>
-            <div class="sr-empty-body">
-              No data from ${escapeHtml(this._entityIds.sleep_state)} yet.
+      // When the app has published why it stopped, show that instead of the
+      // entity-id troubleshooting walkthrough. "No data yet" sends users
+      // hunting for a config mistake that isn't there.
+      const problemCause = this._connectionProblemCause();
+      const body = problemCause
+        ? `${escapeHtml(problemCause)}
+              Sensors stay unavailable until this is fixed.`
+        : `No data from ${escapeHtml(this._entityIds.sleep_state)} yet.
               Check that the SleepRadar app is running and the sensor exists.
               If the app is running but this entity id is wrong, Home
               Assistant pins entity ids when it first creates them and will
               not rename them later if you change mqtt_node_id or upgrade the
               app — check Developer Tools &gt; States for the real id and
-              set it with this card's entities: option (see README).
+              set it with this card's entities: option (see README).`;
+      this.shadowRoot.innerHTML = this._styles() + `
+        <ha-card>
+          <div class="sr-empty">
+            <div class="sr-empty-title">SleepRadar</div>
+            <div class="sr-empty-body">
+              ${body}
             </div>
           </div>
         </ha-card>`;
@@ -527,6 +556,22 @@ class SleepradarCard extends HTMLElement {
       </ha-card>`;
   }
 
+  // The app's own explanation for why data stopped, when it published one.
+  // Returns null when there is no problem, or when the diagnostic entity is
+  // absent (older app, renamed entity). Callers then keep the generic wording,
+  // which is what the card said before this entity existed.
+  _connectionProblemCause() {
+    const obj = this._hass && this._hass.states[this._problemEntityId];
+    if (!obj || UNAVAILABLE_STATES.has(obj.state)) return null;
+    if (String(obj.state).toLowerCase() !== "on") return null;
+    const cause = obj.attributes && obj.attributes.cause;
+    if (typeof cause !== "string" || !cause.trim()) {
+      // The flag is set but carries no text, so name the likeliest cause.
+      return "SleepRadar cannot reach the Aqara cloud. Check the app log.";
+    }
+    return cause.trim();
+  }
+
   // Health of the sleep-state feed, evaluated independently of the occupancy
   // gate so the blocked card can report it. Returns "ok" only when the entity
   // exists, is available, and its timestamp is inside the stale window.
@@ -535,8 +580,9 @@ class SleepradarCard extends HTMLElement {
       return {
         status: "missing",
         note:
+          this._connectionProblemCause() ||
           "SleepRadar is not reporting a sleep state. Check that the app is " +
-          "running and that this card points at the right entity id.",
+            "running and that this card points at the right entity id.",
       };
     }
     const ageMs = Date.now() - parseTimestampMs(stateObj.last_updated);
@@ -544,9 +590,15 @@ class SleepradarCard extends HTMLElement {
     if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs > staleAfterMs) {
       return {
         status: "stale",
+        // A crashed poller flips the problem flag through the MQTT will
+        // immediately, but the vitals stay available until expire_after (up to
+        // 3 poll intervals). In that window the feed reads as merely stale
+        // although the app has already published why it died, so prefer the
+        // cause.
         note:
+          this._connectionProblemCause() ||
           "The sleep-state feed is stale. Occupancy is still being read, but " +
-          "check the app and MQTT.",
+            "check the app and MQTT.",
       };
     }
     return { status: "ok", note: "" };

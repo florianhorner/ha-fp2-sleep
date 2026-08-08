@@ -113,6 +113,16 @@ EXPECTED_OBJECT_IDS = {
     "aqara_fp2_sleep_body_movement",
     "aqara_fp2_sleep_illuminance",
 }
+# Entity-id suffixes that carry actual sleep data, independent of whatever
+# mqtt_node_id an install uses. Anything touching one of these is subject to
+# the occupancy gate; see check_automation_gates().
+SLEEP_DATA_SUFFIXES = (
+    "_sleep_state",
+    "_heart_rate",
+    "_respiration_rate",
+    "_body_movement",
+    "_illuminance",
+)
 EXPECTED_RUNTIME_REQUIREMENTS = [
     "paho-mqtt==2.1.0",
     "pycryptodome==3.23.0",
@@ -1345,13 +1355,20 @@ def validate_discovery_payloads() -> None:
     if set(default_entity_ids) != expected_entity_ids:
         fail(f"unexpected discovery default_entity_ids: {sorted(default_entity_ids)}")
 
-    validate_card_default_entities(module.NODE, expected_entity_ids)
+    problem_entity_id = f"binary_sensor.{module.PROBLEM_OBJECT_ID}"
+    validate_card_default_entities(
+        module.NODE, expected_entity_ids, problem_entity_id
+    )
     check_recorder_entities(
-        (ROOT / "examples/recorder.yaml").read_text(), expected_entity_ids
+        (ROOT / "examples/recorder.yaml").read_text(),
+        expected_entity_ids,
+        problem_entity_id,
     )
 
 
-def validate_card_default_entities(poller_node_id, published_entity_ids) -> None:
+def validate_card_default_entities(
+    poller_node_id, published_entity_ids, published_problem_entity_id
+) -> None:
     """The card's default entities must be a subset of what the add-on
     actually publishes, using the same default mqtt_node_id."""
     card_path = ROOT / "card/sleepradar-card.js"
@@ -1384,6 +1401,25 @@ def validate_card_default_entities(poller_node_id, published_entity_ids) -> None
         fail(
             "card/sleepradar-card.js references default entities the add-on "
             f"does not publish: {sorted(unpublished)}"
+        )
+
+    # The diagnostic entity is not in ENTITY_SUFFIXES (it is a binary_sensor,
+    # not a vitals sensor), so it needs its own drift check. Without one, a
+    # rename on either side degrades the card back to the generic "no data
+    # yet" text with nothing failing.
+    problem_match = re.search(r'PROBLEM_SUFFIX\s*=\s*"([^"]+)"', text)
+    if not problem_match:
+        fail("card/sleepradar-card.js: could not find PROBLEM_SUFFIX")
+    if "binary_sensor.${nodeId}_${PROBLEM_SUFFIX}" not in text:
+        fail(
+            "card/sleepradar-card.js must build its diagnostic entity id as "
+            "binary_sensor.${nodeId}_${PROBLEM_SUFFIX}"
+        )
+    card_problem_entity = f"binary_sensor.{card_node_id}_{problem_match.group(1)}"
+    if card_problem_entity != published_problem_entity_id:
+        fail(
+            f"card diagnostic entity ({card_problem_entity!r}) does not match "
+            f"the one the add-on publishes ({published_problem_entity_id!r})"
         )
 
 
@@ -1419,6 +1455,23 @@ def install_import_stubs() -> None:
         sys.modules["Crypto.Hash.MD5"] = crypto_md5
         sys.modules["Crypto.Cipher"] = crypto_cipher
         sys.modules["Crypto.Cipher.PKCS1_v1_5"] = crypto_pkcs
+
+
+def load_poller_module(name: str):
+    """Import a fresh copy of the poller under `name`.
+
+    Fresh per call so module-level monkeypatching in one check cannot leak
+    into the next. Anything a check patches on a *shared* object (the stubbed
+    paho module, the real urllib) still has to be restored by that check.
+    """
+    install_import_stubs()
+    module_path = ROOT / "aqara_fp2_sleep/aqara_fp2_sleep_poller.py"
+    spec = importlib.util.spec_from_file_location(name, module_path)
+    if spec is None or spec.loader is None:
+        fail(f"could not load poller module for {name}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _code_label_pairs(block: str) -> dict:
@@ -1804,6 +1857,24 @@ def check_automation_gates(text: str) -> None:
         serialized = json.dumps(automation, sort_keys=True)
         uses_asleep_helper = "binary_sensor.fp2_asleep" in serialized
         uses_phase_helper = "sensor.fp2_sleep_phase" in serialized
+        # An automation that only watches the diagnostic entity is not acting
+        # on sleep data, so the occupancy gate has nothing to arbitrate. The
+        # exemption is narrow on purpose: touch any sleep signal, raw sensor or
+        # template helper, and the gate applies again, so this cannot be used
+        # to smuggle in an ungated sleep automation.
+        #
+        # Matched on entity-id *suffix*, not on the default node id: a custom
+        # mqtt_node_id (sensor.bedroom_fp2_sleep_state) is still sleep data,
+        # and an earlier version of this check let that through.
+        watches_diagnostics = "_connection_problem" in serialized
+        without_diagnostics = serialized.replace("_connection_problem", "")
+        touches_sleep_data = (
+            uses_asleep_helper
+            or uses_phase_helper
+            or any(suffix in without_diagnostics for suffix in SLEEP_DATA_SUFFIXES)
+        )
+        if watches_diagnostics and not touches_sleep_data:
+            continue
         if not (uses_asleep_helper or uses_phase_helper):
             fail(
                 "examples/automations.yaml automation does not use an "
@@ -1840,13 +1911,16 @@ def check_examples_readme_gate_contract(text: str) -> None:
         )
 
 
-def check_recorder_entities(text: str, expected_entity_ids) -> None:
+def check_recorder_entities(text: str, expected_entity_ids, diagnostic_entity_id) -> None:
     data = yaml.safe_load(text) or {}
     entities = set((data.get("include") or {}).get("entities") or [])
-    if entities != set(expected_entity_ids):
+    # The diagnostic entity is recorded alongside the vitals so a past outage
+    # still comes with a reason after the retained state has moved on.
+    expected = set(expected_entity_ids) | {diagnostic_entity_id}
+    if entities != expected:
         fail(
             "examples/recorder.yaml include list drifted from the published "
-            f"entities. expected {sorted(expected_entity_ids)}, got {sorted(entities)}"
+            f"entities. expected {sorted(expected)}, got {sorted(entities)}"
         )
 
 
@@ -1912,15 +1986,384 @@ def check_login_failure_falls_through_to_retry_loop() -> None:
     except SystemExit as exc:
         fail(f"startup login failure must not exit immediately: {exc}")
 
-    if not any(
-        event[0] == "log"
-        and event[1] == "fatal"
-        and "Aqara login failed at startup" in event[2]
+    # The log level matters here. This path keeps running and recovers on its
+    # own once the options are corrected, so "fatal" told users to expect a
+    # crash that never came, and buried the one line that names the fix.
+    hints = [
+        event
         for event in events
-    ):
-        fail("startup login failure did not log the fatal startup hint")
+        if event[0] == "log" and "Aqara login failed at startup" in event[2]
+    ]
+    if not hints:
+        fail("startup login failure did not log the startup hint")
+    if any(event[1] == "fatal" for event in hints):
+        fail(
+            "startup login failure must not log at fatal: the process keeps "
+            "running and retries"
+        )
+    if not any(event[1] == "error" for event in hints):
+        fail("startup login failure must log the startup hint at error level")
     if not any(event[0] == "res_query" for event in events):
         fail("startup login failure did not fall through to the retry poll loop")
+    # A login the user has to fix is published as a problem, not only logged.
+    # That is what the diagnostic entity is for.
+    if not any(
+        event[0] == "publish" and event[1] and event[1][0] == module.PROBLEM_STATE_TOPIC
+        and event[1][1] == "ON"
+        for event in events
+    ):
+        fail("a rejected login did not publish ON to the problem topic")
+
+
+def check_failure_classification() -> None:
+    module = load_poller_module("poller_failure_classification")
+
+    if not module.is_transient_code(-1):
+        fail("code -1 (socket/DNS/timeout) must be transient")
+    for code in (429, 500, 503):
+        if not module.is_transient_code(code):
+            fail(f"HTTP {code} must be transient")
+    if module.is_transient_code(module.AQARA_CODE_ACCOUNT_REJECTED):
+        fail("code 106 is Aqara saying no; it must not be transient")
+
+    kind, cause = module.describe_login_failure(
+        {"code": -1, "message": "URLError: <urlopen error [Errno -3] Try again>"}
+    )
+    if kind != "transient":
+        fail(f"URLError must classify as transient, got {kind}")
+
+    kind, cause = module.describe_login_failure(
+        {"code": 106, "message": "Request failed. Please try again."}, area="USA"
+    )
+    if kind != "permanent":
+        fail(f"code 106 must classify as permanent, got {kind}")
+    # Aqara's own text for 106 is "Request failed. Please try again.", which
+    # sends users to retry forever. The cause must name the region instead.
+    if "USA" not in cause or "aqara_area" not in cause:
+        fail(f"code 106 cause must name the configured region and option: {cause}")
+
+    # Signed in, but the device query was rejected: different fix entirely.
+    _kind, cause = module.describe_failure({"code": 108, "message": "no"}, True)
+    if "subject_id" not in cause:
+        fail(f"a rejected query on a good session must point at subject_id: {cause}")
+
+    # code 0 means Aqara answered; we just could not read the payload. Calling
+    # that a rejected sign-in suspends polling for up to 30 minutes and tells
+    # the user their credentials are wrong when they are not.
+    for login_ok in (True, False):
+        kind, cause = module.describe_failure({"code": 0, "result": {"x": 1}}, login_ok)
+        if kind != "transient":
+            fail(
+                f"code 0 with an unreadable payload must be transient "
+                f"(login_ok={login_ok}), got {kind}: {cause}"
+            )
+        if "rejected the sign-in" in cause or "subject_id" in cause:
+            fail(f"code 0 must not be described as an auth failure: {cause}")
+
+
+def check_problem_entity_is_independent() -> None:
+    """The diagnostic entity must survive the outage it describes."""
+    module = load_poller_module("poller_problem_entity")
+    payload = module.problem_discovery_payload()
+    json.dumps(payload)
+
+    if "availability_topic" in payload:
+        fail(
+            "the problem entity must not hang off AVAIL_TOPIC: it would go "
+            "unavailable at the moment its reason is needed"
+        )
+    if "expire_after" in payload:
+        fail(
+            "the problem entity must not expire; process death is covered by "
+            "the MQTT will instead"
+        )
+    if payload.get("device_class") != "problem":
+        fail("the problem entity must use device_class: problem")
+    if payload.get("entity_category") != "diagnostic":
+        fail("the problem entity must be entity_category: diagnostic")
+    if payload.get("state_topic") == module.AVAIL_TOPIC:
+        fail("the problem entity must not publish on the vitals availability topic")
+    if payload.get("json_attributes_topic") != module.PROBLEM_ATTR_TOPIC:
+        fail("the problem entity must expose its cause via json_attributes_topic")
+
+    # The will is the only thing that flags an ungraceful death, since this
+    # entity has no expire_after.
+    wills = []
+
+    class WillClient:
+        def will_set(self, topic, payload=None, qos=0, retain=False):
+            wills.append((topic, payload, retain))
+
+        def username_pw_set(self, *args, **kwargs):
+            pass
+
+        def tls_set(self, *args, **kwargs):
+            pass
+
+        def connect(self, *args, **kwargs):
+            pass
+
+        def loop_start(self):
+            pass
+
+    # module.mqtt is the shared import stub, so restore it or every later
+    # check sees this fake.
+    original_client = module.mqtt.Client
+    try:
+        module.mqtt.Client = lambda *args, **kwargs: WillClient()
+        module.make_mqtt()
+    finally:
+        module.mqtt.Client = original_client
+    if (module.PROBLEM_STATE_TOPIC, "ON", True) not in wills:
+        fail(f"MQTT will must flag a problem on ungraceful death, got {wills}")
+
+    # A correct payload is not enough: Home Assistant only creates the entity
+    # if the discovery message actually goes out.
+    discovery = []
+
+    class DiscoveryClient:
+        def publish(self, topic, payload=None, qos=0, retain=False):
+            discovery.append((topic, payload, retain))
+
+    original_log = module.log
+    try:
+        module.log = lambda level, msg: None
+        module.publish_discovery(DiscoveryClient())
+    finally:
+        module.log = original_log
+    expected_topic = (
+        f"{module.DISCOVERY_PREFIX}/binary_sensor/{module.NODE}/"
+        "connection_problem/config"
+    )
+    published = [entry for entry in discovery if entry[0] == expected_topic]
+    if not published:
+        fail(
+            f"publish_discovery never published the problem entity to "
+            f"{expected_topic}; got {sorted({t for t, _, _ in discovery})}"
+        )
+    if not published[0][2]:
+        fail("the problem entity's discovery message must be retained")
+    if json.loads(published[0][1]).get("device_class") != "problem":
+        fail("the published problem discovery payload lost its device_class")
+
+
+def check_health_grace_and_notifications() -> None:
+    module = load_poller_module("poller_health")
+
+    published = []
+    notifications = []
+
+    class FakeClient:
+        def publish(self, topic, payload=None, qos=0, retain=False):
+            published.append((topic, payload))
+
+    module.notify_problem = lambda cause: notifications.append(("create", cause))
+    module.clear_problem_notification = lambda: notifications.append(("dismiss", None))
+    module.log = lambda level, msg: None
+
+    health = module.Health(FakeClient())
+
+    # A single DNS blip must not raise a notification, and the flag must fire
+    # on the Nth consecutive failure rather than merely "eventually".
+    grace = module.TRANSIENT_FAILURE_GRACE
+    for attempt in range(1, grace + 1):
+        health.failed("transient", "cannot reach Aqara", -1)
+        if attempt < grace and notifications:
+            fail(
+                f"transient failure {attempt}/{grace} raised a notification "
+                "before the grace window elapsed"
+            )
+        if attempt == grace and not notifications:
+            fail(f"the {grace}th consecutive transient failure must be flagged")
+    raised = len(notifications)
+    published_during_outage = len(published)
+    health.failed("transient", "cannot reach Aqara", -1)
+    if len(notifications) != raised:
+        fail("an ongoing problem must not re-notify every poll interval")
+    # Same reasoning as the healthy path: the payload is retained and nothing
+    # in it changed, so republishing writes a Recorder row per poll for the
+    # entire outage.
+    if len(published) != published_during_outage:
+        fail(
+            "an unchanged ongoing problem must not republish the retained "
+            f"payload; got {published[published_during_outage:]}"
+        )
+
+    # A blip that turns out to be a rejected region must update the text, on
+    # the surface the user actually reads: "wait, it clears on its own" and
+    # "fix your region" call for different actions.
+    health.failed("permanent", "Aqara rejected the sign-in (code 106)", 106)
+    if len(notifications) == raised:
+        fail("a changed cause must update the notification, not keep the old text")
+    if "106" not in (notifications[-1][1] or ""):
+        fail(f"the updated notification must carry the new cause: {notifications[-1]}")
+
+    health.recovered()
+    if notifications[-1][0] != "dismiss":
+        fail("recovery must dismiss the notification it raised")
+    if (module.PROBLEM_STATE_TOPIC, "OFF") not in published:
+        fail("recovery must publish OFF to the problem topic")
+
+    # Steady-state healthy polls must be silent. The attributes carry a
+    # last_successful_poll timestamp, so republishing them every interval
+    # writes a retained update per poll, 1440 a day, to an entity this repo
+    # recommends for Recorder.
+    published.clear()
+    notifications.clear()
+    for _ in range(5):
+        health.recovered()
+    if published:
+        fail(
+            "an already-healthy poll must not republish the problem topic; "
+            f"got {published}"
+        )
+    if notifications:
+        fail(f"an already-healthy poll must not touch notifications: {notifications}")
+
+    # A rejected credential is flagged immediately: retrying cannot fix it.
+    fresh = module.Health(FakeClient())
+    notifications.clear()
+    fresh.failed("permanent", "Aqara rejected the sign-in", 106)
+    if not notifications:
+        fail("a permanent failure must be flagged on the first occurrence")
+
+
+def check_auth_backoff_schedule() -> None:
+    """The gap between sign-in attempts must match AUTH_RETRY_BACKOFF.
+
+    The poll loop sleeps one INTERVAL at the end of every iteration, so a
+    naive `auth_wait = auth_delay` produces a real gap of auth_delay+INTERVAL
+    and a countdown log that understates the wait.
+    """
+    module = load_poller_module("poller_backoff")
+    interval = module.INTERVAL
+
+    # Drive the real main() loop. Reimplementing the schedule here would pin
+    # the intention while leaving the loop free to drift away from it.
+    clock = {"t": 0}
+    attempts = []
+
+    class FakeClient:
+        def publish(self, *args, **kwargs):
+            pass
+
+        def loop_stop(self):
+            pass
+
+        def disconnect(self):
+            pass
+
+    class RejectingAqara:
+        def __init__(self, area):
+            self.last_error = None
+
+        def login(self):
+            attempts.append(clock["t"])
+            self.last_error = {"code": 106, "message": "Request failed."}
+            return False
+
+        def res_query(self, did, options):
+            return {"code": 106, "message": "Request failed."}
+
+    def fake_sleep(seconds):
+        clock["t"] += seconds
+        if clock["t"] > 20000:
+            module._running = False
+        return module._running
+
+    module.make_mqtt = lambda: FakeClient()
+    module.publish_discovery = lambda client: None
+    module.Aqara = RejectingAqara
+    module.interruptible_sleep = fake_sleep
+    module.log = lambda level, msg: None
+    module.notify_problem = lambda cause: True
+    module.clear_problem_notification = lambda: True
+    module.USER, module.PASSWORD, module.SUBJECT = "u", "p", "did"
+    module._running = True
+    module.main()
+
+    if len(attempts) < 5:
+        fail(f"expected several sign-in attempts to measure, got {len(attempts)}")
+    # Drop the startup login: it precedes the loop and has no backoff.
+    gaps = [b - a for a, b in zip(attempts[1:], attempts[2:])]
+    expected, delay = [], module.AUTH_RETRY_BACKOFF
+    while len(expected) < len(gaps):
+        expected.append(max(delay, interval))
+        delay = min(delay * 2, module.AUTH_RETRY_BACKOFF_MAX)
+    if gaps != expected:
+        fail(f"auth backoff gaps {gaps[:6]} do not match the schedule {expected[:6]}")
+    if max(gaps) > module.AUTH_RETRY_BACKOFF_MAX:
+        fail(f"auth backoff exceeded its cap: {max(gaps)}s")
+
+
+def check_notification_failure_is_soft() -> None:
+    """Losing a notification must never take the poller down."""
+    module = load_poller_module("poller_notify_soft")
+    module.SUPERVISOR_TOKEN = "test-token"
+    module.log = lambda level, msg: None
+
+    def boom(*args, **kwargs):
+        raise OSError("supervisor proxy refused the call")
+
+    # urllib is the real stdlib module, shared by every later check.
+    original_urlopen = module.urllib.request.urlopen
+    try:
+        module.urllib.request.urlopen = boom
+        if (
+            module.call_core_service("persistent_notification", "create", {})
+            is not False
+        ):
+            fail("a refused core API call must report failure, not success")
+    finally:
+        module.urllib.request.urlopen = original_urlopen
+
+    module.SUPERVISOR_TOKEN = ""
+    if module.call_core_service("persistent_notification", "create", {}) is not False:
+        fail("call_core_service must no-op without a Supervisor token")
+
+    # An undelivered notification is itself an outage the user cannot see, so
+    # it belongs at warning rather than swallowed at debug.
+    logged = []
+    module.log = lambda level, msg: logged.append((level, msg))
+    module.call_core_service = lambda domain, service, payload: False
+    if module.notify_problem("Aqara rejected the sign-in") is not False:
+        fail("notify_problem must report an undelivered notification")
+    warnings = [msg for level, msg in logged if level == "warning"]
+    if not warnings:
+        fail(
+            "a notification that could not be delivered must log at warning, "
+            f"got {logged}"
+        )
+    if not any("Configuration" in msg for msg in warnings):
+        fail(f"the warning must name the re-approval step: {warnings}")
+
+
+def check_addon_permissions(config=None) -> None:
+    """Pin the add-on's permission surface.
+
+    This add-on holds Aqara cloud credentials. Every one of these keys widens
+    what a compromise reaches, so changing one has to be an edit here and not
+    only a flip in config.yaml.
+    """
+    if config is None:
+        config = yaml.safe_load((ROOT / "aqara_fp2_sleep/config.yaml").read_text())
+    expected = {
+        # Granted: raises and dismisses the persistent notification naming why
+        # the Aqara connection is down. Nothing else uses it.
+        "homeassistant_api": True,
+        "hassio_api": False,
+    }
+    for key, want in expected.items():
+        got = config.get(key, False)
+        if got != want:
+            fail(
+                f"add-on permission {key} is {got!r}, expected {want!r}. "
+                "A permission change needs a matching update to "
+                "check_addon_permissions in the same commit."
+            )
+    for key in ("host_network", "host_pid", "privileged", "full_access", "auth_api"):
+        if config.get(key):
+            fail(f"add-on must not request {key}")
 
 
 def run_self_test() -> None:
@@ -1995,6 +2438,7 @@ def run_self_test() -> None:
     favicon_source = (ROOT / FAVICON_SOURCE).read_bytes()
     favicon = (ROOT / FAVICON_PATH).read_bytes()
     entity_ids = {f"sensor.{oid}" for oid in EXPECTED_OBJECT_IDS}
+    diagnostic_entity_id = "binary_sensor.aqara_fp2_sleep_connection_problem"
     published_paths = [
         "assets/feature-gifs/example.gif",
         "assets/feature-gifs/example.mp4",
@@ -2023,7 +2467,10 @@ def run_self_test() -> None:
         "examples readme real",
         lambda: check_examples_readme_gate_contract(examples_readme),
     )
-    expect_pass("recorder real", lambda: check_recorder_entities(recorder, entity_ids))
+    expect_pass(
+        "recorder real",
+        lambda: check_recorder_entities(recorder, entity_ids, diagnostic_entity_id),
+    )
     expect_pass(
         "ghost-vitals evidence real",
         lambda: check_ghost_vitals_evidence(ghost_vitals_fixture, readme),
@@ -2055,6 +2502,53 @@ def run_self_test() -> None:
     expect_pass(
         "login failure retry loop",
         check_login_failure_falls_through_to_retry_loop,
+    )
+    expect_pass("failure classification", check_failure_classification)
+    expect_pass("problem entity independence", check_problem_entity_is_independent)
+    expect_pass("health grace and notifications", check_health_grace_and_notifications)
+    expect_pass("auth backoff schedule", check_auth_backoff_schedule)
+    expect_pass("notification fails soft", check_notification_failure_is_soft)
+    # The exemption in check_automation_gates was the one guard with no
+    # negative fixture, and it was too broad: it keyed off the default node id,
+    # so a custom mqtt_node_id smuggled an ungated sleep automation past it.
+    expect_fail_matching(
+        "diagnostic exemption does not cover sleep data on a custom node id",
+        lambda: check_automation_gates(
+            yaml.safe_dump(
+                [
+                    {
+                        "alias": "ungated",
+                        "trigger": [
+                            {
+                                "platform": "state",
+                                "entity_id": "binary_sensor.bedroom_fp2_connection_problem",
+                                "to": "on",
+                            }
+                        ],
+                        "condition": [
+                            {
+                                "condition": "state",
+                                "entity_id": "sensor.bedroom_fp2_sleep_state",
+                                "state": "3",
+                            }
+                        ],
+                        "action": [{"service": "light.turn_on"}],
+                    }
+                ]
+            )
+        ),
+        "occupancy-gated helper",
+    )
+    expect_pass("addon permissions real", lambda: check_addon_permissions(addon_config))
+    expect_fail_matching(
+        "addon permission flipped without updating the guard",
+        lambda: check_addon_permissions({**addon_config, "hassio_api": True}),
+        "hassio_api",
+    )
+    expect_fail_matching(
+        "addon requesting host network",
+        lambda: check_addon_permissions({**addon_config, "host_network": True}),
+        "host_network",
     )
 
     def mutate(text, old, new):
@@ -3197,7 +3691,17 @@ def run_self_test() -> None:
                 "sensor.aqara_fp2_sleep_pulse",
             ),
             entity_ids,
+            diagnostic_entity_id,
         ),
+    )
+    expect_fail_matching(
+        "recorder dropping the diagnostic entity",
+        lambda: check_recorder_entities(
+            mutate(recorder, f"    - {diagnostic_entity_id}\n", ""),
+            entity_ids,
+            diagnostic_entity_id,
+        ),
+        "connection_problem",
     )
 
     if failures:
@@ -3234,6 +3738,12 @@ def main(argv: list[str] | None = None) -> None:
     validate_yaml()
     validate_favicon()
     validate_addon_config()
+    check_addon_permissions()
+    check_failure_classification()
+    check_problem_entity_is_independent()
+    check_health_grace_and_notifications()
+    check_auth_backoff_schedule()
+    check_notification_failure_is_soft()
     validate_run_script()
     validate_examples()
     validate_discovery_payloads()

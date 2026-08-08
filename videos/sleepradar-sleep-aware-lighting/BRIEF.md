@@ -18,10 +18,11 @@ motion_verb: flow
 uncertainty: "Whether the full trigger-condition-action chain remains readable within one vertical frame."
 truth:
   source_refs:
-    - "examples/automations.yaml:1-33"
+    - "examples/automations.yaml:1-12"
+    - "examples/automations.yaml:14-33"
     - "examples/sleep_tracking.yaml:73-89"
     - "README.md:252-263"
-  checked_at: "2026-08-06"
+  checked_at: "2026-08-08"
   baseline_commit: "906f6dcce80f206e624b7e205c0e54334745483b"
   release_tag: "v1.2.1"
   qualifiers:

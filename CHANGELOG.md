@@ -1,6 +1,39 @@
 # Changelog
 
-## Unreleased
+## 1.3.0
+
+- Adds `binary_sensor.aqara_fp2_sleep_connection_problem`, a diagnostic entity
+  that turns on when data stops and carries the reason in its `cause`
+  attribute. It is independent of the five vitals sensors, so it stays readable
+  while they are unavailable, and its state is retained across a Home Assistant
+  restart. Recorded by `examples/recorder.yaml`.
+
+- Raises a Home Assistant notification naming the cause and the fix when the
+  Aqara connection fails, updates it if the cause changes, and dismisses it on
+  recovery. Needs the new `homeassistant_api: true` permission, used for that
+  call only. **Existing installs must approve it once after updating**; until
+  then the diagnostic entity still works, the notification is skipped, and the
+  log says so at `warning`.
+
+- Names the cause of a failed sign-in instead of passing through Aqara's
+  "Request failed. Please try again." Code `106` now reports that the
+  configured region rejected the account and points at `aqara_area`.
+
+- Separates transient failures (DNS, timeouts, Aqara 5xx) from permanent ones
+  (rejected credentials). Transient failures get a grace window before they are
+  flagged; permanent ones are flagged immediately and back off between retries
+  instead of re-attempting the sign-in every poll interval.
+
+- Logs the startup sign-in failure at `error` instead of `fatal`. The process
+  keeps running and recovers on its own, so `fatal` described a crash that
+  never happened.
+
+- Shows the reported cause in the SleepRadar Card instead of the generic "no
+  data yet" message once the app has flagged a connection problem. Accepts an
+  optional `entities.connection_problem` override.
+
+- Adds an example automation that forwards a connection problem to a notify
+  service, with a five-minute delay so a brief network blip does not wake you.
 
 - **Breaking for anyone already using the optional `examples/` templates.**
   `examples/sleep_tracking.yaml` now requires an independent

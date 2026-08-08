@@ -10,3 +10,7 @@ include:
     - sensor.aqara_fp2_sleep_sleep_state
     - sensor.aqara_fp2_sleep_body_movement
     - sensor.aqara_fp2_sleep_illuminance
+    # Recorded so a past outage still comes with a reason. Without history on
+    # this entity, the retained state is overwritten by the next problem and
+    # last night's gap has no explanation left.
+    - binary_sensor.aqara_fp2_sleep_connection_problem

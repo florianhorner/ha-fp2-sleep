@@ -93,7 +93,10 @@ Or add it by hand:
    aqara_username: "your-aqara-home-app-email"
    aqara_password: "your-aqara-home-app-password"
    subject_id: "lumi1.xxxxxxxxxxxx"
-   aqara_area: "EU"   # CN | EU | USA | RU | KR — must match your account region
+   # CN | EU | USA | RU | KR. This is the region your Aqara Home account was
+   # created in, not where you live. An account does not exist outside its
+   # region, so the wrong value rejects a correct password (see Login Fails).
+   aqara_area: "EU"
 
    # Optional
    poll_interval: 60
@@ -163,6 +166,17 @@ entities:
   sleep_state: sensor.your_sleep_state_entity
   heart_rate: sensor.your_heart_rate_entity
   respiration_rate: sensor.your_respiration_rate_entity
+```
+
+When the app reports a connection problem, the card shows that reason instead
+of the generic "no data yet" message. It reads
+`binary_sensor.<mqtt_node_id>_connection_problem` by default; override it the
+same way if Home Assistant pinned a different id:
+
+```yaml
+type: custom:sleepradar-card
+entities:
+  connection_problem: binary_sensor.your_connection_problem_entity
 ```
 
 If you changed `poll_interval`, set the same value on the card so the stale
@@ -338,16 +352,59 @@ the authority for whether anyone is in bed. Do not derive occupancy from
 
 ### Login Fails
 
-Use the Aqara Home app account (mobile app email), not the Aqara webshop
-account. Check `aqara_area` because accounts are region-bound.
+**The app still shows as `started` when the sign-in is permanently failing.**
+The process is alive and retrying; only the sensors go unavailable. The
+"started" badge is not proof that data is flowing. Read the
+`binary_sensor.aqara_fp2_sleep_connection_problem` entity or the app log.
 
-If the login is rejected, the app log shows a `[fatal] Aqara login failed at
-startup` line naming the fields to check. SleepRadar keeps retrying and the
-sensors stay unavailable until the login succeeds, so fix the credentials and it
-recovers on its own.
+Use the Aqara Home app account (mobile app email), not the Aqara webshop
+account. Check `aqara_area` first: an Aqara Home account only exists in the
+region it was created in, so the wrong region rejects an otherwise correct
+password.
+
+**`code=106`, "Request failed. Please try again."** This is Aqara's text for a
+rejected sign-in, and retrying does not help. It is what a wrong `aqara_area`
+looks like. Set the region to match the account, then restart the app. If the
+region was already correct, check `aqara_username` and `aqara_password` next.
+
+The app log names the cause and the option to change, at `error` level. It keeps
+retrying with a growing delay between attempts, so a wrong password is not
+hammered against Aqara's login endpoint. The sensors stay unavailable until the
+sign-in succeeds; fix the options and it recovers on its own.
 
 If required fields are blank, SleepRadar logs the missing field and waits about
 30 seconds before exiting. Fill in the options and start it again.
+
+### Know When It Stops
+
+SleepRadar publishes a diagnostic entity,
+`binary_sensor.aqara_fp2_sleep_connection_problem` (or
+`binary_sensor.<mqtt_node_id>_connection_problem` if you changed
+`mqtt_node_id`). It turns **on** when data stops, and its `cause` attribute
+carries the reason in plain language. It does not depend on the five vitals
+sensors, so it stays readable while they are unavailable, and its state
+survives a Home Assistant restart.
+
+The app also raises a Home Assistant notification naming the cause and the fix,
+updates it if the cause changes, and dismisses it once the connection recovers.
+
+Two timing details:
+
+- If the app is **updated from a version without Home Assistant API access**,
+  approve that access once in the Configuration tab. Until then the diagnostic
+  entity still works and the notification is skipped; the log says so.
+- If the app **crashes** rather than failing to sign in, the diagnostic entity
+  flips immediately but the five sensors stay on their last value for up to
+  three poll intervals (about three minutes at the default) before Home
+  Assistant expires them. The card shows the reported cause during that window
+  instead of calling the feed stale.
+
+Neither reaches your phone on its own. `examples/automations.yaml` has a
+ready-made automation that forwards the cause to a notify service, with a
+five-minute delay so a brief network blip does not wake you.
+
+These outages happen overnight, and there is no backfill: a night SleepRadar
+did not record stays missing.
 
 ### Sensors Do Not Appear
 

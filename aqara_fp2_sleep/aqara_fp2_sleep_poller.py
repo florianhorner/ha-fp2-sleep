@@ -95,6 +95,39 @@ MQTT_CONNECT_BACKOFF = (
 )
 MQTT_CONNECT_BACKOFF_MAX = 60
 
+# Home Assistant core API, reached through the Supervisor proxy. Used only to
+# raise and clear a persistent notification, and only when the add-on was
+# granted homeassistant_api. Every call fails soft.
+SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
+CORE_API = os.environ.get("CORE_API", "http://supervisor/core/api")
+
+# Consecutive transient failures tolerated before the diagnostic entity flips
+# to a problem. DNS blips against the Aqara endpoints are common enough on this
+# hardware (URLError / Errno -3) that flagging the first one would notify the
+# user about something the next poll fixes. A real outage still surfaces within
+# TRANSIENT_FAILURE_GRACE * POLL_INTERVAL seconds. A permanent rejection never
+# waits for this grace.
+TRANSIENT_FAILURE_GRACE = max(1, int(os.environ.get("TRANSIENT_FAILURE_GRACE", "3")))
+
+# Backoff between login attempts after Aqara has *rejected* the credentials, as
+# opposed to failing to answer. Without it a wrong password or region retries
+# every poll interval forever: at the default 60s that is ~2,880 rejected auth
+# requests a day, which is how accounts get rate-limited or locked.
+AUTH_RETRY_BACKOFF = max(INTERVAL, 60)
+AUTH_RETRY_BACKOFF_MAX = 1800
+
+# Aqara answers a rejected login with code 106 and the text "Request failed.
+# Please try again.", which is what a wrong region looks like: an Aqara Home
+# account only exists in the region it was created in. The codes below are the
+# ones observed in the field; everything else is classified structurally by
+# is_transient_code().
+AQARA_CODE_ACCOUNT_REJECTED = 106
+
+# Failures that mean "Aqara did not answer" rather than "Aqara said no".
+# -1 is this client's own catch-all for socket/DNS/timeout exceptions, see
+# Aqara._post(). The HTTP codes are server-side and heal without user action.
+TRANSIENT_HTTP_CODES = frozenset({429, 500, 502, 503, 504})
+
 
 def sanitize_node_id(value):
     node = re.sub(r"[^a-z0-9_]+", "_", value.strip().lower())
@@ -106,6 +139,15 @@ DISCOVERY_PREFIX = "homeassistant"
 NODE = sanitize_node_id(os.environ.get("MQTT_NODE_ID", "aqara_fp2_sleep"))
 STATE_TOPIC = f"aqara/{NODE}/state"
 AVAIL_TOPIC = f"aqara/{NODE}/status"
+
+# Diagnostic surface. The vitals sensors go `unavailable` when anything breaks,
+# which tells a user that something is wrong but never what or how to fix it.
+# These topics carry the reason, so they are not gated by AVAIL_TOPIC: gating
+# them would blank the reason at the moment it is needed.
+PROBLEM_STATE_TOPIC = f"aqara/{NODE}/problem"
+PROBLEM_ATTR_TOPIC = f"aqara/{NODE}/problem/attributes"
+PROBLEM_OBJECT_ID = f"{NODE}_connection_problem"
+NOTIFICATION_ID = f"{NODE}_connection_problem"
 DEVICE = {
     "identifiers": [f"aqara_fp2_sleep_{NODE}"],
     "name": DEVICE_NAME or "Aqara FP2 Sleep Monitor",
@@ -187,6 +229,9 @@ class Aqara:
         self.cfg = AREAS[area]
         self.token = None
         self.userid = None
+        # Last failing login response, kept so callers can tell "Aqara said no"
+        # apart from "Aqara did not answer" without re-running the request.
+        self.last_error = None
 
     def _headers(self, body):
         nonce = md5(str(uuid.uuid4()))
@@ -250,8 +295,10 @@ class Aqara:
         if res.get("code") == 0:
             self.token = res["result"]["token"]
             self.userid = res["result"]["userId"]
+            self.last_error = None
             log("info", "Aqara login OK")
             return True
+        self.last_error = res
         log("error", f"Aqara login failed: code={res.get('code')} {res.get('message')}")
         return False
 
@@ -295,6 +342,37 @@ def discovery_payload(
     return payload
 
 
+def problem_discovery_payload():
+    """Discovery for the diagnostic entity.
+
+    Three differences from the vitals sensors, all on purpose:
+
+    - no `availability_topic`. The vitals hang off AVAIL_TOPIC and go
+      unavailable on any failure. This entity exists to explain that failure,
+      so gating it on the same topic would blank it when it is needed.
+    - no `expire_after`. The vitals expire so a dead poller stops showing a
+      stale heart rate. This one must stay readable, and process death is
+      covered by the MQTT will instead (see make_mqtt).
+    - no `force_update`. That flag exists so the card's last_updated stale
+      badge survives unchanged readings; a problem flag has no such consumer.
+    """
+    return {
+        "name": "Connection problem",
+        "unique_id": f"{NODE}_connection_problem",
+        "object_id": PROBLEM_OBJECT_ID,
+        "default_entity_id": f"binary_sensor.{PROBLEM_OBJECT_ID}",
+        "state_topic": PROBLEM_STATE_TOPIC,
+        "json_attributes_topic": PROBLEM_ATTR_TOPIC,
+        "payload_on": "ON",
+        "payload_off": "OFF",
+        "device_class": "problem",
+        "entity_category": "diagnostic",
+        "icon": "mdi:cloud-alert",
+        "origin": ORIGIN,
+        "device": DEVICE,
+    }
+
+
 def publish_discovery(client):
     for attr, object_id, uid_suffix, name, unit, sc, dc, icon in SENSORS:
         topic = f"{DISCOVERY_PREFIX}/sensor/{NODE}/{uid_suffix}/config"
@@ -302,7 +380,40 @@ def publish_discovery(client):
             attr, object_id, uid_suffix, name, unit, sc, dc, icon
         )
         client.publish(topic, json.dumps(payload), qos=1, retain=True)
-    log("info", f"Published discovery for {len(SENSORS)} sensors")
+    client.publish(
+        f"{DISCOVERY_PREFIX}/binary_sensor/{NODE}/connection_problem/config",
+        json.dumps(problem_discovery_payload()),
+        qos=1,
+        retain=True,
+    )
+    log(
+        "info",
+        f"Published discovery for {len(SENSORS)} sensors and 1 diagnostic entity",
+    )
+
+
+def publish_problem(client, problem, cause=None, code=None, last_success=None):
+    """Publish the diagnostic state and its attributes, both retained.
+
+    Retained so the reason survives a Home Assistant restart: an outage that
+    started before the restart still explains itself afterwards.
+    """
+    client.publish(
+        PROBLEM_STATE_TOPIC, "ON" if problem else "OFF", qos=1, retain=True
+    )
+    client.publish(
+        PROBLEM_ATTR_TOPIC,
+        json.dumps(
+            {
+                "cause": cause,
+                "error_code": code,
+                "configured_area": AREA,
+                "last_successful_poll": last_success,
+            }
+        ),
+        qos=1,
+        retain=True,
+    )
 
 
 def make_mqtt():
@@ -314,7 +425,11 @@ def make_mqtt():
         client.username_pw_set(MQTT_USER, MQTT_PASS)
     if MQTT_SSL:
         client.tls_set()
-    client.will_set(AVAIL_TOPIC, "offline", qos=1, retain=True)
+    # paho allows a single will, and the diagnostic entity is the one that
+    # needs it: it has no expire_after, so nothing else would ever mark it
+    # stale if this process dies ungracefully. The vitals keep their
+    # expire_after (>= 3 poll intervals), which covers the same case for them.
+    client.will_set(PROBLEM_STATE_TOPIC, "ON", qos=1, retain=True)
 
     delay = MQTT_CONNECT_BACKOFF
     for attempt in range(1, MQTT_CONNECT_RETRIES + 1):
@@ -359,6 +474,231 @@ def describe_poll_failure(res):
     return f"unrecognized response from Aqara API: {json.dumps(res)[:200]}"
 
 
+def is_transient_code(code):
+    """True when Aqara failed to answer, false when Aqara answered "no".
+
+    The distinction decides whether a human has to do something. A DNS blip
+    clears on the next poll; a rejected password never does.
+    """
+    return code == -1 or code in TRANSIENT_HTTP_CODES
+
+
+def describe_login_failure(res, area=None):
+    """Classify a failed login into (kind, cause) where kind is
+    "transient" or "permanent" and cause is text a user can act on."""
+    code = res.get("code")
+    message = res.get("message") or "no message returned"
+    area = area or AREA
+
+    # Aqara answered successfully and we could not read the payload. Nothing
+    # about the credentials is wrong, so this must never reach the permanent
+    # branch: that would suspend polling for up to AUTH_RETRY_BACKOFF_MAX and
+    # tell the user their sign-in was rejected with "code 0".
+    if code == 0:
+        return ("transient", describe_poll_failure(res))
+
+    if is_transient_code(code):
+        return (
+            "transient",
+            f"Cannot reach the Aqara cloud (code {code}): {message}. "
+            "This is usually a network or DNS problem and often clears on its "
+            "own.",
+        )
+
+    if code == AQARA_CODE_ACCOUNT_REJECTED:
+        return (
+            "permanent",
+            f"Aqara rejected the sign-in (code {code}). The configured region "
+            f"is {area}. An Aqara Home account only exists in the region it "
+            "was created in, so the wrong region rejects an otherwise correct "
+            "password. Check aqara_area first, then aqara_username and "
+            "aqara_password.",
+        )
+
+    return (
+        "permanent",
+        f"Aqara rejected the sign-in (code {code}): {message}. Check "
+        "aqara_username, aqara_password and aqara_area (currently "
+        f"{area}). Use the Aqara Home app account, not the Aqara webshop "
+        "account.",
+    )
+
+
+def call_core_service(domain, service, payload):
+    """Best-effort Home Assistant service call through the Supervisor proxy.
+
+    Returns True on success. Never raises: losing a notification must not take
+    the poller down, and the add-on still runs fine when homeassistant_api was
+    not granted.
+    """
+    if not SUPERVISOR_TOKEN:
+        log("debug", f"no SUPERVISOR_TOKEN; skipping {domain}.{service}")
+        return False
+    req = urllib.request.Request(
+        f"{CORE_API}/services/{domain}/{service}",
+        data=json.dumps(payload).encode(),
+        headers={
+            "Authorization": f"Bearer {SUPERVISOR_TOKEN}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15):
+            return True
+    except Exception as err:  # noqa: BLE001 - notifications are best effort
+        log("debug", f"{domain}.{service} call failed: {type(err).__name__}: {err}")
+        return False
+
+
+def notify_problem(cause):
+    """Raise (or replace) the Home Assistant notification carrying the cause.
+
+    A fixed notification_id means a repeat replaces the previous one instead of
+    stacking a new card every poll interval.
+    """
+    delivered = call_core_service(
+        "persistent_notification",
+        "create",
+        {
+            "notification_id": NOTIFICATION_ID,
+            "title": "SleepRadar is not receiving data",
+            "message": (
+                f"{cause}\n\n"
+                "Open **Settings > Apps > SleepRadar > Configuration**, correct "
+                "the options, then restart the app. Sensors stay unavailable "
+                "until the sign-in succeeds.\n\n"
+                "[Troubleshooting](https://github.com/florianhorner/ha-fp2-sleep"
+                "#login-fails)"
+            ),
+        },
+    )
+    if not delivered:
+        # Warning rather than debug: an undelivered notification is itself an
+        # outage the user cannot see. Bounded, because notify_problem only runs
+        # when the cause changes.
+        log(
+            "warning",
+            "Could not raise the Home Assistant notification; the diagnostic "
+            "entity still reports the problem. After updating from a version "
+            "without Home Assistant API access, approve it once in the app's "
+            "Configuration tab.",
+        )
+    return delivered
+
+
+def clear_problem_notification():
+    """Dismiss the problem notification once the problem is fixed."""
+    return call_core_service(
+        "persistent_notification", "dismiss", {"notification_id": NOTIFICATION_ID}
+    )
+
+
+def last_error(aqara):
+    """The client's last failing login response, or {}.
+
+    getattr because test doubles for Aqara are not required to carry it.
+    """
+    return getattr(aqara, "last_error", None) or {}
+
+
+def describe_failure(res, login_ok):
+    """(kind, cause) for whatever most recently failed.
+
+    A rejected sign-in and a rejected device query need different advice: the
+    first points at the credentials, the second at subject_id or a device that
+    has left the account.
+    """
+    kind, cause = describe_login_failure(res)
+    if login_ok and kind == "permanent" and res.get("code") != 0:
+        cause = (
+            f"Signed in to Aqara, but the FP2 query was rejected "
+            f"(code {res.get('code')}): "
+            f"{res.get('message') or 'no message returned'}. Check that "
+            "subject_id points at the sleep FP2 and that the device is still "
+            "in your Aqara Home account."
+        )
+    return kind, cause
+
+
+class Health:
+    """Owns the diagnostic entity and the notification that mirrors it.
+
+    Transient failures get a grace window before they count, because a single
+    DNS blip is not worth a notification. Permanent ones are flagged on the
+    first occurrence: retrying will not fix them.
+    """
+
+    def __init__(self, client):
+        """Track health state without publishing anything yet.
+
+        `problem` is tri-state on purpose: None means nothing has been
+        published this run, so the first result always writes, whichever way it
+        goes. False and True are the two published states, and both transitions
+        between them are what gates publishing and notifying.
+        """
+        self.client = client
+        self.problem = None
+        self.cause = None
+        self.transient_streak = 0
+        self.last_success = None
+
+    def recovered(self):
+        """Record a successful poll, clearing a problem if one was flagged."""
+        self.transient_streak = 0
+        self.last_success = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        if self.problem is False:
+            # Steady-state healthy: publish nothing. last_success is tracked in
+            # memory and shipped with the next failure, which is the only time
+            # anyone asks for it. Republishing it every poll would write a
+            # retained attribute update per interval, 1440 a day, on an entity
+            # this repo tells people to put in Recorder.
+            return
+        if self.problem:
+            log("info", "Aqara connection recovered; clearing the problem flag")
+        publish_problem(self.client, False, last_success=self.last_success)
+        clear_problem_notification()
+        self.problem = False
+        self.cause = None
+
+    def failed(self, kind, cause, code):
+        """Record a failed poll, flagging a problem once it counts.
+
+        Transient failures only count after TRANSIENT_FAILURE_GRACE of them in
+        a row; permanent ones count immediately.
+        """
+        if kind == "transient":
+            self.transient_streak += 1
+            if self.transient_streak < TRANSIENT_FAILURE_GRACE:
+                log(
+                    "debug",
+                    f"transient failure {self.transient_streak}/"
+                    f"{TRANSIENT_FAILURE_GRACE} before flagging a problem",
+                )
+                return
+        else:
+            self.transient_streak = 0
+
+        # Re-notify when the *reason* changes, not just on the first failure.
+        # A blip that turns out to be a rejected region would otherwise leave
+        # the notification reading "often clears on its own" for the rest of
+        # the outage. An unchanged cause stays silent, so an ongoing outage
+        # does not re-notify every poll.
+        changed = self.problem is not True or cause != self.cause
+        if not changed:
+            # Nothing in the payload differs, and it is retained, so the broker
+            # is already serving the current state. Republishing it every poll
+            # would write a Recorder row per interval for the whole outage.
+            return
+        publish_problem(
+            self.client, True, cause=cause, code=code, last_success=self.last_success
+        )
+        log("error", f"Flagging a connection problem: {cause}")
+        notify_problem(cause)
+        self.problem = True
+        self.cause = cause
+
+
 _running = True
 
 
@@ -398,15 +738,38 @@ def main():
     publish_discovery(client)
 
     aqara = Aqara(AREA)
-    if not aqara.login():
+    health = Health(client)
+
+    login_ok = aqara.login()
+    if not login_ok:
+        startup_error = last_error(aqara)
+        kind, cause = describe_login_failure(startup_error)
+        # Not "fatal": this process keeps running and recovers on its own once
+        # the options are corrected. Calling it fatal told users to expect a
+        # crash that never came.
         log(
-            "fatal",
-            "Aqara login failed at startup. Check aqara_username, aqara_password, "
-            "aqara_area, and subject_id. The add-on keeps retrying; the sensors "
-            "stay unavailable until login succeeds.",
+            "error",
+            f"Aqara login failed at startup. {cause} The add-on keeps retrying; "
+            "the sensors stay unavailable until the sign-in succeeds.",
         )
+        # Flag it now rather than after the first poll. A rejected sign-in at
+        # boot is already certain, so waiting a full poll interval to say so
+        # would leave the user without an answer for no reason. Transient
+        # failures still go through the grace window inside Health.
+        health.failed(kind, cause, startup_error.get("code"))
+
+    auth_wait = 0
+    auth_delay = AUTH_RETRY_BACKOFF
 
     while _running:
+        # Aqara has rejected these credentials. Retrying at the poll interval
+        # would hammer the auth endpoint for no possible gain, so hold off.
+        if auth_wait > 0:
+            log("debug", f"auth backoff: {auth_wait}s before retrying the sign-in")
+            auth_wait = max(0, auth_wait - INTERVAL)
+            interruptible_sleep(INTERVAL)
+            continue
+
         ok = False
         res = aqara.res_query(SUBJECT, SLEEP_OPTIONS)
         if res.get("code") != 0:
@@ -414,8 +777,11 @@ def main():
                 "warning",
                 f"res/query code={res.get('code')} ({res.get('message')}); re-login",
             )
-            if aqara.login():
+            login_ok = aqara.login()
+            if login_ok:
                 res = aqara.res_query(SUBJECT, SLEEP_OPTIONS)
+            else:
+                res = last_error(aqara) or res
 
         if res.get("code") == 0 and isinstance(res.get("result"), list):
             values = {
@@ -426,12 +792,29 @@ def main():
             client.publish(AVAIL_TOPIC, "online", qos=1, retain=True)
             ok = True
             log("debug", f"state={state}")
-        if not ok:
+
+        if ok:
+            auth_delay = AUTH_RETRY_BACKOFF
+            health.recovered()
+        else:
             client.publish(AVAIL_TOPIC, "offline", qos=1, retain=True)
             log("error", f"poll failed: {describe_poll_failure(res)}")
+            kind, cause = describe_failure(res, login_ok)
+            health.failed(kind, cause, res.get("code"))
+            if kind == "permanent":
+                # The end-of-loop sleep below already burns one interval, so
+                # subtract it here. Without this the real gap between sign-in
+                # attempts is auth_delay + INTERVAL and the logged countdown
+                # understates the actual wait.
+                auth_wait = max(0, auth_delay - INTERVAL)
+                auth_delay = min(auth_delay * 2, AUTH_RETRY_BACKOFF_MAX)
 
         interruptible_sleep(INTERVAL)
 
+    # A requested stop is not a problem, and a problem that was already flagged
+    # does not stop being one. Either way the retained diagnostic state is left
+    # as it is; the MQTT will fires only on an ungraceful death, which is the
+    # case that needs flagging.
     log("info", "Shutting down; marking offline.")
     client.publish(AVAIL_TOPIC, "offline", qos=1, retain=True)
     client.loop_stop()

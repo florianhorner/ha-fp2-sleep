@@ -19,11 +19,11 @@ uncertainty: "Whether viewers understand this as a structural proof of the confi
 truth:
   source_refs:
     - "README.md:223-250"
-    - "examples/README.md:25-40"
+    - "examples/README.md:33-39"
     - "examples/dashboard-sleep.yaml:13-88"
     - "examples/dashboard-sleep.yaml:90-155"
     - "TODOS.md:98-110"
-  checked_at: "2026-08-06"
+  checked_at: "2026-08-08"
   baseline_commit: "906f6dcce80f206e624b7e205c0e54334745483b"
   release_tag: "unreleased"
   qualifiers:

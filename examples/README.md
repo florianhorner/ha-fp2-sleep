@@ -27,9 +27,13 @@ Files:
 - `sleep_tracking.yaml`: template sensors for a readable sleep phase, a
   plain-language live read, and an occupancy-gated asleep binary sensor. Codes
   0–2 never assert an in-bed stage; codes 3–5 are indicative labels only.
-- `automations.yaml`: example automations that act on the sleep data (dim
-  lights while asleep, hold the vacuum, cool down for deep sleep). Needs your
-  own light/vacuum/thermostat entity IDs and the occupancy-gated helpers.
+- `automations.yaml`: example automations. The first forwards a SleepRadar
+  connection problem to a notify service; it is the only one here that tells
+  you when the app stops. It needs your notify service and no occupancy gate,
+  because it acts on the diagnostic entity rather than on sleep data. The rest
+  act on sleep data (dim lights while asleep, hold the vacuum, cool down for
+  deep sleep) and need your own light/vacuum/thermostat entity IDs and the
+  occupancy-gated helpers.
 - `dashboard-sleep.yaml`: optional Lovelace view. Requires the SleepRadar Card
   and ApexCharts Card; its optional cross-check also uses Mushroom Cards and
   the template helper. It has a live "Now" card plus a "Last night" view of raw
@@ -38,4 +42,5 @@ Files:
   Codes 3–5 are indicative sleep stages; heart rate and breathing are
   sensor-reported.
 - `recorder.yaml`: example Recorder include for long-term history. Pre-wired,
-  load as-is.
+  load as-is. It records the diagnostic entity alongside the five sensors, so a
+  gap in the history still comes with a reason.
