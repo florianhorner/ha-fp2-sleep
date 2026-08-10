@@ -28,6 +28,7 @@ For work that touches the historical GIF 2–5 batch, also read
   and required runtime assets in Git. Keep `renders/` and `snapshots/`
   generated; publish only approved delivery binaries under
   `assets/feature-gifs/`.
+
 ## Cursor Cloud specific instructions
 
 There is no long-running server or standalone app to start. The SleepRadar
