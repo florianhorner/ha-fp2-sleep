@@ -72,6 +72,13 @@
   approved GIF/MP4 binaries and their hashes are unchanged; no rerender is
   implied.
 
+- Contributor tooling only; the add-on is unchanged. The GIF truth validator
+  no longer rejects a brief when a squash merge erases its `baseline_commit`.
+  This fixes the failure that turned `main` CI red after #34. If the pin is not
+  reachable from `HEAD`, validation uses the last commit that touched the brief
+  and still checks cited-content drift against that snapshot. A brief with no
+  committed history still fails closed.
+
 - Contributor tooling only; no change to the add-on itself. The local
   pre-PR validation chain now runs the same gates as CI's `validate` job from a
   single shared list, reducing the chance of gate-membership drift between

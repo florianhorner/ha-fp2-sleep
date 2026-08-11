@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 from typing import Any, Callable, Mapping, Sequence
@@ -1240,10 +1241,77 @@ def self_test() -> None:
                 f"repository truth self-test {label!r} did not fail closed"
             )
 
-    fabricated_commit = copy.deepcopy(managed_brief)
-    fabricated_commit["truth"]["baseline_commit"] = "f" * 40
+    # A branch-only baseline can become unreachable after a squash merge. The
+    # validator uses the last commit that touched the brief, but still checks
+    # cited content against that snapshot. These cases cover a passing
+    # fallback, evidence failure on the fallback, and the no-history failure.
+    dead_commit = copy.deepcopy(managed_brief)
+    dead_commit["truth"]["baseline_commit"] = "f" * 40
+    try:
+        validate_repository_truth(
+            dead_commit, managed_project.path("brief_file"), REPOSITORY_ROOT
+        )
+    except ContractError as exc:
+        raise RuntimeError(
+            f"repository truth self-test 'unreachable baseline uses fallback' failed: {exc}"
+        ) from exc
+    dead_commit_stale_evidence = copy.deepcopy(managed_brief)
+    dead_commit_stale_evidence["truth"]["baseline_commit"] = "f" * 40
+    dead_commit_stale_evidence["truth"]["source_refs"] = [
+        "videos/__missing_truth_source__.md:1"
+    ]
     expect_truth_failure(
-        "fabricated baseline commit", fabricated_commit, "does not exist"
+        "unreachable baseline still checks fallback evidence",
+        dead_commit_stale_evidence,
+        "did not exist at baseline",
+    )
+    uncommitted_brief = copy.deepcopy(managed_brief)
+    uncommitted_brief["truth"]["baseline_commit"] = "f" * 40
+    try:
+        validate_repository_truth(
+            uncommitted_brief,
+            REPOSITORY_ROOT / "videos" / "__uncommitted_truth_brief__.md",
+            REPOSITORY_ROOT,
+        )
+    except ContractError as exc:
+        if "no committed history" not in str(exc):
+            raise RuntimeError(
+                "repository truth self-test 'unreachable baseline without committed "
+                f"brief' returned wrong failure: {exc}"
+            ) from exc
+    else:
+        raise RuntimeError(
+            "repository truth self-test 'unreachable baseline without committed brief' "
+            "did not fail closed"
+        )
+    # Lock the other direction: a REACHABLE pin must stay authoritative, never
+    # silently replaced by the fallback. v1.2.1 is on main and predates the
+    # ghost-vitals fixture, so citing that fixture under the v1.2.1 pin must
+    # fail with "did not exist at baseline" naming the pinned commit. If a
+    # regression routed reachable pins through the fallback, the fixture WOULD
+    # exist at the brief's last commit and this validation would pass.
+    tag_commit = subprocess.run(
+        ["git", "rev-parse", "--verify", "v1.2.1^{commit}"],
+        cwd=REPOSITORY_ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if tag_commit.returncode:
+        raise RuntimeError(
+            "repository truth self-test requires the v1.2.1 tag to resolve; "
+            f"git rev-parse failed: {tag_commit.stderr.strip()}"
+        )
+    reachable_pin = copy.deepcopy(managed_brief)
+    reachable_pin["truth"]["baseline_commit"] = tag_commit.stdout.strip()
+    reachable_pin["truth"]["source_refs"] = [
+        "tests/fixtures/ghost-vitals-incident.json:1"
+    ]
+    expect_truth_failure(
+        "reachable pin stays authoritative over the fallback",
+        reachable_pin,
+        f"did not exist at baseline commit {tag_commit.stdout.strip()[:12]}",
     )
     fabricated_tag = copy.deepcopy(managed_brief)
     fabricated_tag["truth"]["release_tag"] = "not-a-real-release-tag"
