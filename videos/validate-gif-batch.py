@@ -7,6 +7,7 @@ import argparse
 import copy
 from html.parser import HTMLParser
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -1323,6 +1324,106 @@ def self_test() -> None:
     expect_truth_failure(
         "evidence absent from baseline", stale_evidence, "did not exist at baseline"
     )
+
+    # Prove WHICH snapshot the fallback selects, with controlled history. The
+    # missing-file cases above fail against any snapshot, so a regression that
+    # resolved the fallback to HEAD instead of the brief's last commit would
+    # slip past them — and with a HEAD snapshot the drift check is vacuous
+    # (snapshot always equals the worktree). Two commits: the first carries the
+    # brief and its evidence, the second drifts the evidence without touching
+    # the brief. A dead pin must therefore validate against commit one and
+    # FAIL, naming commit one; against HEAD it would wrongly pass.
+    with tempfile.TemporaryDirectory(
+        prefix="quiet-proof-loops-fallback-test-"
+    ) as temporary:
+        fallback_repo = Path(temporary) / "repo"
+        fallback_repo.mkdir()
+        fallback_env = {
+            **os.environ,
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_SYSTEM": "/dev/null",
+            "GIT_AUTHOR_NAME": "self-test",
+            "GIT_AUTHOR_EMAIL": "self-test@invalid",
+            "GIT_COMMITTER_NAME": "self-test",
+            "GIT_COMMITTER_EMAIL": "self-test@invalid",
+        }
+
+        def _fallback_git(*arguments: str) -> str:
+            completed = subprocess.run(
+                ["git", *arguments],
+                cwd=fallback_repo,
+                env=fallback_env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            if completed.returncode:
+                raise RuntimeError(
+                    "fallback-snapshot self-test git command failed: "
+                    f"git {' '.join(arguments)}: {completed.stderr.strip()}"
+                )
+            return completed.stdout.strip()
+
+        _fallback_git("init", "--quiet")
+        fallback_brief_path = fallback_repo / "BRIEF.md"
+        fallback_brief_path.write_text("self-test brief\n", encoding="utf-8")
+        (fallback_repo / "evidence.md").write_text(
+            "original evidence line\n", encoding="utf-8"
+        )
+        (fallback_repo / "stable.md").write_text("stable line\n", encoding="utf-8")
+        _fallback_git("add", "BRIEF.md", "evidence.md", "stable.md")
+        _fallback_git("commit", "--quiet", "-m", "seed brief and evidence")
+        brief_commit = _fallback_git("rev-parse", "HEAD")
+        (fallback_repo / "evidence.md").write_text(
+            "changed evidence line\n", encoding="utf-8"
+        )
+        _fallback_git("add", "evidence.md")
+        _fallback_git("commit", "--quiet", "-m", "drift evidence, brief untouched")
+
+        drifted_under_dead_pin = {
+            "truth": {
+                "baseline_commit": "f" * 40,
+                "checked_at": "2020-01-01",
+                "source_refs": ["evidence.md:1"],
+            }
+        }
+        try:
+            validate_repository_truth(
+                drifted_under_dead_pin, fallback_brief_path, fallback_repo
+            )
+        except ContractError as exc:
+            expected = f"changed since baseline commit {brief_commit[:12]}"
+            if expected.casefold() not in str(exc).casefold():
+                raise RuntimeError(
+                    "fallback-snapshot self-test failed against the wrong "
+                    f"snapshot (expected {expected!r}): {exc}"
+                ) from exc
+        else:
+            raise RuntimeError(
+                "fallback-snapshot self-test did not detect drift — the "
+                "fallback validated against HEAD, not the brief's last commit"
+            )
+
+        # Passing case on the same history: stable evidence plus a checked_at
+        # far older than the fallback commit's date must pass, pinning the
+        # date-comparison exemption on the fallback path.
+        stable_under_dead_pin = {
+            "truth": {
+                "baseline_commit": "f" * 40,
+                "checked_at": "2020-01-01",
+                "source_refs": ["stable.md:1"],
+            }
+        }
+        try:
+            validate_repository_truth(
+                stable_under_dead_pin, fallback_brief_path, fallback_repo
+            )
+        except ContractError as exc:
+            raise RuntimeError(
+                "fallback-snapshot self-test rejected stable evidence with an "
+                f"old checked_at — the date exemption regressed: {exc}"
+            ) from exc
 
     with tempfile.TemporaryDirectory(
         prefix="quiet-proof-loops-baseline-test-"
