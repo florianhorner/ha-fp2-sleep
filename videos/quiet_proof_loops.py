@@ -19,6 +19,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 from typing import Any, Iterable, Mapping, Sequence
 from urllib.parse import urlsplit
@@ -934,6 +935,26 @@ def source_ref_content_matches_baseline(
     )
 
 
+def _fallback_baseline_commit(root: Path, source: Path) -> str | None:
+    """Return the last commit that touched *source*, or None if uncommitted.
+
+    A squash merge can remove a branch-only baseline commit. The last commit
+    that touched the brief is the fallback snapshot because it contains the
+    brief and its cited evidence together. Later edits to cited files remain
+    detectable.
+    """
+
+    try:
+        relative = source.resolve(strict=False).relative_to(root)
+    except ValueError:
+        relative = source
+    result = _git(root, ("log", "-1", "--format=%H", "--", str(relative)))
+    if result.returncode:
+        return None
+    candidate = result.stdout.strip()
+    return candidate if COMMIT_RE.fullmatch(candidate) else None
+
+
 def validate_repository_truth(
     brief: Mapping[str, Any], source: Path, repository_root: Path
 ) -> None:
@@ -942,6 +963,12 @@ def validate_repository_truth(
     Local source references must still contain the exact cited lines from the
     recorded baseline commit. This permits workflow-only commits while forcing
     a fresh truth check whenever the evidence itself changes.
+
+    If the recorded commit is not reachable from HEAD, validation uses the last
+    commit that touched the brief. This covers a missing SHA in a fresh clone
+    and an unreachable object in a stale clone. Content checks still use that
+    snapshot. The `checked_at` comparison is skipped because its date belongs
+    to the missing pin.
     """
 
     root = repository_root.resolve(strict=False)
@@ -957,22 +984,45 @@ def validate_repository_truth(
             f"{location(source, 'truth.baseline_commit', root)}: expected validated commit id"
         )
 
-    commit_check = _git(root, ("cat-file", "-e", f"{baseline}^{{commit}}"))
-    if commit_check.returncode:
-        errors.append(
-            f"{location(source, 'truth.baseline_commit', root)}: commit does not exist in this repository"
-        )
-    else:
-        ancestry = _git(root, ("merge-base", "--is-ancestor", baseline, "HEAD"))
-        if ancestry.returncode:
+    # A recorded pin is valid only when it is reachable from HEAD. A missing
+    # SHA and an unreachable object represent the same dead pin in fresh and
+    # stale clones, so both paths use the brief's last committed revision.
+    baseline_is_fallback = False
+    commit_exists = not _git(root, ("cat-file", "-e", f"{baseline}^{{commit}}")).returncode
+    baseline_is_reachable = (
+        commit_exists
+        and not _git(root, ("merge-base", "--is-ancestor", baseline, "HEAD")).returncode
+    )
+    effective: str | None = baseline if baseline_is_reachable else None
+    if effective is None:
+        fallback = _fallback_baseline_commit(root, source)
+        if fallback is None:
             errors.append(
-                f"{location(source, 'truth.baseline_commit', root)}: commit is not an ancestor of HEAD"
+                f"{location(source, 'truth.baseline_commit', root)}: commit is not "
+                "reachable from HEAD and the brief has no committed history to "
+                "fall back to"
             )
-
+        else:
+            effective = fallback
+            baseline_is_fallback = True
+            # Non-failing on purpose: the dead pin is permanent after a squash,
+            # and failing on it is what took main CI down after #34. The note
+            # keeps the rot visible — the recorded SHA no longer means what it
+            # says, and any later drift error will name the fallback commit,
+            # not the SHA in the file.
+            print(
+                f"NOTE: {location(source, 'truth.baseline_commit', root)}: pinned "
+                f"commit is not reachable from HEAD; validating against the "
+                f"brief's last commit {effective[:12]} instead — re-pin to a "
+                "commit on main when convenient",
+                file=sys.stderr,
+            )
+    if effective is not None:
         checked_at = truth.get("checked_at")
-        commit_date_result = _git(root, ("show", "-s", "--format=%cs", baseline))
+        commit_date_result = _git(root, ("show", "-s", "--format=%cs", effective))
         if (
-            commit_date_result.returncode == 0
+            not baseline_is_fallback
+            and commit_date_result.returncode == 0
             and isinstance(checked_at, str)
             and ISO_DATE_RE.fullmatch(checked_at)
         ):
@@ -999,7 +1049,7 @@ def validate_repository_truth(
             else:
                 tag_hash = tag_commit.stdout.strip()
                 tag_ancestry = _git(
-                    root, ("merge-base", "--is-ancestor", tag_hash, baseline)
+                    root, ("merge-base", "--is-ancestor", tag_hash, effective)
                 )
                 if tag_ancestry.returncode:
                     errors.append(
@@ -1015,11 +1065,11 @@ def validate_repository_truth(
                 if match is None:
                     continue
                 raw_path = match.group("path")
-                snapshot = _git(root, ("show", f"{baseline}:{raw_path}"))
+                snapshot = _git(root, ("show", f"{effective}:{raw_path}"))
                 where = location(source, f"truth.source_refs[{index}]", root)
                 if snapshot.returncode:
                     errors.append(
-                        f"{where}: source did not exist at baseline commit {baseline[:12]}"
+                        f"{where}: source did not exist at baseline commit {effective[:12]}"
                     )
                     continue
                 try:
@@ -1040,7 +1090,7 @@ def validate_repository_truth(
                     continue
                 if final_line is not None and final_line > len(snapshot_lines):
                     errors.append(
-                        f"{where}: cited line {final_line} did not exist at baseline commit {baseline[:12]}"
+                        f"{where}: cited line {final_line} did not exist at baseline commit {effective[:12]}"
                     )
                     continue
                 if not source_ref_content_matches_baseline(
@@ -1048,7 +1098,7 @@ def validate_repository_truth(
                 ):
                     qualifier = f"lines {start}-{end or start}" if start else "file"
                     errors.append(
-                        f"{where}: cited {qualifier} changed since baseline commit {baseline[:12]}; re-check the claim"
+                        f"{where}: cited {qualifier} changed since baseline commit {effective[:12]}; re-check the claim"
                     )
 
     _raise_errors(errors)

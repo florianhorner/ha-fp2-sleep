@@ -12,11 +12,18 @@ references in the brief. Separate measured, estimated, unavailable, retained,
 optional, and future behavior. A source reference is evidence; it never
 silently changes the episode claim.
 
-Managed episodes fail validation when a cited line does not exist, the
-baseline commit is fabricated or unrelated to `HEAD`, a named release tag does
-not exist, or the cited evidence has changed since that commit. Re-check the
-claim and deliberately refresh the brief instead of moving line numbers until
-CI passes.
+Pin `baseline_commit` to a commit that is already on `main` whenever possible.
+A branch-only pin dies the moment its PR squash-merges: the validator then
+falls back to the last commit that touched the brief itself, prints a
+non-failing note, and keeps checking the cited evidence against that snapshot
+— so CI stays green and drift is still caught, but the SHA recorded in the
+brief stops meaning anything. A pin on `main` stays authoritative.
+
+Managed episodes fail validation when a cited line does not exist, a named
+release tag does not exist, the cited evidence has changed since the pinned
+(or fallback) snapshot, or a dead pin has no committed brief history to fall
+back to. Re-check the claim and deliberately refresh the brief instead of
+moving line numbers until CI passes.
 
 Stop if the proposed payoff is not shipped, if a qualifier cannot stay visible,
 or if the source and product voice disagree.

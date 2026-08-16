@@ -15,6 +15,11 @@ generic hooks, stale renders, missing proof, or undefined delivery criteria.
 
 - Fetch and inspect current `origin/main`, then compare the claim with the
   latest released tag. Record the commit and tag in the GIF's `BRIEF.md`.
+- Pin `baseline_commit` to a commit already on `main` whenever possible. A
+  branch-only pin becomes unreachable when its PR is squash-merged. The
+  validator then uses the last commit that touched the brief, checks drift
+  against that snapshot, and skips only the obsolete `checked_at` comparison.
+  Prefer a pin on `main`, which remains authoritative.
 - Verify exact entity counts, names, availability, and
   sensor-reported-measurement-versus-estimate semantics in runtime source,
   README, and automated guards. A visible `measured` label names the signal
