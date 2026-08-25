@@ -26,6 +26,10 @@ five MQTT entities you can see, automate, and build on.
 > push/RocketMQ integration gives you a faster FP2 sleep-state entity, use that
 > for sleep/wake automations. Keep SleepRadar for heart rate, breathing, body
 > movement, illuminance, and the bundled card.
+> The bundled `sleep_tracking.yaml` and `automations.yaml` examples are
+> polling-based: replace `binary_sensor.fp2_asleep` in asleep/wake automations
+> with your faster entity. Phase-specific examples still follow SleepRadar's
+> poll interval.
 
 ## What It Looks Like
 
