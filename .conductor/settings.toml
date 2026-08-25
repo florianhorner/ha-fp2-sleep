@@ -8,11 +8,11 @@
 # setup prefers 3.12 (what CI pins) and falls back to other modern
 # interpreters. Bare `python3` is macOS system Python 3.9 on some machines,
 # which is not CI-equivalent and lacks the stdlib tomllib the validator needs,
-# so it is tried last rather than never: pyenv shims and minimal containers
-# often expose a modern interpreter under no other name, and a too-old one
-# fails loudly on the validator's own 3.11 guard with an actionable message.
+# so every candidate must report 3.11+ before it may create the venv. This
+# preserves the bare-name fallback for pyenv shims and minimal containers while
+# failing before dependency installation with an actionable message.
 
 [scripts]
-setup = "{ python3.12 -m venv .venv || python3.13 -m venv .venv || python3.11 -m venv .venv || python3 -m venv .venv; } && .venv/bin/python -m pip install --upgrade pip && .venv/bin/python -m pip install -r requirements-ci.txt"
+setup = "sleepradar_python=''; for sleepradar_candidate in python3.12 python3.13 python3.11 python3.14 python3; do if command -v \"$sleepradar_candidate\" >/dev/null 2>&1 && \"$sleepradar_candidate\" -c 'import sys; raise SystemExit(sys.version_info < (3, 11))' >/dev/null 2>&1 && \"$sleepradar_candidate\" -m venv .venv; then sleepradar_python=\"$sleepradar_candidate\"; break; fi; done; if [ -z \"$sleepradar_python\" ]; then echo 'SleepRadar setup requires Python 3.11 or newer with venv support (CI uses Python 3.12).' >&2; exit 1; fi; .venv/bin/python -m pip install --upgrade pip && .venv/bin/python -m pip install -r requirements-ci.txt"
 run = "git diff --check && .venv/bin/python -m py_compile aqara_fp2_sleep/aqara_fp2_sleep_poller.py scripts/validate_repository.py videos/quiet_proof_loops.py videos/validate-gif-batch.py videos/build-gif-deliverables.py && .venv/bin/yamllint -c .yamllint . && .venv/bin/python scripts/validate_repository.py && .venv/bin/python scripts/validate_repository.py --self-test && .venv/bin/python tests/test_validate_repository_cli.py && .venv/bin/python videos/validate-gif-batch.py && .venv/bin/python videos/validate-gif-batch.py --self-test && .venv/bin/python videos/build-gif-deliverables.py --self-test && .venv/bin/python videos/validate-gif-batch.py --check-baseline videos/gif-batch-baseline-sha256.json && node tests/sleepradar-card.test.js && bash -n aqara_fp2_sleep/run.sh"
 run_mode = "concurrent"

@@ -57,14 +57,14 @@ python3 -m pip install --upgrade pip
 python3 -m pip install -r requirements-ci.txt
 ```
 
-Conductor's `setup` script tries `python3.12`, `python3.13`, `python3.11`, then
-bare `python3`, so a machine that exposes a modern interpreter under no other
-name still bootstraps. A too-old `python3` still creates the venv, but the
-first validator gate in the run chain then fails loudly on the validator's own
-version guard, so a subtly non-CI-equivalent venv never passes silently.
+Conductor's `setup` script tries `python3.12`, `python3.13`, `python3.11`,
+`python3.14`, then bare `python3`, so a machine that exposes a modern
+interpreter under no other name still bootstraps. It checks every candidate's
+version before creating the venv. If none provides Python 3.11+ with `venv`
+support, setup fails before dependency installation with an actionable error.
 
-If the validator exits with a version error, the venv predates this rule —
-delete `.venv` and recreate it with a 3.11+ interpreter.
+If an existing venv still exits with the validator's version error, delete
+`.venv` and recreate it with a 3.11+ interpreter.
 
 Node.js is only needed for the SleepRadar Card test. There is no `npm install`
 step because the test uses Node's built-in modules.
