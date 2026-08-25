@@ -22,6 +22,11 @@ five MQTT entities you can see, automate, and build on.
 > Aqara can change or restrict it without notice. If that happens, the sensors
 > stop updating. History already recorded in Home Assistant stays yours.
 
+> **Fast triggers.** SleepRadar polls Aqara for vitals. If Matter or an Aqara
+> push/RocketMQ integration gives you a faster FP2 sleep-state entity, use that
+> for sleep/wake automations. Keep SleepRadar for heart rate, breathing, body
+> movement, illuminance, and the bundled card.
+
 ## What It Looks Like
 
 **Now, live — the SleepRadar card, installed as-is:**
