@@ -130,10 +130,10 @@ EXPECTED_RUNTIME_REQUIREMENTS = [
 EXPECTED_CI_REQUIREMENTS = [
     "-r aqara_fp2_sleep/requirements.txt",
     "PyYAML==6.0.3",
-    "yamllint==1.37.1",
+    "yamllint==1.38.0",
 ]
-CHECKOUT_ACTION = "actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10"
-SETUP_PYTHON_ACTION = "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1"
+CHECKOUT_ACTION = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+SETUP_PYTHON_ACTION = "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
 PYTHON_VERSION = "3.12"
 PIP_AUDIT_VERSION = "2.10.1"
 GITLEAKS_VERSION = "8.30.0"
