@@ -32,6 +32,23 @@ Do not ship an integration *for* the error card.
 
 ## Poller
 
+### Investigate Aqara push updates if users ask
+
+**What:** Investigate Aqara Open API/RocketMQ push after users ask for faster
+updates.
+
+**Why:** Keep SleepRadar as a polling vitals bridge until users ask for push.
+Push would require developer-account setup, bridge/SSE infrastructure, a new
+auth surface, and higher maintenance cost.
+
+**Context:** Users with Matter or Aqara push/RocketMQ sleep-state entities
+should use those for fast asleep/wake automations. SleepRadar can still cover
+heart rate, breathing, body movement, illuminance, and the bundled card.
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** User demand for faster updates
+
 ### Revisit Supervisor watchdog support with a health endpoint
 
 **What:** If SleepRadar needs first-class Supervisor watchdog support later, add
