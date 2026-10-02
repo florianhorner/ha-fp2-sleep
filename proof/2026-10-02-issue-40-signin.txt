@@ -1,0 +1,77 @@
+# Proof - issue #40: USA and CN sign-in
+Captured: 2026-10-02 | code commit: 09f97eb | branch: issue-40
+
+Live checks against Aqara, 2026-10-02 (result codes only)
+
+1. Made-up example.com account with a random password, signed with this
+   branch's AREAS table (12:49Z, on 09f97eb). 810 = the request was accepted
+   and the made-up account refused; 106 = Invalid sign.
+
+   USA | table pair             | 810 Password incorrect
+   USA | random value (control) | 106 Invalid sign
+   CN  | table pair             | 810 Password incorrect
+   CN  | random value (control) | 106 Invalid sign
+
+2. The maintainer's own Aqara account, US server, same AREAS table, run by the
+   maintainer (10:40Z to 10:50Z):
+
+   sign-in                   | 0 (OK), twice
+   token-signed sensor query | 0
+
+Local gates on 09f97eb (Python 3.13, CI requirements)
+
+   git diff --check                                          OK
+   python -m py_compile <5 entrypoints>                      OK
+   yamllint -c .yamllint .                                   OK
+   python scripts/validate_repository.py                     SleepRadar package validation OK
+   python scripts/validate_repository.py --self-test         SleepRadar validator self-test OK
+   python tests/test_validate_repository_cli.py              7 tests OK
+   python videos/validate-gif-batch.py (+ --self-test)       OK
+   python videos/build-gif-deliverables.py --self-test       OK
+   python videos/validate-gif-batch.py --check-baseline ...  OK
+   node tests/sleepradar-card.test.js                        159 assertions OK
+   bash -n aqara_fp2_sleep/run.sh                            OK
+   gitleaks dir --redact .                                   no leaks found
+
+Deliberate regressions, each applied alone to a scratch copy of 09f97eb; the
+validator must fail on every one: 39/39 caught
+
+   USA row back on the old key
+   CN row back on the old key
+   USA row pointed at another host
+   106 advice points at aqara_area
+   106 report line dropped
+   106 technical details drop Aqara's text
+   106 after sign-in falls to the sensor-ID text
+   106 sends users to their password again
+   108 after sign-in falls to the sensor-ID text
+   108 kind flipped to transient
+   755 message removed
+   755 report path removed
+   sign-in message drops aqara_area
+   sign-in message opens with the code
+   new code branch with an old-style message
+   technical details always get a period
+   technical details drop Aqara's text for other codes
+   code-0 message quotes the raw reply
+   poll-failure log quotes the reply again
+   unrecognized reply lists its keys again
+   raw reply logged at error level
+   server text no longer reduced to plain text
+   sanitizer only strips ASCII controls
+   Markdown link syntax kept
+   long message pushes the detail out
+   reply code printed raw
+   int codes uncapped
+   gateway error loses its HTTP status
+   gateway fallback only when the code key is missing
+   sign-in keeps the expired session's token
+   failed sign-in forgets Aqara's reply
+   flagged problem logged at debug only
+   sign-in failure log without Aqara's detail
+   res/query warning without Aqara's detail
+   issue tracker URL wrong
+   notification frame tells users to correct the options
+   README entry shortened to a fragment
+   README drops the transient entry
+   README heading drifts from the message
