@@ -28,6 +28,16 @@ necessary, which is a different product on its own release train.
 integration becomes justified for other reasons, Repairs comes with it free.
 Do not ship an integration *for* the error card.
 
+**Cheaper option:** users who run Spook (HACS) already have a
+`repairs.create` action. SleepRadar can call it through the same Supervisor
+proxy it uses for the notification (`call_core_service`), with `issue_id` set
+to the notification id, the message as `description` and `severity: error`;
+fall back to the notification when the call fails because Spook is absent, and
+call `repairs.remove` on recovery. Gains a real Repairs card without a second
+SleepRadar install. Costs: a dependency on a third-party action schema, most
+users do not run Spook, and two surfaces to keep in sync. Effort for this
+option: S; depends on the plain-language messages from the issue #40 fix.
+
 **Effort:** L **Priority:** P3 **Depends on:** adoption signal
 
 ## Poller
@@ -72,6 +82,66 @@ follow-up work.
 **Effort:** M
 **Priority:** P3
 **Depends on:** HA Supervisor runtime proof
+
+### Explain repeated sign-outs when two clients share one Aqara account
+
+**What:** Notice when SleepRadar has to sign in again on several polls in a row and
+tell the user, in plain words, that another app or a second SleepRadar may be
+using the same Aqara account.
+
+**Why:** A new sign-in on the same account can end SleepRadar's session. The poll
+loop signs in again before it classifies a failure, so two clients can sign each
+other out every minute while data keeps flowing: nothing is shown, and the other
+client's user sees unexplained sign-outs.
+
+**Context:** `main()` in `aqara_fp2_sleep/aqara_fp2_sleep_poller.py` re-signs in on
+any non-zero `res/query` code, then queries again. A counter of consecutive polls
+that needed a re-login could log one warning in the usual message order (what
+happened, what to do, technical details) after three in a row, without turning
+the connection-problem entity on while data flows. First find out whether a
+SleepRadar sign-in also signs out the Aqara Home app; that decides how much this
+matters. Add a loop-level sequence test with two simulated clients.
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** the issue #40 fix (message order and the 108 message)
+
+### Show a message instead of crashing on a malformed Aqara reply
+
+**What:** Harden reply parsing at the Aqara boundary (`Aqara._post`, `login()`
+and the code classification) so a reply that does not match the expected shape
+reads as "Aqara answered, but SleepRadar couldn't read the reply" and polling
+continues.
+
+**Why:** Some off-contract replies stop the poller instead of producing a
+message, so users would see the connection-problem entity on without a cause.
+Not observed in practice.
+
+**Context:** Map them to the unreadable-reply message (transient, grace window,
+no sign-in backoff) and extend the message-order cases in
+`scripts/validate_repository.py` with off-contract replies.
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** the plain-language message set from the issue #40 fix
+
+### Add a contributor script that re-checks AREAS rows
+
+**What:** A contributor script that re-checks each `AREAS` row against its live
+Aqara host.
+
+**Why:** The pinned row fingerprints in the validator ask for a re-check
+whenever a row changes, and a committed script turns the next "code 106 in
+region X" report into one command.
+
+**Context:** Never with real credentials. CI gets a compile check and a
+stubbed-network test, wired through `CONDUCTOR_GATES` like every other
+entrypoint (that tuple is checked against `ci.yml` and
+`.conductor/settings.toml`); the live run stays manual and is never scheduled.
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** the issue #40 fix (key fingerprints in the validator)
 
 ## Supply Chain
 
