@@ -8,6 +8,7 @@ import os
 import re
 import signal
 import time
+import unicodedata
 import urllib.error
 import urllib.request
 import uuid
@@ -18,12 +19,16 @@ from Crypto.Hash import MD5 as CMD5
 from Crypto.PublicKey import RSA
 
 # Aqara Home app built-in constants. These are public app constants, not user
-# credentials.
+# credentials. The USA and CN pairs were checked against their live hosts on
+# 2026-10-01. scripts/validate_repository.py pins a fingerprint of every row
+# (server, app id and key) and records how it was checked, so any change here
+# fails the build until its fingerprint is updated, the prompt to check the
+# row against its live host again.
 AREAS = {
     "CN": {
         "server": "https://aiot-rpc.aqara.cn",
         "appid": "94549908487478b220992a70",
-        "appkey": "Jddz01kIORDYrBzqGYgpUXKBnIHfW8E3",
+        "appkey": "euGhPe2rcmxwculATNj45eEtnd50zp0I",
     },
     "EU": {
         "server": "https://rpc-ger.aqara.com",
@@ -43,7 +48,7 @@ AREAS = {
     "USA": {
         "server": "https://aiot-rpc-usa.aqara.com",
         "appid": "94549908487478b220992a70",
-        "appkey": "Jddz01kIORDYrBzqGYgpUXKBnIHfW8E3",
+        "appkey": "euGhPe2rcmxwculATNj45eEtnd50zp0I",
     },
 }
 
@@ -116,12 +121,21 @@ TRANSIENT_FAILURE_GRACE = max(1, int(os.environ.get("TRANSIENT_FAILURE_GRACE", "
 AUTH_RETRY_BACKOFF = max(INTERVAL, 60)
 AUTH_RETRY_BACKOFF_MAX = 1800
 
-# Aqara answers a rejected login with code 106 and the text "Request failed.
-# Please try again.", which is what a wrong region looks like: an Aqara Home
-# account only exists in the region it was created in. The codes below are the
-# ones observed in the field; everything else is classified structurally by
-# is_transient_code().
-AQARA_CODE_ACCOUNT_REJECTED = 106
+# Aqara result codes that get their own message. Meanings follow Aqara's public
+# error table and the msgDetails field of the response; everything else is
+# classified structurally by is_transient_code().
+# 106 "Invalid sign": Aqara rejected the request signature, which comes from
+#     SleepRadar's built-in app key for the region. It says nothing about the
+#     user's password or region.
+AQARA_CODE_INVALID_SIGN = 106
+# 108 "Token has expired": right after a fresh sign-in, another sign-in on the
+#     same Aqara account has ended SleepRadar's session.
+AQARA_CODE_TOKEN_EXPIRED = 108
+# 755 no permission for the device: after a good sign-in, aqara_area is not the
+#     region the FP2 is registered in, or subject_id points at another device.
+AQARA_CODE_SUBJECT_PERMISSION_DENIED = 755
+
+ISSUES_URL = "https://github.com/florianhorner/ha-fp2-sleep/issues"
 
 # Failures that mean "Aqara did not answer" rather than "Aqara said no".
 # -1 is this client's own catch-all for socket/DNS/timeout exceptions, see
@@ -277,13 +291,24 @@ class Aqara:
                 return json.loads(resp.read().decode())
         except urllib.error.HTTPError as err:
             try:
-                return json.loads(err.read().decode())
+                body = json.loads(err.read().decode())
             except Exception:
                 return {"code": err.code, "message": f"HTTP {err.code}"}
+            # A gateway error page carries no usable Aqara code. Keep the HTTP
+            # status, so a 429 or 5xx still reads as "no answer", not as a
+            # rejection.
+            code = body.get("code") if isinstance(body, dict) else None
+            if isinstance(body, dict) and (not isinstance(code, int) or isinstance(code, bool)):
+                body["code"] = err.code
+            return body
         except Exception as err:
             return {"code": -1, "message": f"{type(err).__name__}: {err}"}
 
     def login(self):
+        # Every sign-in starts like the first one: an expired session's token
+        # must not be signed into the request that replaces it.
+        self.token = None
+        self.userid = None
         rsa = PKCS1_v1_5.new(RSA.importKey(PUBKEY))
         encrypted_password = b64encode(
             rsa.encrypt(CMD5.new(PASSWORD.encode()).hexdigest().encode())
@@ -299,7 +324,7 @@ class Aqara:
             log("info", "Aqara login OK")
             return True
         self.last_error = res
-        log("error", f"Aqara login failed: code={res.get('code')} {res.get('message')}")
+        log("error", f"Aqara login failed: code={code_text(res.get('code'))} {aqara_error_text(res)}")
         return False
 
     def res_query(self, did, options):
@@ -465,13 +490,68 @@ def make_mqtt():
     return client
 
 
+# Aqara's own text reaches the log, the entity's cause attribute and a Markdown
+# notification, so it is shown as one line of plain text, capped. The detail
+# gets its own share of the cap, so a long message cannot push it out.
+ERROR_TEXT_LIMIT = 200
+DETAILS_LIMIT = 80
+# Markdown link, image and HTML syntax, and backslash escapes.
+_MARKUP = re.compile(r"[\[\]()<>!`\\]")
+
+
+def plain_text(value):
+    """`value` as one line of plain text: control and invisible format
+    characters (Unicode categories C, Zl and Zp) and Markdown link, image and
+    HTML syntax become spaces, and whitespace collapses."""
+    text = "".join(
+        " " if unicodedata.category(char)[0] == "C" or unicodedata.category(char) in ("Zl", "Zp")
+        else char
+        for char in str(value)
+    )
+    return " ".join(_MARKUP.sub(" ", text).split())
+
+
+def code_text(code):
+    """The reply's code for display. It comes from the server as well, so
+    anything but an int is shown as capped plain text."""
+    if isinstance(code, int) and not isinstance(code, bool):
+        return str(code)[:20]
+    return plain_text(code)[:20] if code is not None else "none"
+
+
+def aqara_error_text(res):
+    """Aqara's own error text: `message`, plus `msgDetails` when it adds
+    something. `msgDetails` is where Aqara names the real cause ("Invalid
+    sign"), while `message` is often a generic "Request failed"."""
+    details = plain_text(res.get("msgDetails") or "")[:DETAILS_LIMIT].rstrip()
+    budget = ERROR_TEXT_LIMIT - (len(details) + 3 if details else 0)
+    message = plain_text(res.get("message") or "")[:budget].rstrip() or "no message returned"
+    if details and details != message:
+        return f"{message} ({details})"
+    return message
+
+
+def user_message(plain, todo, technical):
+    """A message in the order a user needs it: what happened, what to do, and
+    only then the technical details (code and Aqara's own text)."""
+    if not technical.endswith("."):
+        technical += "."
+    return f"{plain} What to do: {todo} Technical details: {technical}"
+
+
 def describe_poll_failure(res):
     code = res.get("code")
     if code is not None and code != 0:
-        return f"Aqara API error (code={code}): {res.get('message') or 'no message returned'}"
+        return f"Aqara API error (code={code_text(code)}): {aqara_error_text(res)}"
+    # The shape only: the reply itself can carry the sensor's id and readings,
+    # and this line is what users paste into a report. main() logs the raw
+    # reply at debug level.
     if "result" in res:
-        return f"unexpected response shape from Aqara API (result was not a list): {json.dumps(res)[:200]}"
-    return f"unrecognized response from Aqara API: {json.dumps(res)[:200]}"
+        return (
+            "unexpected response shape from Aqara API (result was a "
+            f"{type(res['result']).__name__}, not a list)"
+        )
+    return f"unrecognized response from Aqara API (no code, {len(res)} fields)"
 
 
 def is_transient_code(code):
@@ -483,11 +563,24 @@ def is_transient_code(code):
     return code == -1 or code in TRANSIENT_HTTP_CODES
 
 
-def describe_login_failure(res, area=None):
+# What users see, by Aqara code. Every message reads: what happened, what to
+# do, then the technical details.
+#
+#   106 at sign-in or on the sensor query -> SleepRadar's request rejected;
+#                                            update SleepRadar or report it
+#   108 right after a fresh sign-in       -> session ended by another sign-in
+#   755 after a sign-in                   -> wrong aqara_area or subject_id
+#   other code after a sign-in            -> check subject_id
+#   other code at sign-in (810, ...)      -> check username, password, region
+#   -1, 429, 5xx                          -> no answer from Aqara; wait
+#   0 with an unreadable payload          -> unreadable reply; wait
+def describe_login_failure(res, area=None, request="sign-in"):
     """Classify a failed login into (kind, cause) where kind is
-    "transient" or "permanent" and cause is text a user can act on."""
+    "transient" or "permanent" and cause is text a user can act on.
+
+    `request` names the request that failed in the technical details; the
+    106 message is shared with describe_failure for the sensor query."""
     code = res.get("code")
-    message = res.get("message") or "no message returned"
     area = area or AREA
 
     # Aqara answered successfully and we could not read the payload. Nothing
@@ -495,33 +588,65 @@ def describe_login_failure(res, area=None):
     # branch: that would suspend polling for up to AUTH_RETRY_BACKOFF_MAX and
     # tell the user their sign-in was rejected with "code 0".
     if code == 0:
-        return ("transient", describe_poll_failure(res))
+        result = res.get("result")
+        shape = "no result" if result is None else f"a {type(result).__name__} result, not a list"
+        return (
+            "transient",
+            user_message(
+                "Aqara answered, but SleepRadar couldn't read the reply. This "
+                "is usually temporary.",
+                f"nothing yet. If it keeps happening, report it at {ISSUES_URL}.",
+                # The shape only: the reply itself can carry the sensor's id and
+                # readings, and this text is what users paste into a report.
+                f"code 0 with {shape}",
+            ),
+        )
 
     if is_transient_code(code):
         return (
             "transient",
-            f"Cannot reach the Aqara cloud (code {code}): {message}. "
-            "This is usually a network or DNS problem and often clears on its "
-            "own.",
+            user_message(
+                "SleepRadar can't get an answer from Aqara right now. This is "
+                "usually a short network problem or a busy Aqara server and "
+                "clears on its own.",
+                "nothing yet. If it doesn't clear, check that Home Assistant is "
+                "online and that nothing on your network blocks Aqara's servers.",
+                f"code {code_text(code)}: {aqara_error_text(res)}",
+            ),
         )
 
-    if code == AQARA_CODE_ACCOUNT_REJECTED:
+    if code == AQARA_CODE_INVALID_SIGN:
         return (
             "permanent",
-            f"Aqara rejected the sign-in (code {code}). The configured region "
-            f"is {area}. An Aqara Home account only exists in the region it "
-            "was created in, so the wrong region rejects an otherwise correct "
-            "password. Check aqara_area first, then aqara_username and "
-            "aqara_password.",
+            user_message(
+                f"SleepRadar can't get your data from Aqara: Aqara's {area} "
+                "server rejected SleepRadar's request. This error does not mean "
+                "your password or region is wrong.",
+                "update SleepRadar first. If you already have the latest "
+                f"version, report it at {ISSUES_URL}.",
+                f"Aqara code {code_text(code)} on {request}: {aqara_error_text(res)}",
+            ),
         )
 
     return (
         "permanent",
-        f"Aqara rejected the sign-in (code {code}): {message}. Check "
-        "aqara_username, aqara_password and aqara_area (currently "
-        f"{area}). Use the Aqara Home app account, not the Aqara webshop "
-        "account.",
+        user_message(
+            "Aqara didn't accept SleepRadar's sign-in.",
+            "in Settings > Apps > SleepRadar > Configuration, check "
+            "aqara_username and aqara_password (your Aqara Home app account, "
+            f"not the Aqara webshop account) and that aqara_area ({area}) is "
+            "the region your Aqara Home app uses, then restart the app.",
+            aqara_code_text(res),
+        ),
     )
+
+
+def aqara_code_text(res):
+    """The technical-details part for a rejection: the code and Aqara's text."""
+    code = res.get("code")
+    if code is None:
+        return f"Aqara returned no error code: {aqara_error_text(res)}"
+    return f"Aqara code {code_text(code)}: {aqara_error_text(res)}"
 
 
 def call_core_service(domain, service, payload):
@@ -563,11 +688,13 @@ def notify_problem(cause):
         {
             "notification_id": NOTIFICATION_ID,
             "title": "SleepRadar is not receiving data",
+            # The cause already says what to do. The frame adds no instruction
+            # of its own: a generic "correct the options" would contradict the
+            # causes the options cannot fix (an outdated SleepRadar, Aqara not
+            # answering).
             "message": (
                 f"{cause}\n\n"
-                "Open **Settings > Apps > SleepRadar > Configuration**, correct "
-                "the options, then restart the app. Sensors stay unavailable "
-                "until the sign-in succeeds.\n\n"
+                "Sensors stay unavailable until this is resolved.\n\n"
                 "[Troubleshooting](https://github.com/florianhorner/ha-fp2-sleep"
                 "#login-fails)"
             ),
@@ -602,23 +729,49 @@ def last_error(aqara):
     return getattr(aqara, "last_error", None) or {}
 
 
-def describe_failure(res, login_ok):
+def describe_failure(res, login_ok, area=None):
     """(kind, cause) for whatever most recently failed.
 
     A rejected sign-in and a rejected device query need different advice: the
-    first points at the credentials, the second at subject_id or a device that
-    has left the account.
+    first points at the credentials, the second at subject_id, the region, or
+    a device that has left the account. Two codes keep their own meaning after
+    a good sign-in: 106 is still SleepRadar's signing problem, and 108 is a
+    session another sign-in ended, not a sensor-ID problem.
     """
-    kind, cause = describe_login_failure(res)
-    if login_ok and kind == "permanent" and res.get("code") != 0:
-        cause = (
-            f"Signed in to Aqara, but the FP2 query was rejected "
-            f"(code {res.get('code')}): "
-            f"{res.get('message') or 'no message returned'}. Check that "
-            "subject_id points at the sleep FP2 and that the device is still "
-            "in your Aqara Home account."
+    area = area or AREA
+    code = res.get("code")
+    if login_ok and code == AQARA_CODE_INVALID_SIGN:
+        return describe_login_failure(res, area, request="the sensor query")
+    kind, cause = describe_login_failure(res, area)
+    if not login_ok or kind != "permanent":
+        return kind, cause
+    if code == AQARA_CODE_TOKEN_EXPIRED:
+        return kind, user_message(
+            "Aqara ended SleepRadar's session right after it signed in. This "
+            "happens when another app or a second SleepRadar signs in with the "
+            "same Aqara account.",
+            "make sure only one SleepRadar (or other Aqara cloud tool) uses "
+            "this account, then restart the app.",
+            aqara_code_text(res),
         )
-    return kind, cause
+    if code == AQARA_CODE_SUBJECT_PERMISSION_DENIED:
+        return kind, user_message(
+            "SleepRadar signed in to Aqara but can't read your FP2: Aqara's "
+            f"{area} server won't give it access to this sensor. This happens "
+            "when aqara_area isn't the region your FP2 is registered in, or "
+            "when subject_id points at another device.",
+            "in Settings > Apps > SleepRadar > Configuration, set aqara_area to "
+            "the region your Aqara Home app uses and check subject_id, then "
+            f"restart the app. If both are already right, report it at {ISSUES_URL}.",
+            aqara_code_text(res),
+        )
+    return kind, user_message(
+        "SleepRadar signed in to Aqara but can't read your FP2.",
+        "in Settings > Apps > SleepRadar > Configuration, check that subject_id "
+        "points at your sleep FP2 and that the FP2 is still in your Aqara Home "
+        "account, then restart the app.",
+        aqara_code_text(res),
+    )
 
 
 class Health:
@@ -680,8 +833,8 @@ class Health:
             self.transient_streak = 0
 
         # Re-notify when the *reason* changes, not just on the first failure.
-        # A blip that turns out to be a rejected region would otherwise leave
-        # the notification reading "often clears on its own" for the rest of
+        # A blip that turns out to be a permanent rejection would otherwise
+        # leave the notification reading "clears on its own" for the rest of
         # the outage. An unchanged cause stays silent, so an ongoing outage
         # does not re-notify every poll.
         changed = self.problem is not True or cause != self.cause
@@ -745,12 +898,13 @@ def main():
         startup_error = last_error(aqara)
         kind, cause = describe_login_failure(startup_error)
         # Not "fatal": this process keeps running and recovers on its own once
-        # the options are corrected. Calling it fatal told users to expect a
-        # crash that never came.
+        # the cause is gone (an options change needs an app restart). Calling
+        # it fatal told users to expect a crash that never came.
+        # The cause goes last so its technical details end the line.
         log(
             "error",
-            f"Aqara login failed at startup. {cause} The add-on keeps retrying; "
-            "the sensors stay unavailable until the sign-in succeeds.",
+            "Aqara login failed at startup; SleepRadar keeps retrying, and the "
+            f"sensors stay unavailable until the sign-in succeeds. {cause}",
         )
         # Flag it now rather than after the first poll. A rejected sign-in at
         # boot is already certain, so waiting a full poll interval to say so
@@ -775,7 +929,7 @@ def main():
         if res.get("code") != 0:
             log(
                 "warning",
-                f"res/query code={res.get('code')} ({res.get('message')}); re-login",
+                f"res/query code={code_text(res.get('code'))} ({aqara_error_text(res)}); re-login",
             )
             login_ok = aqara.login()
             if login_ok:
@@ -799,6 +953,7 @@ def main():
         else:
             client.publish(AVAIL_TOPIC, "offline", qos=1, retain=True)
             log("error", f"poll failed: {describe_poll_failure(res)}")
+            log("debug", f"raw Aqara reply: {json.dumps(res)[:ERROR_TEXT_LIMIT]}")
             kind, cause = describe_failure(res, login_ok)
             health.failed(kind, cause, res.get("code"))
             if kind == "permanent":

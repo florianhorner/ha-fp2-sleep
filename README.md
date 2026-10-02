@@ -102,9 +102,9 @@ Or add it by hand:
    aqara_username: "your-aqara-home-app-email"
    aqara_password: "your-aqara-home-app-password"
    subject_id: "lumi1.xxxxxxxxxxxx"
-   # CN | EU | USA | RU | KR. This is the region your Aqara Home account was
-   # created in, not where you live. An account does not exist outside its
-   # region, so the wrong value rejects a correct password (see Login Fails).
+   # CN | EU | USA | RU | KR: the region your Aqara Home app uses (where your
+   # FP2 is registered), not where you live. A wrong region can refuse the
+   # sign-in or sign in without access to your FP2 (see Login Fails).
    aqara_area: "EU"
 
    # Optional
@@ -366,20 +366,51 @@ The process is alive and retrying; only the sensors go unavailable. The
 "started" badge is not proof that data is flowing. Read the
 `binary_sensor.aqara_fp2_sleep_connection_problem` entity or the app log.
 
-Use the Aqara Home app account (mobile app email), not the Aqara webshop
-account. Check `aqara_area` first: an Aqara Home account only exists in the
-region it was created in, so the wrong region rejects an otherwise correct
-password.
+Every problem message says what happened, then what to do, then the technical
+details. The ones you are most likely to see:
 
-**`code=106`, "Request failed. Please try again."** This is Aqara's text for a
-rejected sign-in, and retrying does not help. It is what a wrong `aqara_area`
-looks like. Set the region to match the account, then restart the app. If the
-region was already correct, check `aqara_username` and `aqara_password` next.
+**"Aqara didn't accept SleepRadar's sign-in."** Check `aqara_username` and
+`aqara_password`: use the Aqara Home app account (mobile app email), not the
+Aqara webshop account. A wrong `aqara_area` can also cause this, so set it to
+the region your Aqara Home app uses. Then restart the app.
 
-The app log names the cause and the option to change, at `error` level. It keeps
-retrying with a growing delay between attempts, so a wrong password is not
-hammered against Aqara's login endpoint. The sensors stay unavailable until the
-sign-in succeeds; fix the options and it recovers on its own.
+**"SleepRadar signed in to Aqara but can't read your FP2: Aqara's … server won't
+give it access to this sensor."** The sign-in worked, but the selected region's
+server does not give SleepRadar access to the sensor (Aqara code `755`). This
+happens when `aqara_area` is not the region your FP2 is registered in, or when
+`subject_id` points at another device. Fix the one that is wrong and restart the
+app. If both are already right, report it in the
+[issue tracker](https://github.com/florianhorner/ha-fp2-sleep/issues).
+
+**"SleepRadar signed in to Aqara but can't read your FP2."** Check that
+`subject_id` points at your sleep FP2 and that the FP2 is still in your Aqara
+Home account, then restart the app.
+
+**"SleepRadar can't get your data from Aqara: Aqara's … server rejected
+SleepRadar's request."** This error does not mean your password or region is
+wrong: Aqara rejected the request SleepRadar sent (Aqara code `106`, "Invalid
+sign"). Update SleepRadar. If you already have the latest version, report it in
+the [issue tracker](https://github.com/florianhorner/ha-fp2-sleep/issues).
+
+**"Aqara ended SleepRadar's session right after it signed in."** This happens
+when another app or a second SleepRadar signs in with the same Aqara account
+(Aqara code `108`). Make sure only one SleepRadar (or other Aqara cloud tool)
+uses the account, then restart the app.
+
+**"SleepRadar can't get an answer from Aqara right now."** Usually a short
+network problem or a busy Aqara server, and it clears on its own. If it does
+not, check that Home Assistant is online and that nothing on your network, such
+as a DNS filter, blocks Aqara's servers.
+
+**"Aqara answered, but SleepRadar couldn't read the reply."** Usually
+temporary. If it keeps happening, report it in the
+[issue tracker](https://github.com/florianhorner/ha-fp2-sleep/issues).
+
+The app log carries the same message at `error` level, together with Aqara's own
+detail text. SleepRadar keeps retrying with a growing delay between attempts, so
+a wrong password is not hammered against Aqara's login endpoint. The sensors
+stay unavailable until SleepRadar can read your FP2 again. Once the cause is gone
+it recovers on its own; after changing the options, restart the app.
 
 If required fields are blank, SleepRadar logs the missing field and waits about
 30 seconds before exiting. Fill in the options and start it again.

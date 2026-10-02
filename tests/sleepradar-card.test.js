@@ -1086,7 +1086,8 @@ function withProblem(states, { state = "on", cause } = {}) {
 }
 
 const outageCause =
-  "Aqara rejected the sign-in (code 106). The configured region is USA.";
+  "Aqara didn't accept SleepRadar's sign-in. What to do: check aqara_password, " +
+  "then restart the app. Technical details: Aqara code 810: Password incorrect.";
 const outageStates = withProblem(
   defaultStates({ sleepState: "unavailable", updated: NOW }),
   { cause: outageCause }
@@ -1095,7 +1096,7 @@ const outageStates = withProblem(
 const outageHtml = render(outageStates);
 assert.match(
   outageHtml,
-  /Aqara rejected the sign-in \(code 106\)/,
+  /Aqara didn(?:'|&#39;|&#x27;)t accept SleepRadar(?:'|&#39;|&#x27;)s sign-in/,
   "the card must show the app's reported cause for an outage"
 );
 assert.doesNotMatch(
@@ -1183,7 +1184,7 @@ const blockedHtml = render(
 );
 assert.match(
   blockedHtml,
-  /code 106/,
+  /Aqara code 810/,
   "the occupancy-blocked card must also report the connection cause"
 );
 

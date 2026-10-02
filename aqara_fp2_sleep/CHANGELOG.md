@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- Sign-in for `aqara_area: USA` and `CN` no longer fails with code `106`
+  (wrong built-in signing key). If you changed `aqara_area` away from USA or
+  China because of error code 106, change it back.
+
+- Error messages say what happened, then what to do, then the technical
+  details. Code `106` no longer points at `aqara_area`.
+
+- The notification no longer tells you to change options that cannot fix the
+  cause, and the log includes Aqara's detail text as plain text.
+
+- A gateway or proxy error whose JSON reply carries no Aqara code now counts
+  as Aqara not answering instead of a rejected sign-in.
+
 ## 1.3.0
 
 - Adds `binary_sensor.aqara_fp2_sleep_connection_problem`, a diagnostic entity

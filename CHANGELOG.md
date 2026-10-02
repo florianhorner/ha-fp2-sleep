@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+- Sign-in for `aqara_area: USA` and `CN` no longer fails with code `106`.
+  SleepRadar sent those regions the wrong built-in signing key. If you changed
+  `aqara_area` away from USA or China because of error code 106, change it
+  back.
+
+- Error messages now say what happened, then what to do, then the technical
+  details. Code `106` is no longer blamed on `aqara_area`: it means Aqara
+  rejected SleepRadar's request, and the message says to update SleepRadar or
+  report it. Code `755` after a sign-in names the region and `subject_id` as the
+  likely causes, and code `108` right after a sign-in points at a second app on
+  the same Aqara account.
+
+- The Home Assistant notification no longer tells you to change your options
+  for causes the options cannot fix.
+
+- The app log includes Aqara's own detail text next to its message, as one
+  line of plain text.
+
+- A gateway or proxy error whose JSON reply carries no Aqara code now counts
+  as Aqara not answering instead of a rejected sign-in.
+
 ## 1.3.0
 
 - Adds `binary_sensor.aqara_fp2_sleep_connection_problem`, a diagnostic entity
