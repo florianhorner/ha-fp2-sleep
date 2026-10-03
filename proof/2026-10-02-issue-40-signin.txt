@@ -1,4 +1,4 @@
-# Proof - issue #40: USA and CN sign-in
+# Proof - issue #40: USA/CN request signing and US-server sign-in
 Captured: 2026-10-02 | code commit: 09f97eb | branch: issue-40
 
 Live checks against Aqara, 2026-10-02 (result codes only)
@@ -12,13 +12,22 @@ Live checks against Aqara, 2026-10-02 (result codes only)
    CN  | table pair             | 810 Password incorrect
    CN  | random value (control) | 106 Invalid sign
 
-2. The maintainer's own Aqara account, US server, same AREAS table, run by the
+2. The maintainer's EU Aqara account, US server, same AREAS table, run by the
    maintainer (10:40Z to 10:50Z):
 
-   sign-in                   | 0 (OK), twice
-   token-signed sensor query | 0
+   sign-in                               | 0 (OK), twice
+   token-signed query, non-FP2 subject    | 0
 
-Local gates on 09f97eb (Python 3.13, CI requirements)
+   The first run skipped the query. The second used a non-FP2 subject; its
+   result was not validated as sleep data. These results support US-server
+   sign-in and token-signed request acceptance. They do not establish access
+   to a US-registered FP2 or sleep data reaching Home Assistant.
+
+   China evidence is limited to request-signature acceptance in check 1;
+   no real-account China sign-in was performed. Issue #40 remains open for
+   the reporter to confirm US FP2 sleep data after updating.
+
+Historical local gates on 09f97eb (Python 3.13, CI requirements)
 
    git diff --check                                          OK
    python -m py_compile <5 entrypoints>                      OK

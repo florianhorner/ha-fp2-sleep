@@ -1,11 +1,12 @@
 # Changelog
 
-## Unreleased
+## 1.3.1
 
-- Sign-in for `aqara_area: USA` and `CN` no longer fails with code `106`.
-  SleepRadar sent those regions the wrong built-in signing key. If you changed
-  `aqara_area` away from USA or China because of error code 106, change it
-  back.
+Removes the wrong-key error that blocked USA and China sign-in. Connection
+messages now explain the next step and include Aqara's diagnostic detail.
+
+- Corrects the built-in signing keys for `aqara_area: USA` and `CN`, which
+  caused Aqara to reject requests with code `106`.
 
 - Error messages now say what happened, then what to do, then the technical
   details. Code `106` is no longer blamed on `aqara_area`: it means Aqara
@@ -18,10 +19,27 @@
   for causes the options cannot fix.
 
 - The app log includes Aqara's own detail text next to its message, as one
-  line of plain text.
+  line of plain text. Markdown emphasis is removed while diagnostic names
+  such as `CERTIFICATE_VERIFY_FAILED` remain readable.
 
-- A gateway or proxy error whose JSON reply carries no Aqara code now counts
-  as Aqara not answering instead of a rejected sign-in.
+- Gateway and proxy errors retain their HTTP status when the reply has no
+  usable Aqara code, including JSON strings, lists, and `null`. These errors
+  count as Aqara not answering and no longer stop polling on non-object JSON.
+
+- Signing in again clears the previous session's token from the request.
+
+### Verification
+
+Controlled probes confirmed request-signature acceptance for USA and China.
+US-server sign-in was verified with an EU account. US FP2 sleep-data retrieval
+and China real-account sign-in still need confirmation; issue #40 stays open
+for the reporter's US FP2 retest.
+
+### Upgrade
+
+Update SleepRadar to 1.3.1. If you changed `aqara_area` away from your account's
+USA or China region because of code `106`, set it back to `USA` or `CN` and
+restart the SleepRadar app.
 
 ## 1.3.0
 

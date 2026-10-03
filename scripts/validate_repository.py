@@ -2194,7 +2194,7 @@ def check_failure_classification() -> None:
             0x2029, 0x202E, 0x2060, 0x2066, 0x2069, 0xFEFF, 0xE0041, 0xD800,
             0xE000, 0x0378,
         )
-    ] + list("[]()<>!`\\")
+    ] + list("[]()<>!`*~\\")
     for char in stripped:
         if module.plain_text(f"a{char}b") != "a b":
             fail(f"plain_text must turn U+{ord(char):04X} into a space")
@@ -2206,9 +2206,21 @@ def check_failure_classification() -> None:
         "\u7b7e\u540d\u65e0\u6548",
         "a:b/c-d",
         "CERTIFICATE_VERIFY_FAILED",
+        "internal__identifier",
     ):
         if module.plain_text(text) != text:
             fail(f"plain_text must leave ordinary text unchanged: {text!r}")
+    for text, want in (
+        ("**retry now**", "retry now"),
+        ("_retry now_", "retry now"),
+        ("__retry now__", "retry now"),
+        ("___retry now___", "retry now"),
+        ("Aqara says __retry now__.", "Aqara says retry now ."),
+        ("__CERTIFICATE_VERIFY_FAILED__", "CERTIFICATE_VERIFY_FAILED"),
+        ("~~not needed~~", "not needed"),
+    ):
+        if module.plain_text(text) != want:
+            fail(f"plain_text must drop Markdown emphasis: {text!r} gave {module.plain_text(text)!r}")
     text = module.aqara_error_text(
         {
             "message": "a\n[info] Aqara login OK\x1b[0m",
@@ -2247,6 +2259,9 @@ def check_failure_classification() -> None:
         (503, b'{"code": null, "message": "unavailable"}', 503),
         (429, b'{"code": "THROTTLED"}', 429),
         (502, b"<html>Bad Gateway</html>", 502),
+        (502, b'"Bad Gateway"', 502),
+        (504, b"[]", 504),
+        (503, b"null", 503),
         (400, b'{"code": 106, "message": "Request failed."}', 106),
     ):
 

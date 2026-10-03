@@ -297,8 +297,10 @@ class Aqara:
             # A gateway error page carries no usable Aqara code. Keep the HTTP
             # status, so a 429 or 5xx still reads as "no answer", not as a
             # rejection.
-            code = body.get("code") if isinstance(body, dict) else None
-            if isinstance(body, dict) and (not isinstance(code, int) or isinstance(code, bool)):
+            if not isinstance(body, dict):
+                return {"code": err.code, "message": f"HTTP {err.code}"}
+            code = body.get("code")
+            if not isinstance(code, int) or isinstance(code, bool):
                 body["code"] = err.code
             return body
         except Exception as err:
@@ -495,20 +497,24 @@ def make_mqtt():
 # gets its own share of the cap, so a long message cannot push it out.
 ERROR_TEXT_LIMIT = 200
 DETAILS_LIMIT = 80
-# Markdown link, image and HTML syntax, and backslash escapes.
-_MARKUP = re.compile(r"[\[\]()<>!`\\]")
+# Markdown link, image, HTML, emphasis and strikethrough syntax, and backslash
+# escapes.
+_MARKUP = re.compile(r"[\[\]()<>!`*~\\]")
+# Strip the whole underscore run that opens or closes emphasis, so __text__
+# cannot become _text_. Underscores inside identifiers stay.
+_EMPHASIS_UNDERSCORE = re.compile(r"(?<!\w)_+|_+(?!\w)")
 
 
 def plain_text(value):
     """`value` as one line of plain text: control and invisible format
-    characters (Unicode categories C, Zl and Zp) and Markdown link, image and
-    HTML syntax become spaces, and whitespace collapses."""
+    characters (Unicode categories C, Zl and Zp) and Markdown syntax become
+    spaces, and whitespace collapses."""
     text = "".join(
         " " if unicodedata.category(char)[0] == "C" or unicodedata.category(char) in ("Zl", "Zp")
         else char
         for char in str(value)
     )
-    return " ".join(_MARKUP.sub(" ", text).split())
+    return " ".join(_EMPHASIS_UNDERSCORE.sub(" ", _MARKUP.sub(" ", text)).split())
 
 
 def code_text(code):
