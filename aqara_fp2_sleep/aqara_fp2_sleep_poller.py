@@ -288,7 +288,13 @@ class Aqara:
         )
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:
-                return json.loads(resp.read().decode())
+                body = json.loads(resp.read().decode())
+            # Every caller reads the reply with .get(). Valid JSON that is not
+            # an object would end the poll loop, so it reads like any other
+            # unreadable reply: Aqara did not answer.
+            if not isinstance(body, dict):
+                return {"code": -1, "message": "the reply was not a JSON object"}
+            return body
         except urllib.error.HTTPError as err:
             try:
                 body = json.loads(err.read().decode())
@@ -320,11 +326,16 @@ class Aqara:
             {"account": USER, "encryptType": 2, "password": encrypted_password},
         )
         if res.get("code") == 0:
-            self.token = res["result"]["token"]
-            self.userid = res["result"]["userId"]
-            self.last_error = None
-            log("info", "Aqara login OK")
-            return True
+            result = res.get("result")
+            if isinstance(result, dict) and result.get("token") and result.get("userId"):
+                self.token = result["token"]
+                self.userid = result["userId"]
+                self.last_error = None
+                log("info", "Aqara login OK")
+                return True
+            # Code 0 without a session is not a sign-in. Described, not kept:
+            # the reply can hold a partial session token.
+            res = {"code": -1, "message": "the sign-in reply had no session token"}
         self.last_error = res
         log("error", f"Aqara login failed: code={code_text(res.get('code'))} {aqara_error_text(res)}")
         return False

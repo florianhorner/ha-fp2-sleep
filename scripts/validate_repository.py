@@ -2278,6 +2278,68 @@ def check_failure_classification() -> None:
         if want == status and gateway.describe_login_failure(res)[0] != "transient":
             fail(f"an HTTP {status} without an Aqara code must read as transient: {res}")
 
+    # A 2xx reply that is valid JSON but not an object would reach the
+    # callers' .get() and end the poll loop. It reads as no answer instead,
+    # while a real object passes through unchanged.
+    class Reply(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    for body, want in (
+        (b"[]", None),
+        (b"null", None),
+        (b'"ok"', None),
+        (b"3", None),
+        (b'{"code": 0, "result": []}', {"code": 0, "result": []}),
+    ):
+        gateway.urllib = types.SimpleNamespace(
+            request=types.SimpleNamespace(
+                Request=urllib.request.Request,
+                urlopen=lambda req, timeout=30, body=body: Reply(body),
+            ),
+            error=urllib.error,
+        )
+        res = gateway.Aqara("USA")._post("/app/v1.0/lumi/res/query", {})
+        if want is not None:
+            if res != want:
+                fail(f"a 2xx JSON object must pass through unchanged, got {res!r}")
+            continue
+        if not isinstance(res, dict) or res.get("code") != -1:
+            fail(f"a 2xx reply of {body!r} must read as code -1, got {res!r}")
+        if gateway.describe_login_failure(res)[0] != "transient":
+            fail(f"a 2xx reply of {body!r} must read as transient: {res}")
+
+    # Code 0 without a usable session is not a sign-in. It used to raise
+    # KeyError out of login() and stop the app.
+    signin = load_poller_module("poller_signin_reply_shape")
+    logged = []
+    signin.log = lambda level, msg: logged.append(msg)
+    partial = "partial-session-token"
+    for reply in (
+        {"code": 0},
+        {"code": 0, "result": []},
+        {"code": 0, "result": {"token": partial}},
+        {"code": 0, "result": {"token": "", "userId": "u"}},
+    ):
+        signin.Aqara._post = lambda self, path, body, reply=reply: reply
+        client = signin.Aqara("USA")
+        try:
+            signed_in = client.login()
+        except Exception as exc:  # noqa: BLE001 - any raise stops the app
+            fail(f"a sign-in reply of {reply!r} must not raise, got {exc!r}")
+        if signed_in or client.token is not None:
+            fail(f"a sign-in reply of {reply!r} must not count as signed in")
+        kind, cause = signin.describe_login_failure(signin.last_error(client))
+        if kind != "transient":
+            fail(f"a sign-in reply of {reply!r} must read as transient: {cause}")
+        # The reply can hold a partial session token. It must not be kept or
+        # logged: last_error feeds the cause users paste into reports.
+        if partial in json.dumps(signin.last_error(client)) or any(partial in msg for msg in logged):
+            fail(f"a sign-in reply's partial token must not be kept or logged: {reply!r}")
+
     # code 0 means Aqara answered; we just could not read the payload. Calling
     # that a rejected sign-in suspends polling for up to 30 minutes and tells
     # the user their credentials are wrong when they are not.

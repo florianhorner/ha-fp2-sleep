@@ -1,0 +1,48 @@
+# Proof - SleepRadar 1.3.1 unreadable 2xx replies
+
+Local validation on 2026-10-04, Python 3.11.16 with PyYAML 6.0.3. yamllint was
+1.35.1, not the 1.38.0 pin; CI runs the pinned version.
+
+Validated source SHA256 (this proof file is excluded):
+  2e21a3bf172d232b025bfb06f465a7210f7acd16cb7ec8da8b5f3e70880eb30c  aqara_fp2_sleep/aqara_fp2_sleep_poller.py
+  2f7b93e75bb0ba9e5df17e3417ead0be6f09a870396416b6e5613cba091fe217  scripts/validate_repository.py
+  fec19d7a5c10518c59988ba9f3458c3e446cb9313c4de6b764def6b56748fba4  aqara_fp2_sleep/config.yaml
+
+Shared validation gates: 12/12 passed
+
+  PASS git diff --check
+  PASS python -m py_compile aqara_fp2_sleep/aqara_fp2_sleep_poller.py scripts/validate_repository.py videos/quiet_proof_loops.py videos/validate-gif-batch.py videos/build-gif-deliverables.py
+  PASS yamllint -c .yamllint .
+  PASS python scripts/validate_repository.py
+  PASS python scripts/validate_repository.py --self-test
+  PASS python tests/test_validate_repository_cli.py
+  PASS python videos/validate-gif-batch.py
+  PASS python videos/validate-gif-batch.py --self-test
+  PASS python videos/build-gif-deliverables.py --self-test
+  PASS python videos/validate-gif-batch.py --check-baseline videos/gif-batch-baseline-sha256.json
+  PASS node tests/sleepradar-card.test.js
+  PASS bash -n aqara_fp2_sleep/run.sh
+
+Behaviour before the fix, reproduced in memory with a stubbed urlopen:
+  A 2xx reply of [], null, "ok" or 3 was returned unchanged, and the
+  caller's .get("code") raised AttributeError.
+  A sign-in reply of {"code": 0} without a result raised KeyError: 'result'.
+  main() catches neither, so the app process stopped.
+
+After the fix:
+  A 2xx reply that is not a JSON object reads as code -1 (transient). A 2xx
+  JSON object passes through unchanged.
+  A code 0 sign-in reply without a token and user id is not a sign-in. It
+  reads as code -1 (transient), and the reply, which can hold a partial
+  session token, is neither kept nor logged.
+
+Deliberate regressions applied only in memory: 3/3 caught
+  Return non-object 2xx JSON unchanged: validator fails.
+  Index the sign-in result without the shape check: validator fails.
+  Keep the raw code 0 sign-in reply: validator fails.
+
+Not run locally: the dependency audit and the Docker build. Neither the
+requirements nor the Dockerfile change; CI runs both on the PR head.
+
+Runtime scope:
+  No Aqara requests or Home Assistant changes were made for this check.

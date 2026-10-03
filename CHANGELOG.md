@@ -25,6 +25,8 @@ messages now explain the next step and include Aqara's diagnostic detail.
 - Gateway and proxy errors retain their HTTP status when the reply has no
   usable Aqara code, including JSON strings, lists, and `null`. These errors
   count as Aqara not answering and no longer stop polling on non-object JSON.
+  The same applies to a successful reply that is not a JSON object and to a
+  sign-in reply without a session.
 
 - Signing in again clears the previous session's token from the request.
 
