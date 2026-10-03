@@ -41,7 +41,7 @@ jobs:
           fi
 
       - name: Check Python syntax
-        run: python -m py_compile aqara_fp2_sleep/aqara_fp2_sleep_poller.py scripts/validate_repository.py videos/quiet_proof_loops.py videos/validate-gif-batch.py videos/build-gif-deliverables.py
+        run: python -m py_compile aqara_fp2_sleep/aqara_fp2_sleep_poller.py scripts/setup_workspace.py scripts/validate_repository.py videos/quiet_proof_loops.py videos/validate-gif-batch.py videos/build-gif-deliverables.py
 
       - name: Lint YAML
         run: yamllint -c .yamllint .
@@ -54,6 +54,9 @@ jobs:
 
       - name: Test validator CLI
         run: python3 tests/test_validate_repository_cli.py
+
+      - name: Test workspace setup
+        run: python3 tests/test_setup_workspace.py
 
       - name: Validate GIF sources
         run: python3 videos/validate-gif-batch.py

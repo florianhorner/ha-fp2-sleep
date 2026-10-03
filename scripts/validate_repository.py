@@ -21,8 +21,7 @@ if sys.version_info < (3, 11):
         f"(running {sys.version.split()[0]}); it parses .conductor/settings.toml "
         "with the stdlib tomllib module. CI pins 3.12 and the add-on image is "
         "3.13, so a local venv older than 3.11 was never CI-equivalent anyway. "
-        "Recreate it: rm -rf .venv && python3.12 -m venv .venv && "
-        ".venv/bin/python -m pip install -r requirements-ci.txt"
+        "Repair it from the workspace root: python3 scripts/setup_workspace.py"
     )
 
 import tomllib  # noqa: E402  (guarded above: stdlib only from 3.11)
@@ -140,7 +139,9 @@ GITLEAKS_VERSION = "8.30.0"
 GITLEAKS_LINUX_X64_SHA256 = (
     "79a3ab579b53f71efd634f3aaf7e04a0fa0cf206b7ed434638d1547a2470a66e"
 )
+CONDUCTOR_SETUP_COMMAND = "python3 scripts/setup_workspace.py"
 CONDUCTOR_CLI_TEST_COMMAND = ".venv/bin/python tests/test_validate_repository_cli.py"
+CONDUCTOR_SETUP_TEST_COMMAND = ".venv/bin/python tests/test_setup_workspace.py"
 CONDUCTOR_BASELINE_COMMAND = (
     ".venv/bin/python videos/validate-gif-batch.py "
     "--check-baseline videos/gif-batch-baseline-sha256.json"
@@ -158,6 +159,7 @@ CONDUCTOR_GATES = (
         (
             ".venv/bin/python -m py_compile "
             "aqara_fp2_sleep/aqara_fp2_sleep_poller.py "
+            "scripts/setup_workspace.py "
             "scripts/validate_repository.py "
             "videos/quiet_proof_loops.py "
             "videos/validate-gif-batch.py "
@@ -185,6 +187,11 @@ CONDUCTOR_GATES = (
         CONDUCTOR_CLI_TEST_COMMAND,
         "Test validator CLI",
         "test validator command-line behavior",
+    ),
+    (
+        CONDUCTOR_SETUP_TEST_COMMAND,
+        "Test workspace setup",
+        "test Python fallback and mixed-venv repair without network access",
     ),
     (
         ".venv/bin/python videos/validate-gif-batch.py",
@@ -943,6 +950,16 @@ def conductor_run_commands(text: str) -> list[str]:
     scripts = settings.get("scripts")
     if not isinstance(scripts, dict):
         fail(".conductor/settings.toml must define a [scripts] table")
+    extra_keys = sorted(set(scripts) - {"setup", "run", "run_mode"})
+    if extra_keys:
+        fail(f".conductor/settings.toml declares unvalidated [scripts] keys {extra_keys}")
+    if scripts.get("setup") != CONDUCTOR_SETUP_COMMAND:
+        fail(
+            ".conductor/settings.toml scripts.setup must be "
+            f"{CONDUCTOR_SETUP_COMMAND!r}"
+        )
+    if scripts.get("run_mode") != "concurrent":
+        fail(".conductor/settings.toml scripts.run_mode must be 'concurrent'")
 
     commands = []
     run = scripts.get("run")
@@ -2588,10 +2605,15 @@ def run_self_test() -> None:
         )
         now_section["cards"].append(copy.deepcopy(live_card))
         return yaml.safe_dump(data, sort_keys=False)
+    conductor_prefix = (
+        "[scripts]\n"
+        f"setup = {json.dumps(CONDUCTOR_SETUP_COMMAND)}\n"
+        'run_mode = "concurrent"\n'
+    )
+
     def conductor_command_fixtures(conductor_command):
         structured_conductor_settings = (
-            "[scripts]\n"
-            'setup = "true"\n'
+            conductor_prefix +
             "[scripts.run.validate]\n"
             f"command = {json.dumps(conductor_command)}\n"
         )
@@ -2602,8 +2624,7 @@ def run_self_test() -> None:
         # Flat form: [scripts.run] command = "..." (no per-name sub-table). Only
         # the structured [scripts.run.<name>] form was previously covered.
         flat_conductor_settings = (
-            "[scripts]\n"
-            'setup = "true"\n'
+            conductor_prefix +
             "[scripts.run]\n"
             f"command = {json.dumps(conductor_command)}\n"
         )
@@ -2635,8 +2656,7 @@ def run_self_test() -> None:
         expect_fail(
             "conductor flat non-string command beside a valid entry",
             lambda: validate_conductor_settings(
-                "[scripts]\n"
-                'setup = "true"\n'
+                conductor_prefix +
                 "[scripts.run]\n"
                 'command = ["bash", "-c", "exit 0"]\n'
                 "[scripts.run.validate]\n"
@@ -2663,8 +2683,7 @@ def run_self_test() -> None:
         expect_fail(
             "conductor multiline string decoy",
             lambda: validate_conductor_settings(
-                "[scripts]\n"
-                'setup = "true"\n'
+                conductor_prefix +
                 'note = """\n'
                 f"run = {json.dumps(conductor_command)}\n"
                 '"""\n'
@@ -2677,7 +2696,7 @@ def run_self_test() -> None:
         expect_fail(
             "conductor embedded newline in command",
             lambda: validate_conductor_settings(
-                f"[scripts]\nrun = {json.dumps(newline_command)}\n"
+                conductor_prefix + f"run = {json.dumps(newline_command)}\n"
             ),
         )
         expect_fail(
@@ -2719,7 +2738,20 @@ def run_self_test() -> None:
     )
     expect_fail(
         "conductor settings run wrong type",
-        lambda: validate_conductor_settings("[scripts]\nrun = 1\n"),
+        lambda: validate_conductor_settings(conductor_prefix + "run = 1\n"),
+    )
+    expect_fail(
+        "conductor settings setup replaced",
+        lambda: validate_conductor_settings(
+            mutate(conductor_settings, CONDUCTOR_SETUP_COMMAND, "exit 0")
+        ),
+    )
+    expect_fail(
+        "conductor settings extra script key",
+        lambda: validate_conductor_settings(
+            conductor_prefix + 'archive = "exit 0"\n'
+            + f"run = {json.dumps(' && '.join(CONDUCTOR_REQUIRED_COMMANDS))}\n"
+        ),
     )
     # Same gate set, different order: exercises the "gate order differs" branch,
     # which the missing/unexpected cases never reach.
@@ -3151,7 +3183,7 @@ def run_self_test() -> None:
     expect_fail(
         "conductor settings gate order swapped",
         lambda: validate_conductor_settings(
-            f"[scripts]\nrun = {json.dumps(' && '.join(reordered))}\n"
+            conductor_prefix + f"run = {json.dumps(' && '.join(reordered))}\n"
         ),
     )
     # A duplicated gate (every required command present, but one repeated)
@@ -3161,7 +3193,7 @@ def run_self_test() -> None:
     expect_fail(
         "conductor settings duplicated gate",
         lambda: validate_conductor_settings(
-            f"[scripts]\nrun = {json.dumps(' && '.join(duplicated))}\n"
+            conductor_prefix + f"run = {json.dumps(' && '.join(duplicated))}\n"
         ),
     )
 

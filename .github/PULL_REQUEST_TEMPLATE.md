@@ -15,11 +15,12 @@ If a check was not run, explain why and what risk remains.
 ## Proof
 
 - [ ] whitespace: `git diff --check`
-- [ ] python compile: `python3 -m py_compile aqara_fp2_sleep/aqara_fp2_sleep_poller.py scripts/validate_repository.py videos/quiet_proof_loops.py videos/validate-gif-batch.py videos/build-gif-deliverables.py`
+- [ ] python compile: `python3 -m py_compile aqara_fp2_sleep/aqara_fp2_sleep_poller.py scripts/setup_workspace.py scripts/validate_repository.py videos/quiet_proof_loops.py videos/validate-gif-batch.py videos/build-gif-deliverables.py`
 - [ ] yaml: `yamllint -c .yamllint .`
 - [ ] package: `python3 scripts/validate_repository.py`
 - [ ] validator self-test: `python3 scripts/validate_repository.py --self-test`
 - [ ] validator CLI: `python3 tests/test_validate_repository_cli.py`
+- [ ] workspace setup: `python3 tests/test_setup_workspace.py`
 - [ ] GIF sources: `python3 videos/validate-gif-batch.py`
 - [ ] GIF validator self-test: `python3 videos/validate-gif-batch.py --self-test`
 - [ ] GIF builder self-test: `python3 videos/build-gif-deliverables.py --self-test`

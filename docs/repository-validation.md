@@ -17,6 +17,7 @@ The validator requires Python 3.11 or newer.
 | `python3 scripts/validate_repository.py` | Validate the current repository state. Stops at the first failure. | `SleepRadar package validation OK` |
 | `python3 scripts/validate_repository.py --self-test` | Exercise positive fixtures and deliberate mutations that prove validator guards still fail closed. Reports all failures together. | `SleepRadar validator self-test OK` |
 | `python3 tests/test_validate_repository_cli.py` | Test normal mode, self-test mode, help, invalid option handling, and ambient-env isolation. | `OK` (on stderr) |
+| `python3 tests/test_setup_workspace.py` | Reproduce failed interpreter fallback and mixed-venv repair without network access. | `OK` (on stderr) |
 | `python3 scripts/validate_repository.py --help` | Show the command-line interface without running validation. | Usage text |
 
 `--self-test` replaces normal repository validation; it does not include it.
@@ -125,9 +126,9 @@ carrying `args`, `options`, or `available_in` is rejected because those change
 what Conductor actually executes. Real TOML parsing prevents gate text in
 comments or unrelated strings from satisfying the Conductor check.
 
-Only `scripts.run` is validated; sibling `[scripts]` keys, including `setup`,
-are not. Extending the pin to them is tracked in
-[TODOs](../TODOS.md#extend-step-validation-to-uses-steps-and-scriptssetup).
+The validator pins `scripts.setup`, `scripts.run_mode`, the run chain, and the
+allowed `[scripts]` keys. It does not yet inspect every CI `uses:` step input;
+that gap remains tracked in [TODOs](../TODOS.md#extend-step-validation-to-uses-steps).
 
 Three human-facing mirrors are not parsed into the machine contract:
 
@@ -219,19 +220,16 @@ Known lower-priority GIF-related gaps remain tracked in
 
 ### The validator requires Python 3.11 or newer
 
-Check the interpreter inside the active environment:
+Check the interpreter inside the workspace venv:
 
 ```bash
-python3 --version
+.venv/bin/python --version
 ```
 
-Recreate an old venv with Python 3.11 or newer, then reinstall
-`requirements-ci.txt`. CI pins Python 3.12. The shared Conductor setup tries
-Python 3.12, 3.13, 3.11, then bare `python3` — the last fallback covers
-machines that expose a modern interpreter under no versioned name. An
-interpreter that is genuinely too old still creates the venv; the first
-validator gate in the run chain then fails here with this message, so a
-non-CI-equivalent venv never passes silently.
+Run `python3 scripts/setup_workspace.py` to repair an old or mixed venv. The
+bootstrap tests candidates in isolated temporary directories and selects one
+that can start a real Python 3.11+ venv with pip. If none works, it reports the
+candidate failures without altering the workspace venv. CI pins Python 3.12.
 
 ### A Conductor gate is missing, unexpected, or out of order
 

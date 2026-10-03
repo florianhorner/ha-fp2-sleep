@@ -48,23 +48,20 @@ Use the same Python dependency versions as CI, and **Python 3.11 or newer**.
 CI pins 3.12 and the add-on image is 3.13; `scripts/validate_repository.py`
 parses `.conductor/settings.toml` with the stdlib `tomllib` module, which does
 not exist before 3.11. On macOS, bare `python3` is often the system Python 3.9,
-so name the interpreter explicitly:
+so use the workspace bootstrap:
 
 ```bash
-python3.12 -m venv .venv    # or any python3.11+
+python3 scripts/setup_workspace.py
 . .venv/bin/activate
-python3 -m pip install --upgrade pip
-python3 -m pip install -r requirements-ci.txt
 ```
 
-Conductor's `setup` script tries `python3.12`, `python3.13`, `python3.11`,
-`python3.14`, then bare `python3`, so a machine that exposes a modern
-interpreter under no other name still bootstraps. It checks every candidate's
-version before creating the venv. If none provides Python 3.11+ with `venv`
-support, setup fails before dependency installation with an actionable error.
-
-If an existing venv still exits with the validator's version error, delete
-`.venv` and recreate it with a 3.11+ interpreter.
+Conductor runs this command automatically. The bootstrap itself works with
+macOS system Python 3.9. It tries Python 3.12, 3.13, 3.11, 3.14, then bare
+`python3`, testing each 3.11+ interpreter in a separate temporary venv before
+using it. It repairs a broken or mixed `.venv`, installs `requirements-ci.txt`,
+and verifies the result. During replacement, it keeps the old venv in a
+gitignored workspace backup directory until setup succeeds, restoring it if
+setup fails. Rerun the same command to repair an existing workspace.
 
 Node.js is only needed for the SleepRadar Card test. There is no `npm install`
 step because the test uses Node's built-in modules.
@@ -81,11 +78,12 @@ Run this shared validation block before opening a PR:
 
 ```bash
 git diff --check
-python3 -m py_compile aqara_fp2_sleep/aqara_fp2_sleep_poller.py scripts/validate_repository.py videos/quiet_proof_loops.py videos/validate-gif-batch.py videos/build-gif-deliverables.py
+python3 -m py_compile aqara_fp2_sleep/aqara_fp2_sleep_poller.py scripts/setup_workspace.py scripts/validate_repository.py videos/quiet_proof_loops.py videos/validate-gif-batch.py videos/build-gif-deliverables.py
 yamllint -c .yamllint .
 python3 scripts/validate_repository.py
 python3 scripts/validate_repository.py --self-test
 python3 tests/test_validate_repository_cli.py
+python3 tests/test_setup_workspace.py
 python3 videos/validate-gif-batch.py
 python3 videos/validate-gif-batch.py --self-test
 python3 videos/build-gif-deliverables.py --self-test

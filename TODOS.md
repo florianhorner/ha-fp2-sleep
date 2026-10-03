@@ -346,24 +346,21 @@ property-based variants in one move rather than enumerating one at a time.
 **Priority:** P1
 **Depends on:** None
 
-### Extend step validation to `uses:` steps and `scripts.setup`
+### Extend step validation to `uses:` steps
 
-**What:** Extend the validator's coverage to two execution surfaces it does not
-currently inspect:
+**What:** Extend the validator's coverage to CI action steps:
 
-1. **`uses:` steps** — `require_known_run_steps()` only inspects steps carrying a
-   `run:` key, so action steps are covered by the SHA-pin check alone and their
-   `with:` inputs are not inspected. Add a documented per-job allowlist for
-   action steps, mirroring `CI_KNOWN_RUN_STEPS`, so an undocumented action is
-   rejected the same way an undocumented command step is.
-2. **`[scripts]` keys other than `run`** in `.conductor/settings.toml` —
-   `conductor_run_commands()` reads `scripts.run` and ignores its siblings. Pin
-   `setup` the way `run` is pinned and reject undocumented `[scripts]` keys.
+`require_known_run_steps()` only inspects steps carrying a `run:` key, so action
+steps are covered by the SHA-pin check alone and their `with:` inputs are not
+inspected. Add a documented per-job allowlist for action steps, mirroring
+`CI_KNOWN_RUN_STEPS`, so an undocumented action is rejected the same way an
+undocumented command step is. The former `scripts.setup` gap is closed: the
+validator now pins setup and rejects unknown `[scripts]` keys.
 
 **Why:** Same "unseen shape skips every check" family the validator already
-closes at step and job granularity, one level further out. Both are
-defense-in-depth behind branch protection and human review, which is why they
-were deferred rather than rushed into the same pass.
+closes at step and job granularity, one level further out. This is
+defense-in-depth behind branch protection and human review, which is why it
+was deferred rather than rushed into the same pass.
 
 Engineering detail (reproductions and specific shapes) is in the working notes
 rather than here, since these are open gaps in a public repository.
