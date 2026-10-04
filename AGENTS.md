@@ -1,5 +1,18 @@
 # Repository Instructions
 
+## SleepRadar release notes
+
+- Before drafting release notes, read `DESIGN.md`, the preceding published
+  GitHub releases, and the full comparison from the previous release tag.
+  Unpublished versions in `CHANGELOG.md` belong to that comparison too.
+- Keep the SleepRadar release title, voice, and structure consistent across
+  versions. Use the version tag as the title, a short user-outcome opening,
+  concise feature details where needed, a visible upgrade section for required
+  actions, and a full-changelog link. Preserve meaningful verification limits.
+- Check both changelogs and the public PR/release text for reporter credit.
+  Name the actual contribution and link its issue; do not imply that a reporter
+  authored the patch or tested it unless that happened.
+
 ## SleepRadar GIF batch
 
 Before creating, revising, rendering, or handing off any SleepRadar marketing

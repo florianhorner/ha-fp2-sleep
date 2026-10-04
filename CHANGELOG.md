@@ -5,6 +5,9 @@
 Removes the wrong-key error that blocked USA and China sign-in. Connection
 messages now explain the next step and include Aqara's diagnostic detail.
 
+Thanks to @awk-git for reporting the USA sign-in failure and comparing the
+regional behavior in [#40](https://github.com/florianhorner/ha-fp2-sleep/issues/40).
+
 - Corrects the built-in signing keys for `aqara_area: USA` and `CN`, which
   caused Aqara to reject requests with code `106`.
 
