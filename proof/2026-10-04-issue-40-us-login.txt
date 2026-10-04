@@ -1,0 +1,75 @@
+# Proof - SleepRadar 1.3.1 independent USA login verification
+
+Captured: 2026-10-04
+Tested code commit: 15a9423fda122bfc42934d63e631bfa7ba942923
+Tested tree: 2fd59b671e94c2d37c0228d92dfceaa9f25a2085
+Original configuration: 3af017fc995d5f05e65720ae5b1ed0690a04504c
+Endpoint: https://aiot-rpc-usa.aqara.com/app/v1.0/lumi/user/login
+
+Validated source SHA256:
+  2e21a3bf172d232b025bfb06f465a7210f7acd16cb7ec8da8b5f3e70880eb30c  aqara_fp2_sleep/aqara_fp2_sleep_poller.py
+  2f7b93e75bb0ba9e5df17e3417ead0be6f09a870396416b6e5613cba091fe217  scripts/validate_repository.py
+  fec19d7a5c10518c59988ba9f3458c3e446cb9313c4de6b764def6b56748fba4  aqara_fp2_sleep/config.yaml
+  c6b81c0f09df64843b57df788d0457c0006e2c120802e9a8202e7b0386568e2b  aqara_fp2_sleep/requirements.txt
+  de178a47a92119703b7e91943cdb862bfd40d38afdf95b9bf52db814806a4c2a  requirements-ci.txt
+
+Private login-only harness SHA256:
+  849579fa75e4d5a536ce040082568ca77cab5c3aff8b09e917fc9f409b269fb9
+Original poller SHA256, used to extract the original USA configuration:
+  417d9975edd289c9161f6b49e1df56ae2943dde8a5885625f230c7aef9d85c6b
+
+Method
+
+  Called the candidate's actual Aqara.login() method against the US service.
+  The first three calls used the same fabricated account and password. The
+  original and random-key controls changed only the client configuration;
+  the candidate's request-signing and login implementation ran in every case.
+  The final call used a dedicated maintainer-controlled account configured for
+  the USA region, confirmed in Aqara Home and at the local test prompt.
+
+  There was one request per test, four requests total, without retries.
+  Credentials were entered locally, and neither they nor session values were
+  written to the result files. Only fixed classifications, result codes,
+  timestamps, booleans, endpoint, and source hashes were retained.
+
+Live results (UTC)
+
+  03:57:52-03:57:53 | original signing configuration | HTTP 200 | 106 Invalid sign
+  03:57:55-03:57:56 | candidate, fabricated account  | HTTP 200 | 810 Password incorrect
+  03:57:58-03:57:59 | random-key negative control    | HTTP 200 | 106 Invalid sign
+  10:38:20-10:38:21 | candidate, real USA account    | HTTP 200 | 0, login successful
+
+  The successful login returned a nonempty token and user ID that the client
+  could place into authenticated request headers. Their values were discarded
+  after this check. No authenticated resource query was sent.
+
+Conclusion and limits
+
+  The original USA signing configuration reproduces the reported code 106.
+  The candidate reaches account validation and successfully signs in with a
+  USA-region account. The random-key control still fails signature validation.
+  This independently verifies the specific login defect tracked in issue #40.
+
+  US FP2 sleep-data retrieval has not been verified. No device was queried,
+  and this experiment did not connect to Home Assistant or MQTT. The earlier
+  non-FP2 query is not device-data evidence. China evidence remains limited
+  to the request-signature checks recorded in the October 2 proof; no real
+  China-account login is claimed.
+
+Engineering checks on the source hashes above
+
+  All 12 shared CONTRIBUTING gates passed in an independent local clone using
+  Python 3.11.15 and the exact requirements-ci.txt pins: PyYAML 6.0.3,
+  yamllint 1.38.0, paho-mqtt 2.1.0, and pycryptodome 3.23.0.
+  Coverage includes valid and rejected login, stale-token clearing, malformed
+  gateway/non-object replies, and incomplete login replies without retaining
+  partial session tokens. Committed-range whitespace also passed.
+
+  pip-audit 2.10.1 found no known vulnerabilities in the two pinned runtime
+  packages. The normal resolver failed locally in ensurepip, so the audit used
+  --no-deps --disable-pip after confirming no required transitive dependencies.
+  Gitleaks 8.30.0 found no secrets in the candidate tree or scanned history.
+
+  The local Docker daemon was unavailable. CI, security, and container checks
+  on the final published commit remain required before release; checks on an
+  older public commit do not cover these changes.

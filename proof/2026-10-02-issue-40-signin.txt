@@ -24,8 +24,12 @@ Live checks against Aqara, 2026-10-02 (result codes only)
    to a US-registered FP2 or sleep data reaching Home Assistant.
 
    China evidence is limited to request-signature acceptance in check 1;
-   no real-account China sign-in was performed. Issue #40 remains open for
-   the reporter to confirm US FP2 sleep data after updating.
+   no real-account China sign-in was performed.
+
+   Follow-up, 2026-10-04: independent USA-region account login is now verified
+   in proof/2026-10-04-issue-40-us-login.txt. The earlier plan to wait for the
+   reporter's US FP2 retest was superseded. Issue #40 covers the login defect;
+   US FP2 sleep-data retrieval remains a separate, unverified claim.
 
 Historical local gates on 09f97eb (Python 3.13, CI requirements)
 

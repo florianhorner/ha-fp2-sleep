@@ -25,10 +25,11 @@ messages now explain the next step and include Aqara's diagnostic detail.
 
 ### Verification
 
-Controlled probes confirmed request-signature acceptance for USA and China.
-US-server sign-in was verified with an EU account. US FP2 sleep-data retrieval
-and China real-account sign-in still need confirmation; issue #40 stays open
-for the reporter's US FP2 retest.
+Verified against Aqara's US service using a dedicated USA-region account.
+The original signing configuration reproduced code `106`; the corrected
+configuration signed in successfully with code `0` and a session token.
+US FP2 sleep-data retrieval has not yet been verified. China's evidence covers
+request-signature acceptance; real China-account sign-in remains unverified.
 
 ### Upgrade
 
