@@ -1,0 +1,56 @@
+# Proof - SleepRadar 1.3.1 issue #40 follow-up
+
+Local validation on 2026-10-03, Python 3.11.15, requirements-ci.txt pins:
+PyYAML 6.0.3, yamllint 1.38.0, paho-mqtt 2.1.0, pycryptodome 3.23.0.
+
+Validated source SHA256 (this proof file is excluded):
+  49516128a0dcd59e6a73e3d58864b60d517bb9d773971930e9510da6a3133538  aqara_fp2_sleep/aqara_fp2_sleep_poller.py
+  cbe9be74cdd33210140c7b2cdddebbc7d4f343692f818fa1ef975283517a4022  scripts/validate_repository.py
+  fec19d7a5c10518c59988ba9f3458c3e446cb9313c4de6b764def6b56748fba4  aqara_fp2_sleep/config.yaml
+
+Shared validation gates: 12/12 passed
+
+  PASS git diff --check
+  PASS python -m py_compile aqara_fp2_sleep/aqara_fp2_sleep_poller.py scripts/validate_repository.py videos/quiet_proof_loops.py videos/validate-gif-batch.py videos/build-gif-deliverables.py
+  PASS python -m yamllint -c .yamllint .
+  PASS python scripts/validate_repository.py
+  PASS python scripts/validate_repository.py --self-test
+  PASS python tests/test_validate_repository_cli.py
+  PASS python videos/validate-gif-batch.py
+  PASS python videos/validate-gif-batch.py --self-test
+  PASS python videos/build-gif-deliverables.py --self-test
+  PASS python videos/validate-gif-batch.py --check-baseline videos/gif-batch-baseline-sha256.json
+  PASS node tests/sleepradar-card.test.js
+  PASS bash -n aqara_fp2_sleep/run.sh
+
+Regression proof:
+  Adding the double-underscore case before the fix failed validation:
+    '__retry now__' was returned as '_retry now_'.
+  The corrected candidate passes single, double and triple emphasis cases,
+  embedded emphasis, and preservation of single/double internal underscores.
+  HTTP error JSON strings, lists and null retain their status and classify
+  as transient. Aqara error objects keep their own numeric result code.
+
+Deliberate regressions applied only in memory: 4/4 caught
+  Restore the incomplete single-underscore sanitizer: validator fails.
+  Restore the published non-object HTTP fallback: validator fails.
+  Restore the original USA signing key: fingerprint guard fails.
+  Restore the original CN signing key: fingerprint guard fails.
+  The unmodified candidate passes the same validator functions.
+
+Dependency audit:
+  pip-audit 2.10.1 reports no known vulnerabilities for the pinned runtime
+  requirements using --no-deps --disable-pip. Both distributions have no
+  required transitive dependencies; paho-mqtt's proxy extra is not enabled.
+  The default pip-audit environment creation failed locally, so this check
+  queried the fully pinned dependency list without invoking pip.
+
+Docker build:
+  Not run locally: the Docker daemon is unavailable. CI must build the final
+  PR head before merge; an older PR check does not validate these changes.
+
+Runtime scope:
+  No new Aqara requests or Home Assistant changes were made for this check.
+  Historical signing and US-server login evidence, including its limitations,
+  is recorded in proof/2026-10-02-issue-40-signin.txt. US FP2 sleep-data
+  retrieval and China real-account sign-in remain unverified.

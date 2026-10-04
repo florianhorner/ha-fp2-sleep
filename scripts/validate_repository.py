@@ -6,12 +6,16 @@ from __future__ import annotations
 import argparse
 import collections
 import copy
+import hashlib
 import importlib.util
+import io
 import json
 import re
 import subprocess
 import sys
 import types
+import urllib.error
+import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path, PurePosixPath
 
@@ -258,6 +262,22 @@ FAVICON_PATH = "favicon.svg"
 FAVICON_VIEW_BOX = "0 0 128 128"
 SHA_PINNED_ACTION = re.compile(r"^[^@\s]+@[0-9a-f]{40}$")
 WATCHDOG_URL_PATTERN = re.compile(r"^(?:https?|tcp)://")
+
+# One fingerprint per AREAS row of the poller: sha256 of
+# "area|server|appid|appkey". Any change to a row fails check_area_signing_pairs
+# until its fingerprint is updated here, which is the prompt to check the row
+# against its live host. How each row was checked:
+#   CN, USA  against their live hosts, 2026-10-01 (issue #40)
+#   KR       a user's real sign-in (issue #40)
+#   EU       daily use
+#   RU       not checked; carried over from the original table
+AREA_ROW_FINGERPRINTS = {
+    "CN": "c795caeb7a691585c87e95f31f6dc9713eaad368a01bf393ea3b119d3d071837",
+    "EU": "5ebd27e5380cf50bdbaf8cdf15477af6c007b81d1340c3a775466ede5389cc76",
+    "KR": "c1701017578b9458f865c2d89af4d71d6ce6e0f89ea3868635d645d11871f228",
+    "RU": "6a46165144876120fa01097b3aee05be000115ac3231c3684f434625f9cfa6cc",
+    "USA": "66bf0711f11dedafca11d2196cc2d48403d5cbfccaca6baaab16c7c8ce98c151",
+}
 
 
 class ValidationError(Exception):
@@ -1987,7 +2007,7 @@ def check_login_failure_falls_through_to_retry_loop() -> None:
         fail(f"startup login failure must not exit immediately: {exc}")
 
     # The log level matters here. This path keeps running and recovers on its
-    # own once the options are corrected, so "fatal" told users to expect a
+    # own once the cause is gone, so "fatal" told users to expect a
     # crash that never came, and buried the one line that names the fix.
     hints = [
         event
@@ -2003,6 +2023,10 @@ def check_login_failure_falls_through_to_retry_loop() -> None:
         )
     if not any(event[1] == "error" for event in hints):
         fail("startup login failure must log the startup hint at error level")
+    # The cause ends the line, so its technical details come last.
+    _kind, startup_cause = module.describe_login_failure({})
+    if not any(event[2].endswith(startup_cause) for event in hints):
+        fail(f"the startup hint must end with the cause: {hints}")
     if not any(event[0] == "res_query" for event in events):
         fail("startup login failure did not fall through to the retry poll loop")
     # A login the user has to fix is published as a problem, not only logged.
@@ -2023,7 +2047,7 @@ def check_failure_classification() -> None:
     for code in (429, 500, 503):
         if not module.is_transient_code(code):
             fail(f"HTTP {code} must be transient")
-    if module.is_transient_code(module.AQARA_CODE_ACCOUNT_REJECTED):
+    if module.is_transient_code(module.AQARA_CODE_INVALID_SIGN):
         fail("code 106 is Aqara saying no; it must not be transient")
 
     kind, cause = module.describe_login_failure(
@@ -2031,21 +2055,290 @@ def check_failure_classification() -> None:
     )
     if kind != "transient":
         fail(f"URLError must classify as transient, got {kind}")
+    if "Configuration" in cause:
+        fail(f"a network failure must not send users to their options: {cause}")
 
-    kind, cause = module.describe_login_failure(
-        {"code": 106, "message": "Request failed. Please try again."}, area="USA"
+    # 106 is "Invalid sign" (Aqara's error table, and the reply's msgDetails):
+    # Aqara rejected SleepRadar's request signature, which neither the password
+    # nor the region can fix. The message names the region the request went to
+    # and the way out: update SleepRadar, or report it when already current.
+    invalid_sign = {
+        "code": 106,
+        "message": "Request failed. Please try again.",
+        "msgDetails": "Invalid sign",
+    }
+    for login_ok, request in ((False, "sign-in"), (True, "the sensor query")):
+        kind, cause = module.describe_failure(invalid_sign, login_ok, area="USA")
+        if kind != "permanent":
+            fail(f"code 106 must classify as permanent, got {kind}")
+        if "USA" not in cause or "aqara_area" in cause or "subject_id" in cause:
+            fail(
+                "code 106 must name the region and must not send users to "
+                f"aqara_area or subject_id: {cause}"
+            )
+        if "update SleepRadar" not in cause or module.ISSUES_URL not in cause:
+            fail(f"code 106 must say to update SleepRadar and where to report it: {cause}")
+        if request not in cause:
+            fail(f"code 106 must name the failed request ({request}): {cause}")
+        if invalid_sign["message"] not in cause:
+            fail(f"code 106 must carry Aqara's own text in its technical details: {cause}")
+    if module.ISSUES_URL != "https://github.com/florianhorner/ha-fp2-sleep/issues":
+        fail(f"ISSUES_URL must point at this repository's issue tracker: {module.ISSUES_URL}")
+
+    # 108 right after a fresh sign-in: another sign-in ended the session.
+    _kind, cause = module.describe_failure(
+        {"code": 108, "message": "Token has expired"}, True, area="USA"
     )
-    if kind != "permanent":
-        fail(f"code 106 must classify as permanent, got {kind}")
-    # Aqara's own text for 106 is "Request failed. Please try again.", which
-    # sends users to retry forever. The cause must name the region instead.
-    if "USA" not in cause or "aqara_area" not in cause:
-        fail(f"code 106 cause must name the configured region and option: {cause}")
+    if "same Aqara account" not in cause or "subject_id" in cause:
+        fail(
+            "a 108 after a fresh sign-in must point at another sign-in on the "
+            f"same account, not at subject_id: {cause}"
+        )
 
-    # Signed in, but the device query was rejected: different fix entirely.
-    _kind, cause = module.describe_failure({"code": 108, "message": "no"}, True)
+    # 755 after a good sign-in: wrong region or wrong sensor. The region named
+    # is the one passed in, never the module default (which reads AQARA_AREA).
+    _kind, cause = module.describe_failure(
+        {"code": 755, "message": "You do not have permission to perform the operation."},
+        True,
+        area="KR",
+    )
+    if "KR" not in cause or "aqara_area" not in cause or "subject_id" not in cause:
+        fail(
+            "a 755 after sign-in must name the region, aqara_area and "
+            f"subject_id: {cause}"
+        )
+    if module.ISSUES_URL not in cause:
+        fail(f"a 755 after sign-in must say where to report it when both are right: {cause}")
+
+    # Any other rejection on a good session points at the sensor.
+    _kind, cause = module.describe_failure({"code": 999, "message": "no"}, True, area="USA")
     if "subject_id" not in cause:
         fail(f"a rejected query on a good session must point at subject_id: {cause}")
+
+    # Rejections the options can fix say where to fix them and to restart.
+    for res, login_ok in (
+        ({"code": 810, "message": "Password incorrect"}, False),
+        ({"code": 755, "message": "no"}, True),
+        ({"code": 999, "message": "no"}, True),
+    ):
+        _kind, cause = module.describe_failure(res, login_ok, area="USA")
+        if (
+            "Settings > Apps > SleepRadar > Configuration" not in cause
+            or "restart the app" not in cause
+        ):
+            fail(f"a fixable rejection must name the Configuration step and the restart: {cause}")
+
+    # A rejected sign-in names the options that can fix it.
+    _kind, cause = module.describe_failure(
+        {"code": 810, "message": "Password incorrect"}, False, area="USA"
+    )
+    for needle in ("aqara_username", "aqara_password", "aqara_area (USA)"):
+        if needle not in cause:
+            fail(f"a rejected sign-in must name {needle}: {cause}")
+
+    # Rejections wait for a person. Their kind decides the grace window and the
+    # sign-in backoff, so a text-only check would miss a flipped kind.
+    for res, login_ok in (
+        ({"code": 108, "message": "m"}, True),
+        ({"code": 755, "message": "m"}, True),
+        ({"code": 999, "message": "m"}, True),
+        ({"code": 810, "message": "m"}, False),
+    ):
+        kind, _cause = module.describe_failure(res, login_ok, area="USA")
+        if kind != "permanent":
+            fail(f"code {res['code']} (login_ok={login_ok}) must be permanent, got {kind}")
+
+    # A reply without a code says so, instead of printing "code None".
+    _kind, cause = module.describe_failure({}, False, area="USA")
+    if "None" in cause or "Aqara returned no error code" not in cause:
+        fail(f"a reply without a code must say so, not print None: {cause}")
+
+    # Aqara's msgDetails names the real cause; it travels with the message,
+    # once, whatever the types.
+    for res, want in (
+        ({"message": "Request failed.", "msgDetails": "Invalid sign"}, "Request failed. (Invalid sign)"),
+        ({"message": "m"}, "m"),
+        ({"message": "m", "msgDetails": "m"}, "m"),
+        ({"message": "m", "msgDetails": ""}, "m"),
+        ({}, "no message returned"),
+    ):
+        text = module.aqara_error_text(res)
+        if text != want:
+            fail(f"aqara_error_text({res}) must be {want!r}, got {text!r}")
+    # Capped at 200 characters, and a long generic message must not push out
+    # the detail that names the real cause.
+    if module.ERROR_TEXT_LIMIT != 200:
+        fail(f"Aqara's error text must be capped at 200 characters, not {module.ERROR_TEXT_LIMIT}")
+    long_message = "Request failed. " * 30
+    for res in (
+        {"message": long_message},
+        {"message": "m", "msgDetails": "x" * 500},
+        {"message": long_message, "msgDetails": "y" * 500},
+        {"message": None, "msgDetails": {"nested": 1}},
+        {"message": ["a"], "msgDetails": 7},
+    ):
+        text = module.aqara_error_text(res)
+        if not isinstance(text, str) or len(text) > 200:
+            fail(f"Aqara's error text must be a string of at most 200 characters: {text!r}")
+    if "Invalid sign" not in module.aqara_error_text(
+        {"message": long_message, "msgDetails": "Invalid sign"}
+    ):
+        fail("a long message must not push msgDetails out of Aqara's error text")
+    # The text reaches the log, the cause attribute and a Markdown notification:
+    # every control, invisible format and Markdown link, image or HTML
+    # character becomes a space, and ordinary text passes unchanged.
+    stripped = [
+        chr(point)
+        for point in (
+            0x00, 0x1F, 0x7F, 0x9F, 0xAD, 0x61C, 0x200B, 0x200F, 0x2028,
+            0x2029, 0x202E, 0x2060, 0x2066, 0x2069, 0xFEFF, 0xE0041, 0xD800,
+            0xE000, 0x0378,
+        )
+    ] + list("[]()<>!`*~\\")
+    for char in stripped:
+        if module.plain_text(f"a{char}b") != "a b":
+            fail(f"plain_text must turn U+{ord(char):04X} into a space")
+    for text in (
+        "Request failed. Please try again.",
+        "Zugriff verweigert: Ger\u00e4t",
+        "\u041e\u0448\u0438\u0431\u043a\u0430",
+        "\uc11c\uba85 \uc624\ub958",
+        "\u7b7e\u540d\u65e0\u6548",
+        "a:b/c-d",
+        "CERTIFICATE_VERIFY_FAILED",
+        "internal__identifier",
+    ):
+        if module.plain_text(text) != text:
+            fail(f"plain_text must leave ordinary text unchanged: {text!r}")
+    for text, want in (
+        ("**retry now**", "retry now"),
+        ("_retry now_", "retry now"),
+        ("__retry now__", "retry now"),
+        ("___retry now___", "retry now"),
+        ("Aqara says __retry now__.", "Aqara says retry now ."),
+        ("__CERTIFICATE_VERIFY_FAILED__", "CERTIFICATE_VERIFY_FAILED"),
+        ("~~not needed~~", "not needed"),
+    ):
+        if module.plain_text(text) != want:
+            fail(f"plain_text must drop Markdown emphasis: {text!r} gave {module.plain_text(text)!r}")
+    text = module.aqara_error_text(
+        {
+            "message": "a\n[info] Aqara login OK\x1b[0m",
+            "msgDetails": "![t](https://example.invalid/t.png)",
+        }
+    )
+    if any(char in text for char in "\n\r\x1b[]!"):
+        fail(f"Aqara's error text must be one line of plain text: {text!r}")
+    # The reply's code comes from the server too.
+    if module.code_text("9\n[error] fake\x1b[0m") != "9 error fake 0m" or module.code_text(106) != "106":
+        fail("the reply's code must be shown as plain text unless it is an int")
+    if len(module.code_text("x" * 100)) > 20 or len(module.code_text(10**200)) > 20:
+        fail("the reply's code must be capped at 20 characters, whatever its type")
+    # 108 means another sign-in ended a session; a failed sign-in had none.
+    _kind, cause = module.describe_failure({"code": 108, "message": "m"}, False, area="USA")
+    if "right after it signed in" in cause:
+        fail(f"a 108 at sign-in must not claim a session was ended: {cause}")
+    if "Invalid sign" not in module.describe_poll_failure(invalid_sign):
+        fail("the poll failure description must carry msgDetails")
+    # The poll-failure log line describes an unreadable reply by its shape and
+    # never quotes it: the reply can carry the sensor's id and readings.
+    for res in (
+        {"code": 0, "result": {"subjectId": "lumi1.0123456789ab"}},
+        {"subjectId": "lumi1.0123456789ab"},
+        {"lumi1.0123456789ab": {"sleep_state": 4}},
+    ):
+        if "lumi1." in module.describe_poll_failure(res):
+            fail(f"the poll failure description must not quote the reply: {module.describe_poll_failure(res)}")
+
+    # A gateway error page carries no usable Aqara code. Its HTTP status stands
+    # in, so a 504 reads as "no answer" instead of a rejected sign-in, while an
+    # error reply with a real Aqara code keeps it.
+    gateway = load_poller_module("poller_gateway_reply")
+    for status, body, want in (
+        (504, b'{"message": "Endpoint request timed out"}', 504),
+        (503, b'{"code": null, "message": "unavailable"}', 503),
+        (429, b'{"code": "THROTTLED"}', 429),
+        (502, b"<html>Bad Gateway</html>", 502),
+        (502, b'"Bad Gateway"', 502),
+        (504, b"[]", 504),
+        (503, b"null", 503),
+        (400, b'{"code": 106, "message": "Request failed."}', 106),
+    ):
+
+        def http_error(req, timeout=30, status=status, body=body):
+            raise urllib.error.HTTPError(req.full_url, status, "error", {}, io.BytesIO(body))
+
+        gateway.urllib = types.SimpleNamespace(
+            request=types.SimpleNamespace(Request=urllib.request.Request, urlopen=http_error),
+            error=urllib.error,
+        )
+        res = gateway.Aqara("USA")._post("/app/v1.0/lumi/user/login", {})
+        if res.get("code") != want:
+            fail(f"an HTTP {status} reply must carry code {want}, got {res}")
+        if want == status and gateway.describe_login_failure(res)[0] != "transient":
+            fail(f"an HTTP {status} without an Aqara code must read as transient: {res}")
+
+    # A 2xx reply that is valid JSON but not an object would reach the
+    # callers' .get() and end the poll loop. It reads as no answer instead,
+    # while a real object passes through unchanged.
+    class Reply(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    for body, want in (
+        (b"[]", None),
+        (b"null", None),
+        (b'"ok"', None),
+        (b"3", None),
+        (b'{"code": 0, "result": []}', {"code": 0, "result": []}),
+    ):
+        gateway.urllib = types.SimpleNamespace(
+            request=types.SimpleNamespace(
+                Request=urllib.request.Request,
+                urlopen=lambda req, timeout=30, body=body: Reply(body),
+            ),
+            error=urllib.error,
+        )
+        res = gateway.Aqara("USA")._post("/app/v1.0/lumi/res/query", {})
+        if want is not None:
+            if res != want:
+                fail(f"a 2xx JSON object must pass through unchanged, got {res!r}")
+            continue
+        if not isinstance(res, dict) or res.get("code") != -1:
+            fail(f"a 2xx reply of {body!r} must read as code -1, got {res!r}")
+        if gateway.describe_login_failure(res)[0] != "transient":
+            fail(f"a 2xx reply of {body!r} must read as transient: {res}")
+
+    # Code 0 without a usable session is not a sign-in. It used to raise
+    # KeyError out of login() and stop the app.
+    signin = load_poller_module("poller_signin_reply_shape")
+    logged = []
+    signin.log = lambda level, msg: logged.append(msg)
+    partial = "partial-session-token"
+    for reply in (
+        {"code": 0},
+        {"code": 0, "result": []},
+        {"code": 0, "result": {"token": partial}},
+        {"code": 0, "result": {"token": "", "userId": "u"}},
+    ):
+        signin.Aqara._post = lambda self, path, body, reply=reply: reply
+        client = signin.Aqara("USA")
+        try:
+            signed_in = client.login()
+        except Exception as exc:  # noqa: BLE001 - any raise stops the app
+            fail(f"a sign-in reply of {reply!r} must not raise, got {exc!r}")
+        if signed_in or client.token is not None:
+            fail(f"a sign-in reply of {reply!r} must not count as signed in")
+        kind, cause = signin.describe_login_failure(signin.last_error(client))
+        if kind != "transient":
+            fail(f"a sign-in reply of {reply!r} must read as transient: {cause}")
+        # The reply can hold a partial session token. It must not be kept or
+        # logged: last_error feeds the cause users paste into reports.
+        if partial in json.dumps(signin.last_error(client)) or any(partial in msg for msg in logged):
+            fail(f"a sign-in reply's partial token must not be kept or logged: {reply!r}")
 
     # code 0 means Aqara answered; we just could not read the payload. Calling
     # that a rejected sign-in suspends polling for up to 30 minutes and tells
@@ -2057,8 +2350,315 @@ def check_failure_classification() -> None:
                 f"code 0 with an unreadable payload must be transient "
                 f"(login_ok={login_ok}), got {kind}: {cause}"
             )
-        if "rejected the sign-in" in cause or "subject_id" in cause:
+        if "sign-in" in cause or "subject_id" in cause:
             fail(f"code 0 must not be described as an auth failure: {cause}")
+        # The message asks users to report it, so it describes the reply's
+        # shape and never quotes the reply, which can carry the sensor's id.
+        if "{" in cause or '"x"' in cause:
+            fail(f"code 0 must describe the reply, not quote it: {cause}")
+
+
+def area_row_fingerprint(area, row) -> str:
+    preimage = f"{area}|{row['server']}|{row['appid']}|{row['appkey']}"
+    return hashlib.sha256(preimage.encode()).hexdigest()
+
+
+def check_area_signing_pairs(areas=None) -> None:
+    """Every AREAS row (server, app id and key) must match its pinned
+    fingerprint.
+
+    Nothing at runtime can tell a wrong row from an Aqara-side change, so the
+    table is pinned, and any edit fails here until its fingerprint is updated,
+    which is the prompt to check the row against its live host.
+    """
+    if areas is None:
+        areas = load_poller_module("poller_area_pairs").AREAS
+    for area, row in areas.items():
+        if not isinstance(row, dict) or not all(
+            isinstance(row.get(field), str) and row.get(field)
+            for field in ("server", "appid", "appkey")
+        ):
+            fail(
+                f"AREAS[{area!r}] is malformed: every region needs non-empty "
+                "server, appid and appkey strings"
+            )
+        pinned = AREA_ROW_FINGERPRINTS.get(area)
+        if pinned is None:
+            fail(
+                f"AREAS[{area!r}] has no pinned fingerprint. Check the row "
+                "against its live host, then add it to AREA_ROW_FINGERPRINTS"
+            )
+        if area_row_fingerprint(area, row) != pinned:
+            fail(
+                f"AREAS[{area!r}] changed: the row no longer matches its "
+                "pinned fingerprint. Check the new row against its live host, "
+                "then update AREA_ROW_FINGERPRINTS"
+            )
+    missing = sorted(set(AREA_ROW_FINGERPRINTS) - set(areas))
+    if missing:
+        fail(f"AREAS lost region(s) {missing}; drop their fingerprints only if that is intended")
+
+
+MESSAGE_ORDER_FIXTURES = (
+    {"code": -1, "message": "URLError: <urlopen error [Errno -3] Try again>"},
+    {"code": 0, "result": {"x": 1}},
+    {"code": 106, "message": "Request failed. Please try again.", "msgDetails": "Invalid sign"},
+    {"code": 108, "message": "Token has expired"},
+    {"code": 429, "message": "Too Many Requests"},
+    {"code": 755, "message": "You do not have permission to perform the operation."},
+    {"code": 810, "message": "Password incorrect"},
+    {"code": 999, "message": "unknown"},
+    {},
+)
+
+
+HOSTILE_TEXT = (
+    "x\n[error] fake line\x1b[31m ![i](https://example.invalid/i.png) <b>x</b> "
+    "\u202e\u200b *_` " + "z" * 500
+)
+RAW_SERVER_TEXT = ("\n", "\r", "\x1b", "![", "](", "<b>", "\u202e", "\u200b", "z" * 201)
+SWEEP_MESSAGE = "Aqara says no."
+SWEEP_DETAILS = "detail Q"
+# Causes the options cannot fix must not send users to the options: 106 and
+# a 108 after a good sign-in are not credential problems (issue #40), and a
+# transient or unreadable reply clears on its own.
+OPTION_WORDS = ("aqara_username", "aqara_password", "aqara_area", "subject_id", "Settings > Apps")
+# Codes that mean "Aqara did not answer", pinned here rather than read from
+# the poller, so the table cannot shrink unnoticed.
+WAITING_CODES = (0, -1, 429, 500, 502, 503, 504)
+
+
+def message_order_cases():
+    """The fixtures above, every code from -1 to 999 plus a few larger ones,
+    with and without msgDetails, and replies carrying hostile text, so a new
+    branch is covered without a hand-added fixture."""
+    yield from MESSAGE_ORDER_FIXTURES
+    for code in [*range(-1, 1000), 1000, 1001, 4001, 10001]:
+        yield {"code": code, "message": SWEEP_MESSAGE}
+        yield {"code": code, "message": SWEEP_MESSAGE, "msgDetails": SWEEP_DETAILS}
+    for code in (-1, 0, 106, 108, 429, 755, 810, 999, None, "9\n[error] fake\x1b[0m"):
+        yield {"code": code, "message": HOSTILE_TEXT, "msgDetails": HOSTILE_TEXT}
+
+
+def check_message_order(describe=None) -> None:
+    """Every failure message reads: what happened, what to do, then the
+    technical details. A message that names its code or any longer number
+    before the technical part, leaves the code out of it, says too little, or
+    carries raw server text fails.
+
+    Calls the message function for every case above, signed in and not, so a
+    new branch that breaks the contract fails here instead of reaching a user.
+    """
+    module = None
+    if describe is None:
+        module = load_poller_module("poller_message_order")
+        describe = module.describe_failure
+    for res in message_order_cases():
+        code = res.get("code")
+        for login_ok in (False, True):
+            kind, cause = describe(res, login_ok, area="USA")
+            label = f"code {code!r} (login_ok={login_ok})"
+            if "What to do:" not in cause or "Technical details:" not in cause:
+                fail(
+                    f"{label}: a message needs a 'What to do:' and a "
+                    f"'Technical details:' part: {cause}"
+                )
+            todo_at = cause.index("What to do:")
+            technical_at = cause.index("Technical details:")
+            if not 0 < todo_at < technical_at:
+                fail(
+                    f"{label}: a message must open with what happened, then "
+                    f"say what to do, then give the technical details: {cause}"
+                )
+            plain_part = cause[:technical_at]
+            own_code = isinstance(code, int) and re.search(
+                rf"(?<!\w){re.escape(str(code))}(?!\w)", plain_part
+            )
+            if own_code or re.search(r"\b\d{3,}\b", plain_part):
+                fail(f"{label}: the message names a number before its technical details: {cause}")
+            if isinstance(code, int) and str(code) not in cause[technical_at:]:
+                fail(f"{label}: the technical details must carry the code: {cause}")
+            if "None" in cause or ".." in cause or not cause.endswith("."):
+                fail(f"{label}: the message is malformed: {cause}")
+            if any(raw in cause for raw in RAW_SERVER_TEXT):
+                fail(f"{label}: the message carries raw server text: {cause!r}")
+            opening = cause[:todo_at].strip()
+            todo = cause[todo_at + len("What to do:"):technical_at].strip()
+            if len(opening.split()) < 4 or len(todo.split()) < 2:
+                fail(f"{label}: a message must say in words what happened and what to do: {cause}")
+            options_cannot_fix = (
+                code in WAITING_CODES
+                or code == 106
+                or (code == 108 and login_ok)
+            )
+            if options_cannot_fix and any(word in cause for word in OPTION_WORDS):
+                fail(f"{label}: the options cannot fix this, so it must not send users there: {cause}")
+            if module is not None:
+                expected = "transient" if code in WAITING_CODES else "permanent"
+                if kind != expected:
+                    fail(f"{label}: must be {expected}, got {kind}: {cause}")
+                technical = cause[technical_at:]
+                if res.get("message") == SWEEP_MESSAGE and code not in (0, None) and (
+                    "Aqara says no" not in technical
+                    or ("msgDetails" in res and SWEEP_DETAILS not in technical)
+                ):
+                    fail(f"{label}: the technical details must carry Aqara's own text: {cause}")
+
+
+def check_readme_login_messages(readme=None) -> None:
+    """Every quoted message under README "Login Fails" opens a message the app
+    can send, and every message the app can send has an entry there. The
+    notification links to that section for every cause."""
+    if readme is None:
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    if "\n### Login Fails\n" not in readme:
+        fail("README must keep the '### Login Fails' heading the notification links to (#login-fails)")
+    section = readme.split("\n### Login Fails\n", 1)[1].split("\n### ", 1)[0]
+    # Hidden text does not count: GitHub shows neither comments nor the
+    # inside of a code fence as an entry.
+    section = re.sub(r"<!--.*?-->|```.*?```", "", section, flags=re.DOTALL)
+    quoted = [
+        " ".join(quote.split()).replace("\u2026", "USA")
+        for quote in re.findall(r'\*\*"(.+?)"\*\*', section, re.DOTALL)
+    ]
+    module = load_poller_module("poller_readme_messages")
+    openings = {
+        cause[: cause.index(" What to do:")]
+        for res in message_order_cases()
+        for login_ok in (False, True)
+        for cause in (module.describe_failure(res, login_ok, area="USA")[1],)
+    }
+
+    def opens(quote, opening):
+        # A whole sentence of the opening, never a fragment of one.
+        return quote.endswith(".") and (opening == quote or opening.startswith(quote + " "))
+
+    for quote in quoted:
+        if not any(opens(quote, opening) for opening in openings):
+            fail(f"README Login Fails quotes a message the app does not send: {quote!r}")
+    for opening in sorted(openings):
+        if not any(opens(quote, opening) for quote in quoted):
+            fail(f"README Login Fails has no entry for this message: {opening}")
+
+
+def check_notification_frame() -> None:
+    """The notification shows the cause and adds no instruction of its own."""
+    module = load_poller_module("poller_notification_frame")
+    sent = []
+    module.call_core_service = lambda domain, service, payload: sent.append(payload) or True
+    module.log = lambda level, msg: None
+    _kind, cause = module.describe_login_failure({"code": 106, "message": "x"}, area="USA")
+    module.notify_problem(cause)
+    if not sent:
+        fail("notify_problem did not call the notification service")
+    message = sent[-1].get("message", "")
+    if not message.startswith(cause):
+        fail(f"the notification must open with the cause verbatim: {message}")
+    frame = message[len(cause):]
+    expected_frame = (
+        "\n\nSensors stay unavailable until this is resolved.\n\n"
+        "[Troubleshooting](https://github.com/florianhorner/ha-fp2-sleep#login-fails)"
+    )
+    if frame != expected_frame:
+        fail(
+            "the notification frame changed. It must add no instruction of its "
+            f"own, since some causes cannot be fixed in the options: {frame!r}"
+        )
+
+
+def check_aqara_detail_logged() -> None:
+    """Aqara's msgDetails must reach the log lines users paste into reports."""
+    module = load_poller_module("poller_detail_logged")
+    logged = []
+    module.log = lambda level, msg: logged.append((level, msg))
+    module.Aqara._post = lambda self, path, body: {
+        "code": 106,
+        "message": "Request failed.\n[error] forged line",
+        "msgDetails": "Invalid sign",
+    }
+    client = module.Aqara("USA")
+    if client.login():
+        fail("a 106 reply must not count as a successful sign-in")
+    if (client.last_error or {}).get("msgDetails") != "Invalid sign":
+        fail(f"a failed sign-in must keep Aqara's reply for the cause: {client.last_error}")
+    if not any(
+        level == "error" and msg.startswith("Aqara login failed") and "Invalid sign" in msg
+        for level, msg in logged
+    ):
+        fail(f"the sign-in failure line must carry msgDetails: {logged}")
+    module.Aqara._post = lambda self, path, body: {"code": 0, "result": {"token": "t", "userId": "u"}}
+    if not client.login() or client.last_error is not None:
+        fail("a successful sign-in must clear the last failure")
+    # Every sign-in starts like the first one: the expired session's token is
+    # not signed into the request that replaces it.
+    tokens_sent = []
+    module.Aqara._post = lambda self, path, body: tokens_sent.append(self.token) or {
+        "code": 0,
+        "result": {"token": "t2", "userId": "u"},
+    }
+    client.login()
+    if tokens_sent != [None]:
+        fail(f"a sign-in must not carry the previous session's token: {tokens_sent}")
+
+    # The poll loop's warning before it signs in again, driven through main().
+    module = load_poller_module("poller_detail_logged_loop")
+    logged = []
+
+    class FakeClient:
+        def publish(self, *args, **kwargs):
+            pass
+
+        def loop_stop(self):
+            pass
+
+        def disconnect(self):
+            pass
+
+    # The first query ends the session; the query after the new sign-in comes
+    # back unreadable, carrying the sensor's id.
+    replies = [
+        {"code": 108, "message": "Token has expired\x1b[31m", "msgDetails": "session replaced"},
+        {"code": 0, "result": {"subjectId": "lumi1.0123456789ab"}},
+    ]
+
+    class SessionEndedAqara:
+        def __init__(self, area):
+            self.last_error = None
+
+        def login(self):
+            return True
+
+        def res_query(self, did, options):
+            return replies.pop(0) if replies else {"code": 0, "result": {}}
+
+    def fake_sleep(seconds):
+        module._running = False
+        return False
+
+    module.make_mqtt = lambda: FakeClient()
+    module.publish_discovery = lambda client: None
+    module.Aqara = SessionEndedAqara
+    module.interruptible_sleep = fake_sleep
+    module.log = lambda level, msg: logged.append((level, msg))
+    module.notify_problem = lambda cause: True
+    module.clear_problem_notification = lambda: True
+    module.USER, module.PASSWORD, module.SUBJECT = "u", "p", "did"
+    module._running = True
+    module.main()
+    if not any(
+        level == "warning" and "res/query" in msg and "session replaced" in msg
+        for level, msg in logged
+    ):
+        fail(f"the res/query warning must carry msgDetails: {logged}")
+    # Server text reaches these lines as plain text, and the raw reply, which
+    # can carry the sensor's id, is logged at debug level only.
+    for level, msg in logged:
+        if any(raw in msg for raw in ("\n", "\r", "\x1b")):
+            fail(f"a log line must not carry raw server text: {msg!r}")
+        if level != "debug" and "lumi1." in msg:
+            fail(f"the raw Aqara reply may only be logged at debug level: [{level}] {msg}")
+    if not any(level == "debug" and "lumi1." in msg for level, msg in logged):
+        fail(f"the raw Aqara reply must still be logged at debug level: {logged}")
 
 
 def check_problem_entity_is_independent() -> None:
@@ -2189,10 +2789,15 @@ def check_health_grace_and_notifications() -> None:
             f"payload; got {published[published_during_outage:]}"
         )
 
-    # A blip that turns out to be a rejected region must update the text, on
-    # the surface the user actually reads: "wait, it clears on its own" and
-    # "fix your region" call for different actions.
-    health.failed("permanent", "Aqara rejected the sign-in (code 106)", 106)
+    # A blip that turns out to be a permanent rejection must update the text,
+    # on the surface the user actually reads: "wait, it clears on its own" and
+    # "update SleepRadar" call for different actions.
+    health.failed(
+        "permanent",
+        "Aqara's USA server rejected SleepRadar's request. Technical details: "
+        "Aqara code 106",
+        106,
+    )
     if len(notifications) == raised:
         fail("a changed cause must update the notification, not keep the old text")
     if "106" not in (notifications[-1][1] or ""):
@@ -2223,9 +2828,15 @@ def check_health_grace_and_notifications() -> None:
     # A rejected credential is flagged immediately: retrying cannot fix it.
     fresh = module.Health(FakeClient())
     notifications.clear()
-    fresh.failed("permanent", "Aqara rejected the sign-in", 106)
+    logged = []
+    module.log = lambda level, msg: logged.append((level, msg))
+    cause = "Aqara didn't accept SleepRadar's sign-in."
+    fresh.failed("permanent", cause, 810)
     if not notifications:
         fail("a permanent failure must be flagged on the first occurrence")
+    # README promises the log carries the same message at error level.
+    if not any(level == "error" and msg.endswith(cause) for level, msg in logged):
+        fail(f"a flagged problem must be logged at error level with its cause: {logged}")
 
 
 def check_auth_backoff_schedule() -> None:
@@ -2326,7 +2937,7 @@ def check_notification_failure_is_soft() -> None:
     logged = []
     module.log = lambda level, msg: logged.append((level, msg))
     module.call_core_service = lambda domain, service, payload: False
-    if module.notify_problem("Aqara rejected the sign-in") is not False:
+    if module.notify_problem("Aqara didn't accept SleepRadar's sign-in.") is not False:
         fail("notify_problem must report an undelivered notification")
     warnings = [msg for level, msg in logged if level == "warning"]
     if not warnings:
@@ -2508,6 +3119,206 @@ def run_self_test() -> None:
     expect_pass("health grace and notifications", check_health_grace_and_notifications)
     expect_pass("auth backoff schedule", check_auth_backoff_schedule)
     expect_pass("notification fails soft", check_notification_failure_is_soft)
+    expect_pass("notification frame", check_notification_frame)
+    expect_pass("aqara detail logged", check_aqara_detail_logged)
+    expect_pass("message order", check_message_order)
+    expect_fail_matching(
+        "message order: code before the technical details",
+        lambda: check_message_order(
+            lambda res, login_ok, area=None: (
+                "permanent",
+                "Aqara code 106 said no. What to do: update SleepRadar. Technical details: Invalid sign.",
+            )
+        ),
+        "before its technical details",
+    )
+    expect_fail_matching(
+        "message order: no parts",
+        lambda: check_message_order(
+            lambda res, login_ok, area=None: ("permanent", "Something went wrong.")
+        ),
+        "What to do",
+    )
+    def good_message(res, login_ok, area=None):
+        code = res.get("code")
+        technical = f"code {code}" if isinstance(code, int) else "no code"
+        return "permanent", f"Aqara said no today. What to do: try again later. Technical details: {technical}."
+
+    def broken_when(condition, damage):
+        def describe(res, login_ok, area=None):
+            kind, cause = good_message(res, login_ok, area)
+            return kind, damage(cause) if condition(res, login_ok) else cause
+
+        return describe
+
+    expect_pass("message order: a well-formed fake", lambda: check_message_order(good_message))
+    for label, describe, expected in (
+        ("message order: None in the message", broken_when(lambda res, ok: True, lambda c: c[:-1] + " None."), "malformed"),
+        ("message order: doubled period", broken_when(lambda res, ok: True, lambda c: c + "."), "malformed"),
+        ("message order: no final period", broken_when(lambda res, ok: True, lambda c: c[:-1]), "malformed"),
+        ("message order: broken only when signed in", broken_when(lambda res, ok: ok, lambda c: c[:-1]), "malformed"),
+        ("message order: broken only with msgDetails", broken_when(lambda res, ok: "msgDetails" in res, lambda c: c[:-1]), "malformed"),
+        ("message order: broken only for code 700", broken_when(lambda res, ok: res.get("code") == 700, lambda c: c[:-1]), "malformed"),
+        ("message order: empty opening", broken_when(lambda res, ok: True, lambda c: " " + c[c.index("What to do:"):]), "in words"),
+        (
+            "message order: raw server text",
+            broken_when(lambda res, ok: True, lambda c: c[:-1] + " x\n[error] fake."),
+            "raw server text",
+        ),
+        (
+            "message order: its own short code before the technical details",
+            broken_when(
+                lambda res, ok: isinstance(res.get("code"), int),
+                lambda c: c.replace("Aqara said no today.", "Aqara said no, error " + c.rsplit("code ", 1)[-1][:-1] + "."),
+            ),
+            "names a number",
+        ),
+        ("message order: a one-word todo", broken_when(lambda res, ok: True, lambda c: c.replace("try again later.", "wait.")), "in words"),
+        (
+            "message order: a 106 sent to the options",
+            broken_when(
+                lambda res, ok: res.get("code") == 106,
+                lambda c: c.replace("try again later.", "check aqara_password, then restart."),
+            ),
+            "options cannot fix",
+        ),
+    ):
+        expect_fail_matching(label, lambda describe=describe: check_message_order(describe), expected)
+    readme_text = build_fixture("README", lambda: (ROOT / "README.md").read_text(encoding="utf-8"))
+    if readme_text is not None:
+        expect_pass("README login messages", lambda: check_readme_login_messages(readme_text))
+        # Built from whatever the README quotes today, so rewording a message
+        # and its entry together keeps these cases meaningful.
+        quotes = re.findall(r'\*\*"(.+?)"\*\*', readme_text.split("\n### Login Fails\n", 1)[-1], re.DOTALL)
+        if quotes:
+            first = f'**"{quotes[0]}"**'
+            expect_fail_matching(
+                "README login messages: an entry quotes a message the app does not send",
+                lambda: check_readme_login_messages(readme_text.replace(first, '**"Aqara refused the sign-in."**', 1)),
+                "does not send",
+            )
+            expect_fail_matching(
+                "README login messages: a message without an entry",
+                lambda: check_readme_login_messages(readme_text.replace(first, "A blip.", 1)),
+                "no entry",
+            )
+            expect_fail_matching(
+                "README login messages: an entry hidden in a comment",
+                lambda: check_readme_login_messages(readme_text.replace(first, f"<!-- {first} -->", 1)),
+                "no entry",
+            )
+            expect_fail_matching(
+                "README login messages: a fragment that covers several messages",
+                lambda: check_readme_login_messages(
+                    readme_text.replace(first, f'{first}\n\n**"{quotes[0].split()[0]}"**', 1)
+                ),
+                "does not send",
+            )
+        expect_fail_matching(
+            "README login messages: the section heading renamed",
+            lambda: check_readme_login_messages(readme_text.replace("### Login Fails", "### Sign-in problems")),
+            "Login Fails",
+        )
+    expect_fail_matching(
+        "message order: technical details before what to do",
+        lambda: check_message_order(
+            lambda res, login_ok, area=None: (
+                "permanent",
+                f"Aqara said no today. Technical details: code {res.get('code')}. What to do: update SleepRadar.",
+            )
+        ),
+        "then say what to do",
+    )
+    expect_fail_matching(
+        "message order: a number in another spelling before the technical details",
+        lambda: check_message_order(
+            lambda res, login_ok, area=None: (
+                "permanent",
+                f"Error 106: Aqara said no today. What to do: update SleepRadar. Technical details: code {res.get('code')}.",
+            )
+        ),
+        "names a number",
+    )
+    expect_fail_matching(
+        "message order: technical details without the code",
+        lambda: check_message_order(
+            lambda res, login_ok, area=None: (
+                "permanent",
+                "Aqara said no today. What to do: update SleepRadar. Technical details: Invalid sign.",
+            )
+        ),
+        "must carry the code",
+    )
+    expect_pass("area signing pairs", check_area_signing_pairs)
+    poller_areas = build_fixture(
+        "poller AREAS",
+        lambda: copy.deepcopy(load_poller_module("poller_area_fixture").AREAS),
+    )
+    if poller_areas is not None:
+
+        def changed_areas(change):
+            table = copy.deepcopy(poller_areas)
+            change(table)
+            return table
+
+        def pair_usa_with_eu_value(table):
+            table["USA"] = dict(table["USA"], appkey=table["EU"]["appkey"])
+
+        def all_9454_rows_on_eu_value(table):
+            for area in ("CN", "RU", "KR", "USA"):
+                table[area] = dict(table[area], appkey=table["EU"]["appkey"])
+
+        def change_eu_value(table):
+            table["EU"] = dict(table["EU"], appkey=table["KR"]["appkey"])
+
+        def break_kr_row(table):
+            table["KR"] = {"server": "https://example.invalid"}
+
+        def point_usa_at_eu_host(table):
+            table["USA"] = dict(table["USA"], server=table["EU"]["server"])
+
+        def drop_ru(table):
+            table.pop(sorted(table)[-1])
+
+        def add_unpinned_region(table):
+            table["ZZ-UNPINNED"] = dict(next(iter(table.values())))
+
+        expect_fail_matching(
+            "area pairs: USA pointed at another host",
+            lambda: check_area_signing_pairs(changed_areas(point_usa_at_eu_host)),
+            "AREAS['USA'] changed",
+        )
+        expect_fail_matching(
+            "area pairs: region dropped",
+            lambda: check_area_signing_pairs(changed_areas(drop_ru)),
+            "lost region",
+        )
+        expect_fail_matching(
+            "area pairs: region added without a pinned fingerprint",
+            lambda: check_area_signing_pairs(changed_areas(add_unpinned_region)),
+            "no pinned fingerprint",
+        )
+
+        expect_fail_matching(
+            "area pairs: USA re-paired with EU's value",
+            lambda: check_area_signing_pairs(changed_areas(pair_usa_with_eu_value)),
+            "AREAS['USA'] changed",
+        )
+        expect_fail_matching(
+            "area pairs: all four 9454 rows on one wrong value",
+            lambda: check_area_signing_pairs(changed_areas(all_9454_rows_on_eu_value)),
+            "changed",
+        )
+        expect_fail_matching(
+            "area pairs: EU value changed",
+            lambda: check_area_signing_pairs(changed_areas(change_eu_value)),
+            "AREAS['EU'] changed",
+        )
+        expect_fail_matching(
+            "area pairs: malformed row",
+            lambda: check_area_signing_pairs(changed_areas(break_kr_row)),
+            "malformed",
+        )
     # The exemption in check_automation_gates was the one guard with no
     # negative fixture, and it was too broad: it keyed off the default node id,
     # so a custom mqtt_node_id smuggled an ungated sleep automation past it.
@@ -3740,6 +4551,11 @@ def main(argv: list[str] | None = None) -> None:
     validate_addon_config()
     check_addon_permissions()
     check_failure_classification()
+    check_area_signing_pairs()
+    check_message_order()
+    check_readme_login_messages()
+    check_notification_frame()
+    check_aqara_detail_logged()
     check_problem_entity_is_independent()
     check_health_grace_and_notifications()
     check_auth_backoff_schedule()

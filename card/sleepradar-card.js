@@ -437,7 +437,7 @@ class SleepradarCard extends HTMLElement {
       const problemCause = this._connectionProblemCause();
       const body = problemCause
         ? `${escapeHtml(problemCause)}
-              Sensors stay unavailable until this is fixed.`
+              Sensors stay unavailable until this is resolved.`
         : `No data from ${escapeHtml(this._entityIds.sleep_state)} yet.
               Check that the SleepRadar app is running and the sensor exists.
               If the app is running but this entity id is wrong, Home

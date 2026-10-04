@@ -41,12 +41,14 @@ runner. Normal mode covers these domains:
 | Repository and media hygiene | The prospective commit surface excludes generated `.gstack` state, `.DS_Store`, video renders, snapshots, and verification receipts; published GIF/MP4 files stay paired and have at least one corresponding path under `videos/<stem>/` on that surface. |
 | Privacy, YAML, and assets | `.env` files and known private strings are rejected, required YAML parses, and the public favicon remains byte-identical to its canonical SVG without external content. |
 | App configuration and startup | Required configuration keys, blank credential defaults, schema parity, the canonical MQTT node ID, the app changelog, and interruptible startup-failure cooldown behavior remain consistent. |
+| Aqara regions and failure messages | Every `AREAS` row (server, app ID and key) matches a pinned fingerprint, so an edit fails until its fingerprint is updated, which is the prompt to check the row against its live host. Failure messages read what happened, then what to do, then the technical details, and Aqara's own text reaches them as one line of plain text. The notification adds no instruction of its own, and the messages the app can send match the entries under README "Login Fails" one to one. |
 | Examples | Optional YAML uses placeholders for foreign entity IDs while the intentionally pre-wired SleepRadar files keep only canonical entities. |
 | MQTT discovery and card entities | The app publishes the expected five discovery entities, includes `force_update: true`, avoids local naming, and stays aligned with card defaults and Recorder examples. |
 | Sleep semantics | Phase labels stay synchronized across the card, README, sleep template, and dashboard; in-bed sets align between the card and template, asleep codes remain constrained in the template, and Recorder entity IDs stay canonical. |
 
 The validator imports the poller with local dependency stubs to inspect MQTT
-payloads. It does not connect to Aqara, MQTT, or Home Assistant.
+payloads and failure messages. It does not connect to Aqara, MQTT, or Home
+Assistant.
 
 ## Validation Lanes
 
