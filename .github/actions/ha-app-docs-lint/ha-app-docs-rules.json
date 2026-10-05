@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema_version": "0.1.0",
+  "spec_url": ".github/actions/ha-app-docs-lint/ha-app-docs-rules.json",
+  "summary": "Drift-proof install-docs contract for Home Assistant app/add-on repos. Home Assistant renames its UI roughly every 6 months; hardcoded nav paths in READMEs rot. This lints for the durable pattern (My Home Assistant redirect badges) and against known-stale wording.",
+  "scope": {
+    "include": ["README.md", "docs/"],
+    "exclude_basenames_prefix": ["CHANGELOG"],
+    "markdown_aware": true,
+    "markdown_aware_rationale": "Match rendered prose, not raw markdown source. Skip fenced/inline code and markdown link/image URL targets so badge URLs and code blocks never false-positive. Measured: naive substring matching = ~45% false-positive on real repos; markdown-aware = ~0%."
+  },
+  "banned_phrases": [
+    {
+      "rule_id": "ADDON_STORE",
+      "pattern": "\\badd-?on\\s+store\\b",
+      "flags": "i",
+      "severity": "block",
+      "message": "Stale nav label 'Add-on Store' — Home Assistant renamed it to 'App store'.",
+      "fix_hint": "Use a My Home Assistant redirect badge (supervisor_store), or the current 'App store' wording.",
+      "spec_anchor": "banned-phrases"
+    },
+    {
+      "rule_id": "SETTINGS_ADDONS",
+      "pattern": "settings\\s*(?:>|→|->|/|»|›|&gt;)\\s*add-?ons?\\b",
+      "flags": "i",
+      "severity": "block",
+      "message": "Stale nav path 'Settings > Add-ons' — Home Assistant renamed it to 'Settings > Apps'.",
+      "fix_hint": "Use a My Home Assistant redirect badge, or 'Settings > Apps'.",
+      "spec_anchor": "banned-phrases"
+    },
+    {
+      "rule_id": "HASS_IO",
+      "pattern": "\\bhass\\.io\\b",
+      "flags": "i",
+      "severity": "block",
+      "message": "Legacy brand 'Hass.io' — use 'Home Assistant'.",
+      "fix_hint": "Replace 'Hass.io' with 'Home Assistant'.",
+      "spec_anchor": "banned-phrases"
+    }
+  ],
+  "install_badge": {
+    "rule_id": "INSTALL_BADGE_REQUIRED",
+    "pattern": "https?://my\\.home-assistant\\.io/redirect/([a-z0-9_]+)",
+    "pattern_note": "Host-anchored, with a capture group for the slug. The linter accepts the badge only when the captured slug is in redirect_slugs.known_good and the link is not inside code — a code-fenced, commented-out, or dead-slug badge does not satisfy the rule.",
+    "severity": "block",
+    "message": "Install docs must include a My Home Assistant redirect badge/link with a known-good slug. Redirect links are drift-proof: Home Assistant keeps them pointing at the right page across UI renames.",
+    "fix_hint": "Add a redirect badge, e.g. https://my.home-assistant.io/redirect/supervisor_store/ . See redirect_slugs for valid slugs.",
+    "spec_anchor": "redirect-badge"
+  },
+  "redirect_slugs": {
+    "known_good": [
+      "supervisor_store", "supervisor_addon", "config_flow_start", "config_mqtt",
+      "lovelace_resources", "lovelace_dashboards", "developer_states", "integrations"
+    ],
+    "fallback_required": {
+      "supervisor_add_addon_repository": "Broken end-to-end (my.home-assistant.io#698, open since 2026-04): the redirect drops the repository URL. Write the add-repository step as plain text (canonical); badge optional until fixed.",
+      "hacs_generic": "No generic HACS store slug exists (only hacs_repository, for one named repo). Write generic 'install via HACS' as plain text."
+    }
+  },
+  "profiles": {
+    "addon": {
+      "requires_install_badge": true,
+      "required_markers": [],
+      "note": "Home Assistant add-on repo: redirect badge for the store; NOT required to document HACS."
+    },
+    "hacs-integration": {
+      "requires_install_badge": false,
+      "required_markers": ["contract:install-hacs"],
+      "note": "HACS custom integration: must document the HACS install step (marker <!-- contract:install-hacs -->)."
+    },
+    "hacs-frontend": {
+      "requires_install_badge": false,
+      "required_markers": ["contract:install-hacs"],
+      "note": "HACS frontend/dashboard card: same HACS install requirement."
+    }
+  },
+  "validator": {
+    "regex_engine": "python-re",
+    "runtime": "python3",
+    "test_corpus": "specs/ha-app-docs-test-corpus/"
+  },
+  "error_format": {
+    "template": "BLOCK: <rule_id> <message>\nFIX: <fix_hint>\nSPEC: <spec_url>#<spec_anchor>\nOFFENDING: <file>:<line>",
+    "rationale": "Uniform with the commit-standards error_format so agents get deterministic, greppable output."
+  }
+}

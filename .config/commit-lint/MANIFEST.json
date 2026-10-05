@@ -1,0 +1,13 @@
+{
+  "managed_by": "commit-lint-kit-v1",
+  "source_revision": "ed6a4e9c758c436d664a53aea0f858b6d2e7b07f",
+  "rules_schema_version": "1.2.0",
+  "files": {
+    ".config/commit-lint/commit-msg": "34756a6c98f4fe66b98e46d7e3428a1127af6a42fc4279ddb39340c24828e10e",
+    ".config/commit-lint/validate-pr.sh": "19f5430a053885ed756d413b5c4b08ae97c98c1416dcccf992f630a7639e8531",
+    ".github/actions/ha-app-docs-lint/action.yml": "bf863f8780590bf531d9aafd32e4dda1fc3617afd8f0c4175665a1c6aeb418db",
+    ".github/actions/ha-app-docs-lint/ha-app-docs-rules.json": "7c98360f3e0e0d85748a58e39a7aa9a5bde0bce34f8385c492c393ce38fd100d",
+    ".github/actions/ha-app-docs-lint/ha_app_docs_lint.py": "5e4f30ccb306d416fca8f7ae0082c61968e5b4b408e2e306f1c2723fb1930848",
+    ".github/workflows/commit-lint.yml": "788358beac9bc3c3959083ed3d1806da33ec0c2846e8137f5ddfc7d0a3f823cc"
+  }
+}
