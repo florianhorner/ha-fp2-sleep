@@ -15,6 +15,6 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: florianhorner/engineering-standards/actions/ha-app-docs-lint@ha-docs-v1
+      - uses: ./.github/actions/ha-app-docs-lint
         with:
           profile: addon

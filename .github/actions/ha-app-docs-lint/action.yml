@@ -1,0 +1,47 @@
+name: "HA App Docs Lint"
+description: >
+  Drift-proof install-docs linter for Home Assistant app/add-on repos. Requires a
+  My Home Assistant redirect badge for install and bans stale nav wording
+  ("Add-on Store", "Settings > Add-ons", "Hass.io"). Markdown-aware: badge URLs and
+  code blocks never false-positive.
+
+inputs:
+  profile:
+    description: "Repo-type profile: addon | hacs-integration | hacs-frontend"
+    required: false
+    default: "addon"
+  paths:
+    description: "Space-separated files/dirs to scan. Empty (default) auto-detects: README.md, plus docs/ when it exists."
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      # SHA-pinned for reproducibility (consumers pin this action by tag/SHA in turn).
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      with:
+        python-version: "3.12"
+    - name: Run ha-app-docs-lint
+      shell: bash
+      # Inputs are passed through env, never interpolated into the command line, so a
+      # caller wiring `paths`/`profile` from workflow input, matrix data, or PR metadata
+      # cannot inject shell. `paths` is word-split into an argv array (space-separated per
+      # the input contract); paths containing spaces are not supported.
+      env:
+        HADOCS_PROFILE: ${{ inputs.profile }}
+        HADOCS_PATHS: ${{ inputs.paths }}
+      run: |
+        set -euo pipefail
+        if [ -z "${HADOCS_PATHS// /}" ]; then
+          # auto: README.md, plus docs/ only when it exists (a repo with no docs/ is fine)
+          _paths=(README.md)
+          [ -d docs ] && _paths+=(docs)
+        else
+          read -ra _paths <<< "$HADOCS_PATHS"
+        fi
+        python3 "${GITHUB_ACTION_PATH}/ha_app_docs_lint.py" \
+          --profile "$HADOCS_PROFILE" \
+          --rules "${GITHUB_ACTION_PATH}/ha-app-docs-rules.json" \
+          "${_paths[@]}"
