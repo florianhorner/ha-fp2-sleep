@@ -145,6 +145,12 @@ Do not paste a full app options dump into an issue.
 
 ## The SleepRadar Card
 
+The compact readout puts the current phase above two sensor-reported vitals.
+Fresh Deep, Light and REM stages use a filled circle, hollow circle and diamond
+alongside their names, so phase identification does not rely on color. The card
+follows Home Assistant's light/dark theme; stale or uncertain phases stay neutral.
+The stage estimate remains labeled as the sensor's best guess.
+
 1. Download `card/sleepradar-card.js` from this repository.
 2. Copy it to `/config/www/sleepradar-card.js`.
 3. Open [your dashboard resources](https://my.home-assistant.io/redirect/lovelace_resources/)
@@ -189,7 +195,7 @@ entities:
 ```
 
 If you changed `poll_interval`, set the same value on the card so the stale
-badge stays accurate:
+notice stays accurate:
 
 ```yaml
 type: custom:sleepradar-card
@@ -243,12 +249,23 @@ while still available. Omit `bed_occupancy` to preserve the legacy Aqara-only
 labels: code `0` is **Out of bed**, while codes `1` and `2` are **Awake**.
 
 The card shows "no data yet" if the sleep state sensor is missing, "not
-measuring" when the bed is empty, and a "stale" badge if readings are older
+measuring" when the bed is empty, and a stale notice if readings are older
 than three poll intervals. In those states it hides retained heart-rate and
 breathing values rather than showing stale in-bed numbers as live.
 
 The occupancy gate changes only what the card displays. It does not change the
 five MQTT entities, polling, Recorder data, or historical charts.
+
+Custom Home Assistant themes can override the phase text and marker colors with
+`sleepradar-deep-color`, `sleepradar-light-color`, and `sleepradar-rem-color` theme
+variables. Check those colors against your card background: labels still carry
+the meaning, but custom colors must remain readable. If Home Assistant provides
+no theme-mode metadata, phase text uses the inherited primary text color.
+
+For a local preview with synthetic data, open
+[`proof/compact-card-preview.html`](proof/compact-card-preview.html) from a
+checkout. It loads the actual card script and includes phase, fault, theme,
+320px-width and enlarged-text controls; it does not connect to Home Assistant.
 
 > **Entity ID note.** Home Assistant pins an entity ID on first creation and
 > does not rename it later. If you installed before v1.1.0, your entity IDs

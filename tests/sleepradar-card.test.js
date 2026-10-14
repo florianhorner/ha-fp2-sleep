@@ -5,16 +5,24 @@ const vm = require("node:vm");
 
 const NOW = "2026-07-03T08:00:40.000Z";
 const RealDate = Date;
+let clockMs = RealDate.parse(NOW);
+let nextIntervalId = 1;
+const intervals = new Map();
 
 class MockDate extends RealDate {
   static now() {
-    return RealDate.parse(NOW);
+    return clockMs;
   }
 }
 
 class MockHTMLElement {
   attachShadow() {
-    this.shadowRoot = { innerHTML: "" };
+    let html = "";
+    this.shadowRoot = {
+      writes: 0,
+      get innerHTML() { return html; },
+      set innerHTML(value) { html = value; this.writes += 1; },
+    };
     return this.shadowRoot;
   }
 }
@@ -23,15 +31,19 @@ const registeredElements = new Map();
 const context = {
   Date: MockDate,
   HTMLElement: MockHTMLElement,
-  clearInterval() {},
+  clearInterval(id) {
+    intervals.delete(id);
+  },
   console,
   customElements: {
     define(name, klass) {
       registeredElements.set(name, klass);
     },
   },
-  setInterval() {
-    return 1;
+  setInterval(callback, delay) {
+    const id = nextIntervalId++;
+    intervals.set(id, { callback, delay, nextAt: clockMs + delay });
+    return id;
   },
   window: { customCards: [] },
 };
@@ -53,12 +65,53 @@ function render(states, config = {}) {
   return card.shadowRoot.innerHTML;
 }
 
+// Read rendered semantics, excluding selectors in the style element. Otherwise
+// a data-phase selector could make an inactive phase appear to pass a test.
+function markup(html) {
+  return html.replace(/<style>[\s\S]*?<\/style>/g, "");
+}
+
+function heading(html) {
+  const match = markup(html).match(/<h3\b[^>]*>([\s\S]*?)<\/h3>/);
+  assert.ok(match, "a readout must have a semantic phase heading");
+  return match[1].replace(/<[^>]*>/g, "").trim();
+}
+
+function metric(html, label) {
+  const blocks = [...markup(html).matchAll(/<div class="sr-stat">([\s\S]*?)(?=<div class="sr-stat">|<div class="sr-footer">)/g)];
+  const block = blocks.find((match) => match[1].includes(`>${label}</div>`));
+  assert.ok(block, `the ${label} metric must be labeled`);
+  return block[1];
+}
+
+function assertNeutral(html, message) {
+  const body = markup(html);
+  assert.doesNotMatch(body, /data-phase="(?:deep|light|rem)"/, message);
+  if (body.includes('class="sr-card"')) {
+    assert.match(body, /data-phase="unknown"/, message);
+  }
+}
+
+function advanceClock(milliseconds) {
+  const target = clockMs + milliseconds;
+  while (true) {
+    const due = [...intervals.values()]
+      .filter((timer) => timer.nextAt <= target)
+      .sort((a, b) => a.nextAt - b.nextAt)[0];
+    if (!due) break;
+    clockMs = due.nextAt;
+    due.nextAt += due.delay;
+    due.callback();
+  }
+  clockMs = target;
+}
+
 function assertValuesHidden(html, values, message) {
   for (const value of values) {
     assert.doesNotMatch(
-      html,
+      markup(html),
       new RegExp(`(^|\\D)${value}(\\D|$)`),
-      `${message}: ${value} must not appear anywhere in the rendered card`
+      `${message}: ${value} must not appear anywhere in the rendered markup`
     );
   }
 }
@@ -253,7 +306,8 @@ const freshOutOfBed = render(
 );
 assert.match(freshOutOfBed, /Out of bed/);
 assert.match(freshOutOfBed, /Paused out of bed/);
-assert.match(freshOutOfBed, /not currently measured/);
+assert.match(freshOutOfBed, /hidden while the bed is empty/);
+assert.match(freshOutOfBed, /FP2 can retain its last in-bed values/);
 assert.match(freshOutOfBed, /sr-badge-neutral">not measuring/);
 assert.doesNotMatch(
   freshOutOfBed,
@@ -273,7 +327,7 @@ const freshInBed = render(
   })
 );
 assert.match(freshInBed, /REM/);
-assert.match(freshInBed, /Live now/);
+assert.doesNotMatch(freshInBed, /Live now/);
 assert.match(freshInBed, />54\s*<span class="sr-unit">bpm<\/span>/);
 assert.match(freshInBed, />11\s*<span class="sr-unit">br\/min<\/span>/);
 
@@ -285,7 +339,7 @@ const noOccupancyConfig = render(
     updated: "2026-07-03T08:00:00.000Z",
   })
 );
-assert.match(noOccupancyConfig, /Awake in bed — heart 69 bpm, breathing 21 br\/min/);
+assert.equal(heading(noOccupancyConfig), "Awake");
 assert.match(noOccupancyConfig, /Awake label is kept for compatibility/);
 assert.match(noOccupancyConfig, />69\s*<span class="sr-unit">bpm<\/span>/);
 assert.match(noOccupancyConfig, />21\s*<span class="sr-unit">br\/min<\/span>/);
@@ -338,7 +392,7 @@ assert.match(
 );
 assert.doesNotMatch(
   emptyBedWithoutAqaraData,
-  /<div class="sr-badge sr-badge-neutral">/,
+  /class="sr-badge sr-badge-neutral">/,
   "a dead sleep-state feed must not render the benign not-measuring badge"
 );
 
@@ -367,7 +421,7 @@ assertValuesHidden(
 // A healthy empty bed stays calm — the fault badges above must not fire here.
 assert.match(
   ghostVitalsBlocked,
-  /<div class="sr-badge sr-badge-neutral">not measuring/,
+  /class="sr-badge sr-badge-neutral">not measuring/,
   "a healthy empty bed keeps the neutral badge"
 );
 
@@ -383,10 +437,8 @@ const occupiedCodeTwo = render(
   ),
   occupancyConfig
 );
-assert.match(
-  occupiedCodeTwo,
-  /In bed — stage unknown; heart 69 bpm, breathing 21 br\/min/
-);
+assert.equal(heading(occupiedCodeTwo), "In bed — stage unknown");
+assert.match(occupiedCodeTwo, /does not establish a wake or stage label/);
 assert.match(occupiedCodeTwo, /unverified sleep code/);
 assert.doesNotMatch(occupiedCodeTwo, /Awake/);
 assert.match(occupiedCodeTwo, />69\s*<span class="sr-unit">bpm<\/span>/);
@@ -405,11 +457,13 @@ const occupiedWithOldGateTimestamp = render(
   ),
   occupancyConfig
 );
-assert.match(
-  occupiedWithOldGateTimestamp,
-  /In bed — stage unknown; heart 69 bpm, breathing 21 br\/min/,
+assert.equal(
+  heading(occupiedWithOldGateTimestamp),
+  "In bed — stage unknown",
   "occupancy availability/state is trusted without imposing an age timeout"
 );
+assert.match(occupiedWithOldGateTimestamp, />69\s*<span class="sr-unit">bpm<\/span>/);
+assert.match(occupiedWithOldGateTimestamp, />21\s*<span class="sr-unit">br\/min<\/span>/);
 
 const occupiedCodeOne = render(
   withOccupancy(
@@ -423,10 +477,8 @@ const occupiedCodeOne = render(
   ),
   occupancyConfig
 );
-assert.match(
-  occupiedCodeOne,
-  /In bed — stage unknown; heart 68 bpm, breathing 20 br\/min/
-);
+assert.equal(heading(occupiedCodeOne), "In bed — stage unknown");
+assert.match(occupiedCodeOne, /does not establish a wake or stage label/);
 assert.doesNotMatch(occupiedCodeOne, /Awake/);
 assert.match(occupiedCodeOne, />68\s*<span class="sr-unit">bpm<\/span>/);
 assert.match(occupiedCodeOne, />20\s*<span class="sr-unit">br\/min<\/span>/);
@@ -443,7 +495,7 @@ const occupiedCodeZero = render(
   ),
   occupancyConfig
 );
-assert.match(occupiedCodeZero, /<div class="sr-phase">In bed/);
+assert.equal(heading(occupiedCodeZero), "In bed");
 assert.match(occupiedCodeZero, /occupancy confirmed/);
 assert.match(occupiedCodeZero, /sr-badge sr-badge-neutral">not measuring/);
 assert.match(occupiedCodeZero, /not reporting a usable stage or live vitals/);
@@ -474,7 +526,7 @@ assert.match(missingOccupancy, /Occupancy unknown/);
 assert.match(missingOccupancy, /class="sr-badge">occupancy fault/);
 assert.doesNotMatch(
   missingOccupancy,
-  /<div class="sr-badge sr-badge-neutral">/,
+  /class="sr-badge sr-badge-neutral">/,
   "a missing occupancy entity must not render the benign not-measuring badge"
 );
 assert.equal(
@@ -665,7 +717,7 @@ assert.match(staleOutOfBed, /stale/);
 assert.match(staleOutOfBed, /last reported/);
 assert.match(staleOutOfBed, /Status stale/);
 assert.match(staleOutOfBed, /Status is stale/);
-assert.match(staleOutOfBed, /class="sr-badge">stale/);
+assert.match(staleOutOfBed, /Stale 4 min ago/);
 assert.doesNotMatch(staleOutOfBed, /Paused out of bed/);
 assert.doesNotMatch(staleOutOfBed, /bed is empty/);
 assert.doesNotMatch(staleOutOfBed, /sr-badge-neutral">stale/);
@@ -864,13 +916,13 @@ for (const unmappedState of ["9", "3-bad", "-1"]) {
     ),
     occupancyConfig
   );
-  assert.match(
-    gatedUnmapped,
-    /<div class="sr-phase">Unknown/,
+  assert.equal(
+    heading(gatedUnmapped),
+    "Unknown",
     `gated unmapped state ${unmappedState} must render as Unknown`
   );
   assert.match(gatedUnmapped, /unmapped code/);
-  assert.match(gatedUnmapped, /cannot map this sleep state yet/);
+  assert.match(gatedUnmapped, /mapped in-bed sleep state before showing live vitals/);
   assert.doesNotMatch(
     gatedUnmapped,
     /Out of bed/,
@@ -941,10 +993,10 @@ assert.doesNotMatch(
 );
 assert.match(gatedCodeZeroStatus, /Independent occupancy confirms someone is in bed/);
 
-for (const [gatedCode, gatedLabel] of [
-  ["3", "REM"],
-  ["4", "Light sleep"],
-  ["5", "Deep sleep"],
+for (const [gatedCode, gatedLabel, phaseKind] of [
+  ["3", "REM", "rem"],
+  ["4", "Light sleep", "light"],
+  ["5", "Deep sleep", "deep"],
 ]) {
   const gatedStage = render(
     withOccupancy(
@@ -953,27 +1005,32 @@ for (const [gatedCode, gatedLabel] of [
     ),
     occupancyConfig
   );
-  assert.match(
-    gatedStage,
-    new RegExp(`<div class="sr-phase">${gatedLabel}`),
+  assert.equal(
+    heading(gatedStage),
+    gatedLabel,
     `gated code ${gatedCode} must keep the ${gatedLabel} stage label`
   );
-  assert.match(gatedStage, /the sensor's best guess/);
-  assert.match(gatedStage, /sensor-reported measurements/);
-  assert.match(gatedStage, /Live now/);
+  assert.match(markup(gatedStage), new RegExp(`data-phase="${phaseKind}"`));
   assert.match(
-    gatedStage,
-    new RegExp(`${gatedLabel} — heart 54 bpm, breathing 11 br\\/min`)
+    markup(gatedStage),
+    /<h3[^>]*><span class="sr-phase-mark" aria-hidden="true"><\/span>/,
+    "the redundant shape is decorative; assistive technology reads the literal phase name"
   );
+  assert.equal((gatedStage.match(/the sensor's best guess/g) || []).length, 1);
+  assert.match(gatedStage, /class="sr-caption">the sensor's best guess<\/div>/);
+  assert.match(gatedStage, /Sensor-reported vitals/);
+  assert.doesNotMatch(gatedStage, /Live now/);
+  assert.match(gatedStage, />54\s*<span class="sr-unit">bpm<\/span>/);
+  assert.match(gatedStage, />11\s*<span class="sr-unit">br\/min<\/span>/);
 }
 
-// The ungated footer wording changed from "measured directly by the sensor"
-// to "sensor-reported measurements"; pin it so it cannot drift back.
+// Compact provenance must still distinguish sensor-reported vitals from the
+// estimated stage, without repeating the estimate in the footer.
 const ungatedDeepSleep = render(
   defaultStates({ sleepState: "5", updated: "2026-07-03T08:00:00.000Z" })
 );
-assert.match(ungatedDeepSleep, /sensor-reported measurements/);
-assert.match(ungatedDeepSleep, /Sleep stage is the device's best guess/);
+assert.match(ungatedDeepSleep, /Sensor-reported vitals/);
+assert.equal((ungatedDeepSleep.match(/the sensor's best guess/g) || []).length, 1);
 assert.doesNotMatch(
   ungatedDeepSleep,
   /measured directly by the sensor/,
@@ -987,29 +1044,32 @@ const gatedStaleCodeZero = render(
   ),
   occupancyConfig
 );
-assert.match(gatedStaleCodeZero, /class="sr-badge">stale/);
+assert.match(gatedStaleCodeZero, /Stale 4 min ago/);
 assert.doesNotMatch(
   gatedStaleCodeZero,
   /not measuring/,
-  "a stale gated card must show the stale badge, not the neutral one"
+  "a stale gated card must show stale freshness, not a not-measuring badge"
 );
-assert.match(gatedStaleCodeZero, /<div class="sr-phase">In bed/);
+assert.equal(heading(gatedStaleCodeZero), "In bed");
 assert.match(gatedStaleCodeZero, /last reported/);
 assert.doesNotMatch(gatedStaleCodeZero, /Out of bed/);
 
 // --- Blocked-card header contract -----------------------------------------
 
-assert.match(
+assert.doesNotMatch(
   missingOccupancy,
-  /sr-eyebrow">CURRENT STATUS<\/div>/,
+  /<time>/,
   "a missing gate entity leaves the blocked header without a timestamp segment"
 );
 assert.doesNotMatch(
-  ghostVitalsBlocked,
-  /CURRENT STATUS · (?:Updated|Stale|Freshness)/,
+  markup(ghostVitalsBlocked),
+  /(?:Updated|Stale|Freshness)/,
   "the blocked card reports the gate timestamp, not sleep-state freshness"
 );
-assert.match(ghostVitalsBlocked, /sr-eyebrow">CURRENT STATUS · /);
+const gateTime = new RealDate("2026-07-03T08:00:00.000Z")
+  .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+assert.ok(ghostVitalsBlocked.includes(`<time>${gateTime}</time>`));
+assert.doesNotMatch(ghostVitalsBlocked, /CURRENT STATUS/);
 
 // --- Gate recovery and the cheap re-render guard ---------------------------
 
@@ -1242,3 +1302,198 @@ assert.match(
   /The sleep-state feed is stale\./,
   "without a flagged problem the stale note is unchanged"
 );
+
+// --- Compact presentation: categories and non-color semantics --------------
+
+for (const [code, label, category] of [
+  ["3", "REM", "rem"],
+  ["4", "Light sleep", "light"],
+  ["5", "Deep sleep", "deep"],
+]) {
+  const html = render(defaultStates({ sleepState: code, updated: NOW }));
+  assert.equal(heading(html), label);
+  assert.match(markup(html), new RegExp(`data-phase="${category}"`));
+  assert.equal((markup(html).match(/class="sr-phase-mark" aria-hidden="true"/g) || []).length, 1);
+  assert.match(markup(html), /role="group" aria-label="Sensor-reported vital readings"/);
+  assert.equal((html.match(/the sensor's best guess/g) || []).length, 1);
+  assert.match(metric(html, "Heart rate"), />54\s*<span class="sr-unit">bpm<\/span>/);
+  assert.match(metric(html, "Breathing"), />11\s*<span class="sr-unit">br\/min<\/span>/);
+  assert.doesNotMatch(markup(html), /Live now|CURRENT STATUS|class="sr-readout"/);
+}
+
+for (const [name, html] of Object.entries({
+  noData,
+  freshOutOfBed,
+  noOccupancyConfig,
+  ghostVitalsBlocked,
+  emptyBedWithoutAqaraData,
+  emptyBedWithStaleAqaraData,
+  occupiedCodeZero,
+  occupiedCodeOne,
+  occupiedCodeTwo,
+  missingOccupancy,
+  invalidOccupancy,
+  staleOccupied,
+  staleInBed,
+  staleOutOfBed,
+  freshUnknownCode,
+  futureDatedInBed,
+  gatedFutureDated,
+  gatedStaleCodeZero,
+  outageHtml,
+  blockedHtml,
+})) {
+  assertNeutral(html, `${name} must not look like a fresh reported sleep phase`);
+}
+for (const malformedCode of ["3-bad", "3.5", "5oops", "-1"]) {
+  const html = render(defaultStates({ sleepState: malformedCode, updated: NOW }));
+  assert.equal(heading(html), "Unknown");
+  assertNeutral(html, `malformed code ${malformedCode} must remain neutral`);
+  assert.match(html, /unmapped code/);
+  assertValuesHidden(html, ["54", "11"], `malformed code ${malformedCode}`);
+}
+
+// Each metric fails independently: an unavailable heart rate must not hide
+// breathing, and a missing breathing value must not hide a valid heart rate.
+const missingVitalCases = [
+  ["missing entity", undefined],
+  ["missing state", {}],
+  ["unavailable", { state: "unavailable" }],
+  ["unknown", { state: "unknown" }],
+  ["null", { state: null }],
+  ["stringified null", { state: "None" }],
+  ["empty", { state: "" }],
+  ["nonnumeric", { state: "not-a-number" }],
+  ["unit-suffixed", { state: "54 bpm" }],
+  ["nonfinite", { state: "Infinity" }],
+];
+for (const [key, label, otherLabel, healthyValue, healthyUnit] of [
+  ["heart_rate", "Heart rate", "Breathing", "11", "br/min"],
+  ["respiration_rate", "Breathing", "Heart rate", "54", "bpm"],
+]) {
+  for (const [caseName, entity] of missingVitalCases) {
+    const states = defaultStates({ sleepState: "5", updated: NOW });
+    const id = `sensor.aqara_fp2_sleep_${key}`;
+    if (entity === undefined) delete states[id];
+    else states[id] = { last_updated: NOW, ...entity };
+    const html = render(states);
+    const failed = metric(html, label);
+    const healthy = metric(html, otherLabel);
+    assert.match(failed, /class="sr-stat-value">—/, `${label}: ${caseName}`);
+    assert.match(failed, /No value reported/, `${label}: ${caseName}`);
+    assert.match(
+      healthy,
+      new RegExp(`>${healthyValue}\\s*<span class="sr-unit">${healthyUnit}</span>`),
+      `${label}: ${caseName} must not suppress ${otherLabel}`
+    );
+    assert.doesNotMatch(healthy, /No value reported|Live now/);
+    assert.equal((markup(html).match(/No value reported/g) || []).length, 1);
+    assert.equal(heading(html), "Deep sleep");
+    assert.match(markup(html), /data-phase="deep"/);
+  }
+}
+
+// Missing/invalid timestamps must not become epoch dates or fresh phases.
+// Confirmed occupancy cannot make an unusable sleep-state timestamp usable.
+for (const timestamp of [undefined, null, 0, "", "not-a-date"]) {
+  for (const gated of [false, true]) {
+    let states = defaultStates({
+      sleepState: "5",
+      heartRate: "98765",
+      respirationRate: "87654",
+      updated: timestamp,
+    });
+    if (timestamp === undefined) {
+      delete states["sensor.aqara_fp2_sleep_sleep_state"].last_updated;
+    }
+    if (gated) states = withOccupancy(states, "Schlafend");
+    const html = render(states, gated ? occupancyConfig : {});
+    const message = `timestamp ${String(timestamp)}, occupancy ${gated ? "confirmed" : "not configured"}`;
+    assertNeutral(html, message);
+    assert.equal(heading(html), "Deep sleep", message);
+    assert.match(html, /class="sr-caption">last reported<\/div>/, message);
+    assert.match(html, /Freshness unknown/, message);
+    assert.match(html, /fresh sleep-state timestamp before showing live vitals/, message);
+    assert.equal((html.match(/class="sr-stat-status">Freshness unknown/g) || []).length, 2, message);
+    assert.doesNotMatch(markup(html), /<time>|the sensor's best guess/, message);
+    assertValuesHidden(html, ["98765", "87654"], message);
+  }
+}
+
+// A theme-only change has to repaint all render paths even when hass.states
+// and every sensor object are identical. The Node harness verifies output and
+// invalidation; computed contrast and actual shapes are checked in the browser.
+for (const [name, states, config] of [
+  ["fresh stage", defaultStates({ sleepState: "5", updated: NOW }), {}],
+  ["blocked occupancy", withOccupancy(defaultStates({ sleepState: "5", updated: NOW }), "Leer"), occupancyConfig],
+  ["missing feed", {}, {}],
+  ["reported outage", outageStates, {}],
+]) {
+  const card = new Card();
+  card.setConfig(config);
+  card.hass = { states, themes: { darkMode: true } };
+  const darkHtml = card.shadowRoot.innerHTML;
+  const writes = card.shadowRoot.writes;
+  card.hass = { states, themes: { darkMode: true } };
+  assert.equal(card.shadowRoot.writes, writes, `${name}: unchanged state/theme skips rendering`);
+  card.hass = { states, themes: { darkMode: false } };
+  const lightHtml = card.shadowRoot.innerHTML;
+  assert.equal(card.shadowRoot.writes, writes + 1, `${name}: dark to light repaints`);
+  assert.notEqual(lightHtml, darkHtml, `${name}: theme mode changes palette output`);
+  assert.equal(markup(lightHtml), markup(darkHtml), `${name}: theme must not change sensor semantics`);
+  card.hass = { states, themes: { darkMode: true } };
+  assert.equal(card.shadowRoot.writes, writes + 2, `${name}: light to dark repaints`);
+  assert.equal(card.shadowRoot.innerHTML, darkHtml, `${name}: returning to dark restores the palette`);
+
+  card.hass = { states };
+  assert.equal(card.shadowRoot.writes, writes + 3, `${name}: unknown theme cannot reuse the dark palette`);
+  const unknownHtml = card.shadowRoot.innerHTML;
+  for (const kind of ["deep", "light", "rem"]) {
+    assert.ok(
+      unknownHtml.includes(`var(--sleepradar-${kind}-color, var(--sr-text))`),
+      `${name}: absent mode uses inherited phase text ink for ${kind}`
+    );
+  }
+  for (const themes of [{}, { darkMode: null }, { darkMode: "dark" }, { darkMode: 0 }]) {
+    card.hass = { states, themes };
+    assert.equal(card.shadowRoot.writes, writes + 3, `${name}: nonboolean theme metadata normalizes consistently`);
+    assert.equal(card.shadowRoot.innerHTML, unknownHtml);
+  }
+}
+
+// The timer must retire a once-fresh phase without another hass assignment.
+// Exercise both the default threshold and a custom polling interval, including
+// disconnect/reconnect so a detached card leaves no scheduled DOM work behind.
+for (const pollIntervalSeconds of [60, 20]) {
+  clockMs = RealDate.parse(NOW);
+  const card = new Card();
+  card.setConfig(pollIntervalSeconds === 60 ? {} : { poll_interval_seconds: pollIntervalSeconds });
+  const hass = { states: defaultStates({ sleepState: "5", updated: NOW }), themes: { darkMode: true } };
+  card.hass = hass;
+  card.connectedCallback();
+  assert.equal(intervals.size, 1, "a connected card schedules one stale check");
+  advanceClock(pollIntervalSeconds * 3000);
+  assert.match(markup(card.shadowRoot.innerHTML), /data-phase="deep"/, "the stale threshold remains strictly greater than three polls");
+  assert.match(card.shadowRoot.innerHTML, />54\s*<span class="sr-unit">bpm<\/span>/);
+  advanceClock(30000);
+  assert.strictEqual(card._hass, hass, "the clock transition must not rely on a new hass object");
+  assertNeutral(card.shadowRoot.innerHTML, "an elapsed stale timer retires the phase accent");
+  assert.match(card.shadowRoot.innerHTML, /class="sr-caption">last reported<\/div>/);
+  assert.match(card.shadowRoot.innerHTML, /Status stale/);
+  assert.match(card.shadowRoot.innerHTML, /Status is stale\. Check the app and MQTT/);
+  assert.doesNotMatch(markup(card.shadowRoot.innerHTML), /the sensor's best guess|class="sr-badge">stale/);
+  assertValuesHidden(card.shadowRoot.innerHTML, ["54", "11"], "timer-driven stale transition");
+
+  card.disconnectedCallback();
+  assert.equal(intervals.size, 0, "disconnect clears the stale timer");
+  const disconnectedWrites = card.shadowRoot.writes;
+  advanceClock(60000);
+  assert.equal(card.shadowRoot.writes, disconnectedWrites, "a disconnected card performs no timed DOM writes");
+  card.connectedCallback();
+  assert.equal(intervals.size, 1, "reconnect schedules one replacement timer");
+  advanceClock(30000);
+  assert.equal(card.shadowRoot.writes, disconnectedWrites + 1, "the replacement timer resumes checking");
+  card.disconnectedCallback();
+  assert.equal(intervals.size, 0, "the replacement timer is also cleaned up");
+}
+clockMs = RealDate.parse(NOW);

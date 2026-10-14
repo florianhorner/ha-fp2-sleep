@@ -50,6 +50,36 @@ numbers can be bold. Keep letter spacing at `0`.
 - Copy should be short enough to read in passing. Prefer "the sensor's best
   guess" over clinical or overconfident wording.
 
+### Compact current readout
+
+Use a neutral surface with crisp phase accents, not tinted header fills. The
+phase heading is 22px, tabular vital values are 32px, and supporting text is
+12–13px at the default 16px root size. Text scales with the user's settings.
+The header has a 2px phase rail; the vitals share two columns with a quiet
+divider, and provenance sits below an inset separator. Let long labels and
+diagnostics wrap at narrow widths.
+
+| Current phase | Non-color cue | Light-theme ink | Dark-theme ink |
+| --- | --- | --- | --- |
+| Deep sleep | Filled circle | `#2758d8` | `#9bb9ff` |
+| Light sleep | Hollow circle | `#216dd8` | `#8ec4ff` |
+| REM | Diamond | `#925600` | `#f4c773` |
+| Stale, blocked or uncertain | Dash | Inherited primary text | Inherited primary text |
+
+Keep the phase name visible and mark its geometric cue decorative for assistive
+technology. Phase ink can be overridden by the `--sleepradar-deep-color`,
+`--sleepradar-light-color` and `--sleepradar-rem-color` CSS properties. The default
+inks meet AA text contrast on white and the documented night surface; custom
+themes must check their own foreground/background pairs. Background, text and
+dividers inherit Home Assistant theme variables. A theme switch must redraw
+even if sensor readings are unchanged; missing mode metadata uses inherited text.
+
+Only a fresh valid stage gets a phase accent. Preserve independent occupancy,
+stale-feed, missing-value and diagnostic safeguards. Show the best-guess caption
+once beside the phase and use a short sensor-reported-vitals footer for healthy
+stages. Keep caveats in fault and compatibility states. Do not repeat healthy
+values in a narrative sentence or add duplicate Live now labels.
+
 ## Logo
 
 The approved logo is the radar-ring mark in `assets/sleepradar-mark.svg`: a
