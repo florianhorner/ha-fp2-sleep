@@ -72,9 +72,9 @@ function markup(html) {
 }
 
 function heading(html) {
-  const match = markup(html).match(/<h3\b[^>]*>([\s\S]*?)<\/h3>/);
+  const match = markup(html).match(/<h3\b[^>]*><span\b[^>]*><\/span>([^<]*)<\/h3>/);
   assert.ok(match, "a readout must have a semantic phase heading");
-  return match[1].replace(/<[^>]*>/g, "").trim();
+  return match[1].trim();
 }
 
 function metric(html, label) {
