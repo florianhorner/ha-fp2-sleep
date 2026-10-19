@@ -21,7 +21,7 @@ truth:
     - "examples/README.md:33-39"
     - "examples/dashboard-sleep.yaml:13-88"
     - "examples/dashboard-sleep.yaml:90-155"
-  checked_at: "2026-10-14"
+  checked_at: "2026-10-19"
   baseline_commit: "906f6dcce80f206e624b7e205c0e54334745483b"
   release_tag: "unreleased"
   qualifiers:
@@ -73,13 +73,11 @@ This episode illustrates the optional dashboard's configured structure. The
 dashboard exists on the current repository baseline but remains in the
 Unreleased changelog section, so the clip does not attribute it to `v1.2.1`.
 
-The dashboard claim and retained source references were rechecked on 2026-10-14.
-The broad README citation was removed because it mixed unrelated live-card
-presentation details with dashboard documentation. The existing examples
-documentation, dashboard configuration and Recorder prerequisite still support
-the claim. Their cited evidence remains unchanged from the pinned main-branch
-baseline. This documentation-only refresh does not change the composition,
-rerender the approved binary or claim new binary verification.
+The dashboard configuration and examples documentation were rechecked on
+2026-10-19. Their cited evidence matches the pinned main-branch baseline and
+supports the optional previous-night history view and Recorder prerequisite.
+The composition and approved delivery binaries are unchanged; this
+source-reference update does not claim new binary verification.
 
 ## Beat sheet
 
