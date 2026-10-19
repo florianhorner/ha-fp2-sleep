@@ -18,11 +18,11 @@ motion_verb: expand
 uncertainty: "Whether viewers understand this as a structural proof of the configured dashboard rather than proof of one real recorded night."
 truth:
   source_refs:
-    - "examples/README.md:33-39"
+    - "examples/README.md:37-43"
     - "examples/dashboard-sleep.yaml:13-88"
     - "examples/dashboard-sleep.yaml:90-155"
   checked_at: "2026-10-19"
-  baseline_commit: "906f6dcce80f206e624b7e205c0e54334745483b"
+  baseline_commit: "bf3cf1b6012609d71244de953a429223a1f51b95"
   release_tag: "unreleased"
   qualifiers:
     - "This is an optional dashboard example that requires one night of Recorder history."
