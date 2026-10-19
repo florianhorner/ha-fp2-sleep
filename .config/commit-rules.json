@@ -124,7 +124,7 @@
         "Reviewed-By",
         "Tool"
       ],
-      "fork_strip_rationale": "Strip agent telemetry trailers when committing to a fork branch destined upstream. Different audience (upstream maintainer vs portfolio recruiter). Preserves Co-Authored-By and Tested.",
+      "fork_strip_rationale": "Omit agent telemetry trailers from upstream contributions while preserving contributor attribution and test evidence.",
       "fork_detection_command": "gh repo view --json isFork --jq .isFork",
       "preserved_on_fork": [
         "Co-Authored-By",

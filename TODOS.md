@@ -18,10 +18,9 @@ and `async_create_issue()` takes `hass`, so it is in-process only. Its
 integration's translation files. Creating a Repairs issue therefore requires
 shipping a companion custom integration.
 
-**The tradeoff:** a second install step spends SleepRadar's one-click-packaging
-wedge to buy a nicer error card. It also does not stay small. Once an
-integration exists it can own the entities directly and MQTT stops being
-necessary, which is a different product on its own release train.
+**The tradeoff:** a companion integration adds an installation step and a
+separately maintained package. Moving entity ownership there would also change
+the MQTT architecture and requires a separate design decision.
 
 **Decide after:** seeing whether real users adopt the notify automation in
 `examples/automations.yaml`. If the notification proves too weak, or an
@@ -191,59 +190,6 @@ behavior change, not a repo-only CI hardening change.
 **Priority:** P2
 **Depends on:** HA Supervisor runtime proof
 
-## GTM / Distribution (reach machine)
-
-Source: /autoplan strategic session 2026-07-13. Doctrine: reach-first — manufacture
-reach, let real (outbound) demand decide feature work. Gate reshaped from passive
-"inbound signal in 7 days" to per-channel click/install attribution.
-
-### Seed proof into existing demand pools (capture, don't broadcast)
-
-**What:** Post a tailored, honest reply + demo GIF + tracked install link into the
-top FP2-sleep-in-HA demand threads. Lead with the packaging wedge (one-click add-on,
-no Node-RED / REST YAML / HACS integration setup, honest stale states), NOT "exposes
-FP2 vitals" (competitors already do). Targets, ranked: Aqara Forum t/185765; HA
-Community t/967666, t/666598; HA core issues #124529 / #111564 (HomeKit-only-presence
-frustration = the wedge in users' words).
-
-**Why:** Demand is already indexed; silence to date is missing reach, not missing
-demand. Competitors exist (Darkdragon14/ha-aqara-devices w/ live SSE, sdavides Node-RED,
-Komzpa REST/Patreon) — differentiation is packaging.
-
-**Effort:** M **Priority:** P1 **Depends on:** demo GIF asset
-
-### Produce the proof asset (still image, NOT a GIF)
-
-**What:** Sleep vitals are a slow time series — a live dashboard has no motion worth
-filming. The asset is the **overnight retrospective still**: last night's 12h sleep-state
-chart (already rendered by examples/dashboard-sleep.yaml ApexCharts graph_span:12h) + HR/
-breathing history, annotated with the story ("asleep 23:40 · HR bottomed at 52 in deep
-sleep · 2 wake-ups · up 06:50"). Plus a **contrast still**: HomeKit→HA = one presence
-boolean vs SleepRadar→HA = 5 vitals + overnight chart (dramatizes the wedge; matches the
-frustration in HA core issues #124529 / #111564). Reused across every channel.
-
-**Why no new feature needed for v1:** HA recorder + the existing example dashboard already
-produce a real overnight chart from one night of data. Deferred "Last night" sessionization
-(duration, averaged vitals, segmented timeline) would upgrade the asset later, not gate it.
-
-**Effort:** S **Priority:** P1 **Depends on:** live HA (one night of captured data)
-
-### Tracked-link / attribution scheme
-
-**What:** v1 = GitHub referrer traffic (already available, by source domain). Optional
-thread-level = one GoatCounter/Dub short link per thread. This click/install metric is
-the outbound signal that replaces the passive demand gate.
-
-**Effort:** S **Priority:** P2 **Depends on:** none
-
-### Browser pass to mine Reddit demand pools
-
-**What:** r/homeassistant + r/Aqara are the largest pools but blocked for the WebSearch
-crawler. Mine via a browser session for live "FP2 sleep/vitals in HA" threads; add to
-the seed target list. Also scan competitor repos' issues for feature requests (= demand).
-
-**Effort:** S **Priority:** P2 **Depends on:** none
-
 ## Dashboard / Entities
 
 ### Reconcile `default_entity_id` naming so instances and new installs converge
@@ -252,23 +198,21 @@ the seed target list. Also scan competitor repos' issues for feature requests (=
 `sensor.aqara_fp2_sleep_monitor_*` entity IDs on installs created before
 `default_entity_id` pinning (v1.1.0). New installs get the repo's documented
 `sensor.aqara_fp2_sleep_*`. So the shipped examples/card/validator (which expect
-`aqara_fp2_sleep_*`) don't bind on older instances — including the maintainer's own,
-which blocks dogfooding the shipped "Last night" view without hand-overriding series.
+`aqara_fp2_sleep_*`) need explicit entity overrides on older installations.
 
-**Why:** Two entity-ID namespaces for the same product is a support and screenshot
-trap. Decide the canonical scheme, confirm `default_entity_id` actually pins new
-installs to it, and document the one-time migration for pre-pin instances (HA never
-renames existing entities). Known dogfood gap from the v1.1.0 notes.
+**Why:** Existing installations must be able to use the examples and card without
+guessing entity IDs. Confirm the canonical namespace and `default_entity_id`
+behavior on new installs, and document a migration for pre-v1.1.0 installations.
+Home Assistant does not rename existing entities automatically.
 
 **Effort:** M **Priority:** P2 **Depends on:** live-instance verification of
 `default_entity_id` behavior on current HA
 
-## GIF pipeline hardening (pre-ship review squad, 2026-07-22)
+## GIF pipeline hardening
 
 ### Close the verified P2 gaps from the Quiet Proof Loops review
 
-**What:** The three-agent pre-ship review of the `videos/` pipeline confirmed these
-lower-severity gaps (P0/P1 were fixed before shipping): (1) the CI must-not-render
+**What:** Address these remaining `videos/` pipeline gaps: (1) the CI must-not-render
 guard in `scripts/validate_repository.py` only matches literal `python[3]
 videos/build-gif-deliverables.py` run lines and never scans extra workflow jobs;
 (2) `validate_tracked_paths` passes vacuously when `git ls-files` returns empty
@@ -287,12 +231,12 @@ late-evening failure); (7) `batch_default` semantics are undocumented and a bare
 episode AGENTS/CLAUDE doc conventions and `meta.json` name style are inconsistent
 across the six projects.
 
-**Why:** Each is a verified sharp edge that will cost a future session a debugging
-cycle; none blocks the current CI or falsifies published binaries today.
+**Why:** These gaps can weaken validation or make contributor commands ambiguous.
+They do not establish a defect in the published binaries.
 
 **Effort:** M **Priority:** P2 **Depends on:** shipped Quiet Proof Loops PR
 
-## Occupancy gate (pre-ship review squad, 2026-07-31)
+## Occupancy gate
 
 ### Stop trusting `last_updated` as measurement freshness
 
@@ -305,10 +249,9 @@ never "this value is current". Either publish a source-level sample timestamp or
 sample id from the Aqara payload and consume that, or drop the freshness and
 live-vitals claims where no trustworthy measurement timestamp exists.
 
-**Why:** Two independent adversarial reviews landed on this, and it is the
-mechanism behind the original ghost-vitals incident. The occupancy gate now
-covers the empty-bed case, but an occupied bed with a wedged poller still renders
-retained vitals as `Live now`.
+**Why:** The occupancy gate covers the empty-bed case but cannot establish
+source freshness for an occupied bed. Retained measurements must not be
+presented as current solely because Home Assistant received another poll.
 
 **Effort:** M **Priority:** P1 **Depends on:** poller payload inspection
 
@@ -321,8 +264,8 @@ footer "the independent bed-occupancy sensor reports the bed is empty" — a
 positive claim the sensor never made. Add an explicit `unoccupied_states` and
 classify everything outside both sets as `Occupancy unknown`.
 
-**Why:** Safe direction (vitals stay hidden) but the card fabricates a claim
-about a third-party sensor. Reproduced by two reviewers.
+**Why:** Vitals stay hidden, but the label can make an unsupported claim about
+a third-party sensor.
 
 **Effort:** S **Priority:** P2 **Depends on:** none
 
@@ -348,8 +291,7 @@ regexes the raw YAML for `const phases` (a comment satisfies it),
 `check_automation_gates` substring-matches `json.dumps` of a whole automation so
 a free-text `alias` counts as a gate, `check_examples_readme_gate_contract`
 matches six phrases anywhere in a whitespace-normalized blob (a "do NOT do this"
-block passes), and `check_ghost_vitals_evidence` requires bare two-digit tokens
-(`27`, `17`, `50`, `77`) that any incidental digits satisfy. Each was reproduced.
+block passes). Each was reproduced.
 Also: `run_self_test` is a single 477-line function and the module is ~1900
 lines; split by contract area.
 
@@ -366,8 +308,7 @@ privacy scan skips it. An ignore
 list and a scan-skip list should not be the same trust decision — scan tracked
 files via `git ls-files` instead of skipping by directory name.
 
-**Why:** Defense in depth on a public repo about a real bedroom. The ignore rule
-is the fix; this is the second layer.
+**Why:** Ignore rules alone do not ensure that tracked files are scanned.
 
 **Effort:** S **Priority:** P2 **Depends on:** none
 
@@ -383,7 +324,7 @@ Separately, `aqara_fp2_sleep_poller.py` hardcodes `sw_version` /
 **Why:** Same class, both pre-existing, neither covered by a validator.
 
 **Effort:** S **Priority:** P3 **Depends on:** none
-## CI Workflow Validator Hardening (ship review, 2026-07-25)
+## CI Workflow Validator Hardening
 
 ### Close remaining `validate_workflow()` gaps beyond the fixed name/job bugs
 
@@ -487,8 +428,8 @@ good pins through the fallback trips it). Both the evergreen
 
 ### Real "Last night" dashboard view
 
-Built on branch `florianhorner/last-night-card`: `examples/dashboard-sleep.yaml` now
+`examples/dashboard-sleep.yaml` now
 charts sleep stage + heart rate + breathing over the previous night (anchored to the
 prior night, colorblind-safe palette), replacing the raw rolling 12-hour sleep-state
 chart. Chart-only — sessionization (duration, averaged vitals, segmented timeline)
-stays deferred. Makes the overnight GTM asset a screenshot of a real card, not a mockup.
+stays deferred.
