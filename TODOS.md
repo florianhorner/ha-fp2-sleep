@@ -19,8 +19,9 @@ integration's translation files. Creating a Repairs issue therefore requires
 shipping a companion custom integration.
 
 **The tradeoff:** a companion integration adds an installation step and a
-separately maintained package. Moving entity ownership there would also change
-the MQTT architecture and requires a separate design decision.
+separately maintained package. Moving entity ownership there would also
+change the MQTT architecture. That change requires a separate design
+decision.
 
 **Decide after:** seeing whether real users adopt the notify automation in
 `examples/automations.yaml`. If the notification proves too weak, or an

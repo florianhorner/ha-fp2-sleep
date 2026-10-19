@@ -21,14 +21,13 @@ truth:
     - "examples/README.md:33-39"
     - "examples/dashboard-sleep.yaml:13-88"
     - "examples/dashboard-sleep.yaml:90-155"
-    - "TODOS.md:98-110"
   checked_at: "2026-10-14"
   baseline_commit: "906f6dcce80f206e624b7e205c0e54334745483b"
   release_tag: "unreleased"
   qualifiers:
     - "This is an optional dashboard example that requires one night of Recorder history."
     - "Heart rate and breathing are sensor-reported measurements; measured names the signal category, not independent validation or clinical accuracy."
-    - "The composition shows configured structure, not plotted or invented telemetry."
+    - "The historical delivery illustrates dashboard layout, not plotted or invented telemetry; its extra Awake label is not part of the canonical stage configuration."
   visible_required:
     - "SleepRadar"
     - "Last night."
@@ -57,8 +56,12 @@ inventing overnight telemetry. The frame-zero hook is:
 > Last night.<br>
 > Three histories. One view.
 
-Three collapsed, labelled rails expand into the exact topology configured in
-the optional dashboard example. No graph trace, readout, cursor, or personal
+Three collapsed, labelled rails expand into the optional dashboard layout.
+The configured example uses REM, Light and Deep; the historical GIF and MP4
+retain an extra Awake label. These delivery files remain unchanged and do not
+establish stage-label parity with the configured example.
+
+No graph trace, readout, cursor, or personal
 value appears. The visible footer keeps the Recorder requirement and
 sensor-reported-measurement-versus-estimate distinction attached. The approved
 visible word “measured” names the signal category and is not an accuracy claim.
@@ -66,10 +69,9 @@ visible word “measured” names the signal category and is not an accuracy cla
 A small static SleepRadar mark-and-name lockup identifies the detached clip
 without adding another motion beat or competing with the proof hook.
 
-This is a workflow validation episode, not a replacement for the real-data
-overnight retrospective still selected in `TODOS.md`. The dashboard exists on
-the current repository baseline but remains in the Unreleased changelog
-section, so the clip does not attribute it to `v1.2.1`.
+This episode illustrates the optional dashboard's configured structure. The
+dashboard exists on the current repository baseline but remains in the
+Unreleased changelog section, so the clip does not attribute it to `v1.2.1`.
 
 The dashboard claim and retained source references were rechecked on 2026-10-14.
 The broad README citation was removed because it mixed unrelated live-card
