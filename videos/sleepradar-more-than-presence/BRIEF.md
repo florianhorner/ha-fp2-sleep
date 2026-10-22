@@ -40,9 +40,8 @@ is "Same sensor. Now 5 sleep signals."
 - Sleep stage is the sensor's estimate; do not imply medical precision.
 - No credentials, personal telemetry, medical language, narration, music, or
   unshipped Last Night/session-summary claims.
-- Pilot approved on 2026-07-17. GIFs 2–5 may now be built using
-  `../GIF-BATCH-PLAYBOOK.md` as the locked batch baseline.
-- Do not commit, publish, or modify Home Assistant.
+- Use this pilot as the visual and motion baseline for the companion GIFs.
+  Follow the [batch playbook](../GIF-BATCH-PLAYBOOK.md) for reproduction guidance.
 
 ## Verification
 
