@@ -1259,6 +1259,41 @@ def validate_favicon() -> None:
     check_favicon(source_path.read_bytes(), favicon_path.read_bytes())
 
 
+def check_managed_file_manifest(text: str) -> None:
+    """Keep the managed-file inventory synchronized with its local bytes."""
+    try:
+        manifest = json.loads(text)
+    except json.JSONDecodeError:
+        fail("managed-file manifest must be valid JSON")
+    files = manifest.get("files") if isinstance(manifest, dict) else None
+    if not isinstance(files, dict) or not files:
+        fail("managed-file manifest must contain a nonempty files object")
+    for name, expected in files.items():
+        if (
+            not isinstance(name, str)
+            or Path(name).is_absolute()
+            or ".." in Path(name).parts
+            or not isinstance(expected, str)
+            or re.fullmatch(r"[0-9a-f]{64}", expected) is None
+        ):
+            fail("managed-file manifest contains an invalid path or digest")
+        path = (ROOT / name).resolve()
+        if not path.is_relative_to(ROOT):
+            fail("managed-file manifest path must remain inside the repository")
+        try:
+            actual = hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError:
+            fail(f"managed file is unavailable: {name}")
+        if actual != expected:
+            fail(f"managed-file manifest digest differs: {name}")
+
+
+def validate_managed_file_manifest() -> None:
+    check_managed_file_manifest(
+        (ROOT / ".config/commit-lint/MANIFEST.json").read_text(encoding="utf-8")
+    )
+
+
 def check_dashboard_preview(fixture_text: str, svg_text: str) -> None:
     """Bind the documentation illustration to its constructed input source."""
     spec = importlib.util.spec_from_file_location(
@@ -3117,6 +3152,21 @@ def run_self_test() -> None:
     ]
 
     expect_pass("favicon real", lambda: check_favicon(favicon_source, favicon))
+    managed_manifest = (ROOT / ".config/commit-lint/MANIFEST.json").read_text()
+    expect_pass("managed-file digests", lambda: check_managed_file_manifest(managed_manifest))
+    stale_manifest = json.loads(managed_manifest)
+    first_managed_file = next(iter(stale_manifest["files"]))
+    stale_manifest["files"][first_managed_file] = "0" * 64
+    expect_fail_matching(
+        "managed-file digest drift",
+        lambda: check_managed_file_manifest(json.dumps(stale_manifest)),
+        "digest differs",
+    )
+    expect_fail_matching(
+        "managed-file path escape",
+        lambda: check_managed_file_manifest(json.dumps({"files": {"../fixture": "0" * 64}})),
+        "invalid path or digest",
+    )
     expect_pass(
         "dashboard preview constructed source",
         lambda: check_dashboard_preview(dashboard_preview_fixture, dashboard_preview_svg),
@@ -4737,6 +4787,7 @@ def main(argv: list[str] | None = None) -> None:
     validate_tracked_paths()
     validate_yaml()
     validate_favicon()
+    validate_managed_file_manifest()
     validate_dashboard_preview()
     validate_addon_config()
     check_addon_permissions()
