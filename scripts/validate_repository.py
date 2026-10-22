@@ -288,10 +288,12 @@ PRIVATE_PATTERNS = {
     "likely email address": re.compile(
         r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE
     ),
-    # Generic room vocabulary and room-qualified entity naming. Specific
-    # installation identifiers belong in the external private terms file.
+    # Generic room vocabulary and room-qualified sleep/occupancy naming.
+    # Ordinary light and thermostat placeholders remain valid examples.
+    # Specific installation identifiers belong in the external terms file.
     "room-specific entity or label": re.compile(
-        r"schlafzimmer|bedroom_[a-z0-9_]+", re.IGNORECASE
+        r"schlafzimmer|bedroom_(?:[a-z0-9]+_)*"
+        r"(?:bed|occupancy|presence|sleep)(?:_[a-z0-9]+)*\b", re.IGNORECASE
     ),
     "local German bed label": re.compile(r"\bbett\b", re.IGNORECASE),
     "likely HA token": re.compile(r"eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9"),
@@ -3188,8 +3190,12 @@ def run_self_test() -> None:
     expect_fail(
         "private occupancy entity",
         lambda: check_private_strings_in_text(
-            "example.md", "entity: sensor.fixture_bedroom_probe"
+            "example.md", "entity: sensor.fixture_bedroom_occupancy_probe"
         ),
+    )
+    expect_pass(
+        "public automation placeholders pass privacy scan",
+        lambda: check_private_strings_in_text("examples/automations.yaml", automations),
     )
     expect_pass(
         "neutral occupancy entity",
@@ -3241,7 +3247,10 @@ def run_self_test() -> None:
         ("context path", ".context/fixture.md"),
         ("mounted config", "/mnt/fixture/config/configuration.yaml"),
         ("token path", "/home/fixture/.homeassistant_token"),
-        ("room-specific entity", "sensor.fixture_bedroom_probe"),
+        ("bed entity", "binary_sensor.fixture_bedroom_bed_contact"),
+        ("occupancy entity", "sensor.fixture_bedroom_occupancy_probe"),
+        ("presence entity", "binary_sensor.fixture_bedroom_presence"),
+        ("sleep entity", "sensor.fixture_bedroom_sleep_stage"),
     ]:
         expect_fail(
             f"generic privacy guard still rejects {label}",
