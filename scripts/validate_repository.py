@@ -1166,7 +1166,8 @@ def private_string_matches(
             if pattern.search(text):
                 matches.append(label)
     # Regex-escaped punctuation is still a literal disclosure in source. Two
-    # passes also cover a regex serialized inside a JSON string.
+    # passes also cover a regex serialized inside a JSON string. These bounded
+    # views do not decode every representation or replace publication review.
     views = {text.casefold()}
     unescaped = text
     for _ in range(2):

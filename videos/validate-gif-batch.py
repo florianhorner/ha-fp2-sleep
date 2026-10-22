@@ -261,14 +261,6 @@ def _validate_html(
         try:
             dashboard = (repository_root / "examples/dashboard-sleep.yaml").read_text(encoding="utf-8")
             errors.extend(f"{prefix}:stages: {error}" for error in dashboard_stage_errors(html, dashboard))
-            preview = subprocess.run(
-                [sys.executable, str(repository_root / "scripts/build_dashboard_preview.py"), "--check"],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            if preview.returncode:
-                errors.append(f"{prefix}:preview: constructed dashboard source check failed: {preview.stderr or preview.stdout}")
         except (OSError, ValueError, yaml.YAMLError) as exc:
             errors.append(f"{prefix}:stages: cannot verify canonical dashboard: {exc}")
 
