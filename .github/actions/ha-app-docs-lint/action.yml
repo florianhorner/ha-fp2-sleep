@@ -2,8 +2,8 @@ name: "HA App Docs Lint"
 description: >
   Drift-proof install-docs linter for Home Assistant app/add-on repos. Requires a
   My Home Assistant redirect badge for install and bans stale nav wording
-  ("Add-on Store", "Settings > Add-ons", "Hass.io"). Markdown-aware: badge URLs and
-  code blocks never false-positive.
+  ("Add-on Store", "Settings > Add-ons", "Hass.io"). Skips Markdown code and
+  link/image URL targets when checking prose terminology.
 
 inputs:
   profile:

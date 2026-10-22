@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="560" viewBox="0 0 880 560" role="img" aria-labelledby="title desc">
+  <title id="title">Planned dashboard preview</title>
+  <desc id="desc">Heart rate, breathing rate and indicative sleep stages. All values and stage segments are constructed illustration, not recorded telemetry.</desc>
+  <defs><clipPath id="timeline"><rect x="46" y="313" width="668" height="20" rx="6"/></clipPath></defs>
+  <rect width="880" height="560" fill="#101112"/>
+  <rect x="24" y="24" width="712" height="359" rx="14" fill="#1b1c1e"/>
+  <g font-family="Arial, sans-serif" font-size="12" fill="#9a9da3">
+    <text x="46" y="57">LAST NIGHT · SYNTHETIC ILLUSTRATION</text>
+    <text x="46" y="90" fill="#e8e8ea" font-size="20">Planned dashboard preview. Heart rate, breathing rate</text>
+    <text x="46" y="118" fill="#e8e8ea" font-size="20">and indicative sleep stages.</text>
+    <rect x="46" y="145" width="327" height="89" rx="10" fill="#151617" stroke="#2b2d31"/>
+    <rect x="388" y="145" width="326" height="89" rx="10" fill="#151617" stroke="#2b2d31"/>
+    <circle cx="66" cy="165" r="4.5" fill="#ff4d57"/>
+    <text x="78" y="169">Heart rate</text>
+    <text x="62" y="199" fill="#e8e8ea" font-size="26" font-weight="700">62</text>
+    <text x="98" y="199">bpm avg</text>
+    <text x="62" y="217">55 low · 73 high · illustration</text>
+    <circle cx="408" cy="165" r="4.5" fill="#5aa2ff"/>
+    <text x="420" y="169">Breathing</text>
+    <text x="404" y="199" fill="#e8e8ea" font-size="26" font-weight="700">14</text>
+    <text x="440" y="199">br/min avg</text>
+    <text x="404" y="217">10 low · 22 high · illustration</text>
+    <text x="48" y="250" font-size="11">Illustration only. These values are not recorded telemetry.</text>
+    <path d="M46 271.5H714" stroke="#2b2d31"/>
+    <text x="46" y="301" fill="#e8e8ea" font-size="14">Sleep stages</text>
+    <text x="714" y="301" text-anchor="end" font-size="10">the sensor’s best guess</text>
+    <g clip-path="url(#timeline)"><rect x="46.00" y="313" width="100.20" height="20" fill="#5aa2ff"/><rect x="146.20" y="313" width="66.80" height="20" fill="#2758d8"/><rect x="213.00" y="313" width="133.60" height="20" fill="#5aa2ff"/><rect x="346.60" y="313" width="66.80" height="20" fill="#f5a623"/><rect x="413.40" y="313" width="100.20" height="20" fill="#5aa2ff"/><rect x="513.60" y="313" width="33.40" height="20" fill="#2758d8"/><rect x="547.00" y="313" width="66.80" height="20" fill="#5aa2ff"/><rect x="613.80" y="313" width="100.20" height="20" fill="#f5a623"/></g>
+    <rect x="46" y="349" width="10" height="10" rx="3" fill="#2758d8"/>
+    <text x="65" y="358" fill="#e8e8ea">Deep</text>
+    <rect x="184" y="349" width="10" height="10" rx="3" fill="#5aa2ff"/>
+    <text x="203" y="358" fill="#e8e8ea">Light</text>
+    <rect x="322" y="349" width="10" height="10" rx="3" fill="#f5a623"/>
+    <text x="341" y="358" fill="#e8e8ea">REM</text>
+    <text x="714" y="358" text-anchor="end">Illustrative stage segments</text>
+  </g>
+</svg>

@@ -100,11 +100,10 @@ restart the SleepRadar app.
   as occupancy or wake authority when an independent occupancy gate is active;
   the legacy no-gate labels remain backward-compatible.
 
-- Adds a privacy-safe regression fixture for an approximately 2.5-hour
-  ghost-vitals incident: 300 sleep-state updates across codes `4`/`5`/`3` and
-  301 heart-rate updates collapsing to 27 consecutive value runs, 17 distinct
-  values, and a 50-77 bpm range while independent occupancy stayed empty.
-  Absolute timestamps and entity IDs are omitted.
+- Covers ghost vitals in a synthetic regression fixture with authored readings for
+  codes `3`/`4`/`5`, changing values and repeated samples while independent
+  occupancy stays empty. It checks that plausible readings cannot bypass the
+  card's occupancy gate; it contains no recorded sensor data.
 
 - Adds an optional, fail-closed `bed_occupancy` gate to the SleepRadar Card so
   independent occupancy can hide ghost vitals without changing MQTT or
@@ -190,10 +189,9 @@ restart the SleepRadar app.
   Home Assistant pins an entity's id the first time it creates that entity
   and never renames it afterward — so upgrading past v1.1.0 (which added
   `default_entity_id` to pin new entities correctly) does not retroactively
-  fix entity ids for installs where the entities already existed. Found by
-  dogfooding the card on a live instance whose sensors predated that fix and
-  still don't match the card's `sensor.aqara_fp2_sleep_*` defaults; the card
-  now points users at Developer Tools > States and the `entities:` override
+  fix entity ids for installs where the entities already existed. When those
+  IDs differ from the card's `sensor.aqara_fp2_sleep_*` defaults, the card
+  points users at Developer Tools > States and the `entities:` override
   instead of implying the app itself is broken.
 
 ## 1.2.2

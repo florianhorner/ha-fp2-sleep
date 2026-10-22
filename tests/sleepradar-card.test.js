@@ -843,34 +843,33 @@ assertValuesHidden(
   "an inverted gate reporting empty must hide retained vitals"
 );
 
-// --- Ghost-vitals incident regression -------------------------------------
-// tests/fixtures/ghost-vitals-incident.json records ~150 min of continuously
-// empty occupancy while the FP2 kept reporting sleep codes 4/5/3 and moving
-// heart rates. The gated card must surface neither the stage label nor the
-// vitals for any code in that recorded sequence.
-const ghostVitalsIncident = JSON.parse(
+// --- Synthetic ghost-vitals regression ------------------------------------
+// Authored samples cover every indicative stage, changing vital values and a
+// repeated sample while independent occupancy stays empty. No sample may
+// surface a stage label or either vital, regardless of plausible readings.
+const ghostVitalsFixture = JSON.parse(
   fs.readFileSync(path.join(__dirname, "fixtures/ghost-vitals-incident.json"), "utf8")
 );
+assert.equal(ghostVitalsFixture.evidence_kind, "synthetic_regression");
 assert.equal(
-  ghostVitalsIncident.occupancy.continuous_state,
+  ghostVitalsFixture.occupancy.continuous_state,
   "empty",
-  "the incident fixture must describe a continuously empty bed"
+  "the constructed fixture must describe a continuously empty bed"
 );
-// The fixture is a sanitized aggregate and records no respiration figures, so
-// the breathing sentinel reuses the heart-rate range's other end. Both values
-// only ever feed "this must not appear anywhere in the render" assertions —
-// nothing here claims the FP2 reported them as a breathing rate.
-const incidentHeartRate = String(ghostVitalsIncident.heart_rate.maximum_bpm);
-const incidentBreathingSentinel = String(
-  ghostVitalsIncident.heart_rate.minimum_bpm
+assert.deepEqual(
+  [...new Set(ghostVitalsFixture.samples.map((sample) => sample.sleep_state))].sort(),
+  [3, 4, 5],
+  "the fixture must cover every indicative stage"
 );
-for (const incidentCode of ghostVitalsIncident.sleep_state.reported_codes) {
-  const incidentCard = render(
+for (const sample of ghostVitalsFixture.samples) {
+  const syntheticHeartRate = String(sample.heart_rate_bpm);
+  const syntheticBreathingRate = String(sample.respiration_rate_per_minute);
+  const syntheticCard = render(
     withOccupancy(
       defaultStates({
-        sleepState: String(incidentCode),
-        heartRate: incidentHeartRate,
-        respirationRate: incidentBreathingSentinel,
+        sleepState: String(sample.sleep_state),
+        heartRate: syntheticHeartRate,
+        respirationRate: syntheticBreathingRate,
         updated: "2026-07-03T08:00:00.000Z",
       }),
       "Leer"
@@ -878,26 +877,26 @@ for (const incidentCode of ghostVitalsIncident.sleep_state.reported_codes) {
     occupancyConfig
   );
   assert.match(
-    incidentCard,
+    syntheticCard,
     /Out of bed/,
-    `incident code ${incidentCode} must still read as out of bed`
+    `synthetic code ${sample.sleep_state} must still read as out of bed`
   );
   for (const stageLabel of ["REM", "Light sleep", "Deep sleep"]) {
     assert.doesNotMatch(
-      incidentCard,
+      syntheticCard,
       new RegExp(stageLabel),
-      `incident code ${incidentCode} must not leak the stage label ${stageLabel}`
+      `synthetic code ${sample.sleep_state} must hide the stage label ${stageLabel}`
     );
   }
   assert.equal(
-    (incidentCard.match(/<div class="sr-stat-value">—/g) || []).length,
+    (syntheticCard.match(/<div class="sr-stat-value">—/g) || []).length,
     2,
-    `incident code ${incidentCode} must render dashes for both vitals`
+    `synthetic code ${sample.sleep_state} must render dashes for both vitals`
   );
   assertValuesHidden(
-    incidentCard,
-    [incidentHeartRate, incidentBreathingSentinel],
-    `incident code ${incidentCode} must hide ghost vitals`
+    syntheticCard,
+    [syntheticHeartRate, syntheticBreathingRate],
+    `synthetic code ${sample.sleep_state} must hide ghost vitals`
   );
 }
 

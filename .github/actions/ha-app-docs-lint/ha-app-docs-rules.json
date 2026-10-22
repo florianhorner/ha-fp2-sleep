@@ -7,7 +7,7 @@
     "include": ["README.md", "docs/"],
     "exclude_basenames_prefix": ["CHANGELOG"],
     "markdown_aware": true,
-    "markdown_aware_rationale": "Match rendered prose, not raw markdown source. Skip fenced/inline code and markdown link/image URL targets so badge URLs and code blocks never false-positive. Measured: naive substring matching = ~45% false-positive on real repos; markdown-aware = ~0%."
+    "markdown_aware_rationale": "Match prose while skipping fenced and inline code and Markdown link/image URL targets. This keeps literal examples and URL targets outside the prose terminology checks."
   },
   "banned_phrases": [
     {

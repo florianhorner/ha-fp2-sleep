@@ -33,14 +33,14 @@ five MQTT entities you can see, automate, and build on.
 
 ## What It Looks Like
 
-**Now, live — the SleepRadar card, installed as-is:**
+**Live readings and empty-bed behavior, illustrated using the previous card layout:**
 
 <p align="center">
   <img src="assets/feature-gifs/sleepradar-live-now-card.gif" alt="Animated SleepRadar card showing current stage, heart rate, and breathing" width="360">
 </p>
 
-This is the SleepRadar Card (`card/sleepradar-card.js`). It ships with the
-repo, reads three of the five sensors (sleep stage, heart rate, breathing),
+The bundled SleepRadar Card (`card/sleepradar-card.js`) reads three of the
+five sensors (sleep stage, heart rate, breathing),
 and needs no other cards or plugins. See [The SleepRadar Card](#the-sleepradar-card).
 
 Heart rate and breathing are **sensor-reported measurements**. Here,
@@ -319,7 +319,7 @@ sensor-reported data. A few starting points (see `examples/automations.yaml`):
 
 **A preview of what's coming, not a current feature:**
 
-![Planned: last-night summary with sleep duration, averaged vitals, and stage timeline](assets/last-night.png)
+![Planned dashboard preview. Heart rate, breathing rate and indicative sleep stages. Synthetic illustration.](assets/last-night.png)
 
 Today, `examples/dashboard-sleep.yaml` gives you a live "Now" card plus a
 "Last night" view that charts sleep stage, heart rate, and breathing over the
@@ -359,15 +359,13 @@ The optional `bed_occupancy` gate keeps those values out of the live card; the
 raw entities and their history remain unchanged.
 
 Sleep stage scoring is the device's best estimate, and it can be confidently
-wrong. A [sanitized incident fixture](tests/fixtures/ghost-vitals-incident.json)
-captures an approximately 2.5-hour window where an independent occupancy
-sensor stayed empty while `sleep_state` reported codes `4`, `5`, and `3` across
-300 update events. In the same window, `heart_rate` produced 301 update events:
-27 consecutive value runs (26 transitions after the initial sample), 17
-distinct values, and a 50–77 bpm range. The source uses `force_update`, so
-Recorder can store repeated events even when the sensor-reported value does not
-change. The fixture removes entity IDs and absolute timestamps. Nothing in the
-add-on can infer true occupancy from those plausible-looking FP2 values alone.
+wrong. A [synthetic regression fixture](tests/fixtures/ghost-vitals-incident.json)
+uses authored test values, not recorded sensor data: independent occupancy
+stays empty while codes `3`, `4`, and `5` accompany changing and repeated vital
+values. The card tests require every sample to hide stages and vitals. The
+source uses `force_update`, so Recorder can store repeated events even when a
+sensor-reported value does not change. Plausible-looking FP2 values alone do
+not establish true occupancy.
 
 So treat stages as indicative, and use `bed_occupancy` with an **independent**
 occupancy signal (a bed sensor, a pressure mat, a separate presence zone) as

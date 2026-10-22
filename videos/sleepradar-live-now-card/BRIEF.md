@@ -23,7 +23,7 @@ truth:
   # build-breaking act. Each range below is the narrowest span that carries the
   # claim it supports.
   source_refs:
-    - "README.md:33-52"
+    - "README.md:37-52"
     - "README.md:176-220"
     - "card/sleepradar-card.js:25-46"
     - "card/sleepradar-card.js:217-224"
@@ -111,6 +111,9 @@ committed evidence. The latest release remains `v1.2.1`, published 2026-07-03
   implication.
 
 ## Delivery boundary
+
+The unchanged, hand-authored clip illustrates the previous card layout; it is
+not a render of the current custom element.
 
 Inter Variable and GSAP 3.14.2 remain pinned as local project assets. This
 truth-source refresh does not alter or rerender the approved binary, refresh

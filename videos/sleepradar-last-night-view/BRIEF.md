@@ -21,13 +21,13 @@ truth:
     - "examples/README.md:37-43"
     - "examples/dashboard-sleep.yaml:13-88"
     - "examples/dashboard-sleep.yaml:90-155"
-  checked_at: "2026-10-19"
+  checked_at: "2026-10-22"
   baseline_commit: "bf3cf1b6012609d71244de953a429223a1f51b95"
   release_tag: "unreleased"
   qualifiers:
     - "This is an optional dashboard example that requires one night of Recorder history."
     - "Heart rate and breathing are sensor-reported measurements; measured names the signal category, not independent validation or clinical accuracy."
-    - "The historical delivery illustrates dashboard layout, not plotted or invented telemetry; its extra Awake label is not part of the canonical stage configuration."
+    - "The composition shows configured structure, not plotted or invented telemetry."
   visible_required:
     - "SleepRadar"
     - "Last night."
@@ -41,6 +41,7 @@ truth:
     - "Aqara estimate"
     - "measured"
   visible_forbidden:
+    - "Awake"
     - "session duration"
     - "average"
     - "summary"
@@ -56,12 +57,8 @@ inventing overnight telemetry. The frame-zero hook is:
 > Last night.<br>
 > Three histories. One view.
 
-Three collapsed, labelled rails expand into the optional dashboard layout.
-The configured example uses REM, Light and Deep; the historical GIF and MP4
-retain an extra Awake label. These delivery files remain unchanged and do not
-establish stage-label parity with the configured example.
-
-No graph trace, readout, cursor, or personal
+Three collapsed, labelled rails expand into the exact topology configured in
+the optional dashboard example. No graph trace, readout, cursor, or personal
 value appears. The visible footer keeps the Recorder requirement and
 sensor-reported-measurement-versus-estimate distinction attached. The approved
 visible word “measured” names the signal category and is not an accuracy claim.
@@ -74,17 +71,18 @@ dashboard exists on the current repository baseline but remains in the
 Unreleased changelog section, so the clip does not attribute it to `v1.2.1`.
 
 The dashboard configuration and examples documentation were rechecked on
-2026-10-19. Their cited evidence matches the pinned main-branch baseline and
+2026-10-22. Their cited evidence matches the pinned main-branch baseline and
 supports the optional previous-night history view and Recorder prerequisite.
-The composition and approved delivery binaries are unchanged; this
-source-reference update does not claim new binary verification.
+The stage panel shows only REM, Light, and Deep, matching the configured
+indicative labels. Codes 0–2 become gaps in the dashboard; the clip does not
+assign them a stage label.
 
 ## Beat sheet
 
 | Time | Beat |
 | --- | --- |
 | 0.00–0.80s | Hold the static brand lockup, hook, compact dashboard outline, and three collapsed labelled rails. |
-| 0.80–1.45s | Expand Sleep state with Awake, REM, Light, Deep and its estimate qualifier. |
+| 0.80–1.45s | Expand Sleep state with REM, Light, Deep and its estimate qualifier. |
 | 1.45–2.10s | Expand Heart rate with the configured bpm unit and measured label. |
 | 2.10–2.75s | Expand Breathing with the configured br/min unit and measured label. |
 | 2.75–3.00s | Reveal the previous-night window and Recorder requirement. |

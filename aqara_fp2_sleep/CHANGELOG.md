@@ -73,11 +73,10 @@ restart the SleepRadar app.
   longer assert out-of-bed or awake state. No-gate behavior keeps its legacy
   labels for compatibility.
 
-- Adds a sanitized regression fixture for approximately 2.5 hours with 300
-  sleep-state updates across codes `4`/`5`/`3` and 301 sensor-reported
-  heart-rate updates collapsing to 27 consecutive value runs, 17 distinct
-  values, and a 50-77 bpm range while independent occupancy stayed empty. The
-  fixture contains aggregate evidence, not entity IDs or absolute timestamps.
+- Covers ghost vitals in a synthetic regression fixture with authored readings for
+  codes `3`/`4`/`5`, changing values and repeated samples while independent
+  occupancy stays empty. It checks that plausible readings cannot bypass the
+  card's occupancy gate; it contains no recorded sensor data.
 
 - Adds an optional, fail-closed `bed_occupancy` gate to the SleepRadar Card.
   It hides live vitals when independent occupancy is empty or uncertain while

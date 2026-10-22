@@ -1,15 +1,14 @@
 # SleepRadar GIF Batch Playbook
 
-Status: pilot approved on 2026-07-17. This playbook governs GIFs 2–5.
-Execution status and sequencing live in `GIF-BATCH-PLAN.md`.
+This guide describes the reproduction constraints for GIFs 2–5. The episode
+map and historical source pins are in `GIF-BATCH-PLAN.md`.
 
-This is a batch-specific historical record. For new work, the normative video
+This is a batch-specific production guide. For new work, the normative video
 profile is `frame.md` and the evergreen procedure is
 `GIF-PRODUCTION-PLAYBOOK.md`.
 
-The goal is one complete internal production and verification pass, followed by
-one focused user decision. Do not use the user review to discover claim drift,
-generic hooks, stale renders, missing proof, or undefined delivery criteria.
+Validate claims, composition, delivered binaries and loop continuity before
+requesting review. Keep generated proof outside the tracked source tree.
 
 ## 1. Lock product truth before writing the hook
 
@@ -79,8 +78,8 @@ generic hooks, stale renders, missing proof, or undefined delivery criteria.
 6. Record the loop metric, metric name, threshold, observed value, and result.
 7. Write a per-GIF `VERIFICATION.md` containing those facts and the exact scope
    of changed versus unchanged dimensions.
-8. Serve renders and proof over the workspace's `CONDUCTOR_PORT`; verify every
-   `http://localhost:<port>/...` link returns HTTP 200 before sending it.
+8. For browser review, serve renders and proof locally and verify the links
+   resolve. Keep a durable verification file alongside the generated evidence.
 
 ## 5. Make the review handoff decision-ready
 
@@ -93,10 +92,8 @@ generic hooks, stale renders, missing proof, or undefined delivery criteria.
 - State exactly what changed and which pacing, color, type, motion, and product
   semantics stayed locked from the approved pilot.
 - Point the reviewer at the one real uncertainty, not a generic checklist.
-- End with one explicit response: `GO` or a named redo dimension such as
-  `HOOK`, `READABILITY`, `ACCURACY`, or `LOOP`.
-- Keep global policy changes out of the video-review handoff. Propose any such
-  policy change separately with its exact intended diff.
+- Identify any remaining claim, readability, accuracy or loop issue with the
+  exact frame and delivery-binary hash.
 
 ## 6. Product constraints for GIFs 2–5
 
