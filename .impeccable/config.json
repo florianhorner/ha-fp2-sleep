@@ -1,0 +1,28 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "files": [
+          "videos/sleepradar-last-night-view/compositions/index.html",
+          "videos/sleepradar-last-night-view/index.html"
+        ],
+        "createdAt": "2026-10-22T12:44:31.448Z",
+        "reason": "videos/frame.md specifies Inter for these clips; videos/GIF-STYLE-GUIDE.md preserves that typography."
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "videos/sleepradar-last-night-view/compositions/index.html",
+          "videos/sleepradar-last-night-view/index.html"
+        ],
+        "createdAt": "2026-10-22T12:44:31.629Z",
+        "reason": "The .stages grid intentionally uses adjoining cell borders. Its 58px cells and place-items:center keep labels inset."
+      }
+    ]
+  }
+}

@@ -60,8 +60,12 @@ python3 -m pip install -r requirements-ci.txt
 Conductor's `setup` script tries `python3.12`, `python3.13`, `python3.11`,
 `python3.14`, then bare `python3`, so a machine that exposes a modern
 interpreter under no other name still bootstraps. It checks every candidate's
-version before creating the venv. If none provides Python 3.11+ with `venv`
-support, setup fails before dependency installation with an actionable error.
+version, recreates `.venv` with `--clear`, and verifies that `.venv/bin/python`
+can load pip on Python 3.11+ before installing dependencies. This prevents a
+failed attempt from leaving stale Python links for the next candidate. Rerunning
+setup replaces the workspace venv, including any extra packages installed there.
+If none provides a working venv, setup fails before dependency installation
+with an actionable error.
 
 If an existing venv still exits with the validator's version error, delete
 `.venv` and recreate it with a 3.11+ interpreter.

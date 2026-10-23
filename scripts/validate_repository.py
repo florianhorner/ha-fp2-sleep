@@ -35,6 +35,13 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# Shared configuration in these directories remains versioned and scanned.
+# Reject these exact local-only files even if force-added despite .gitignore.
+LOCAL_ONLY_FILES = frozenset({
+    ".conductor/settings.local.toml",
+    ".impeccable/hook.cache.json",
+})
+
 LEGACY_UNGATED_PHASES = {
     0: "Out of bed",
     1: "Awake",
@@ -307,6 +314,7 @@ TEXT_SUFFIXES = {
     ".yml",
     ".txt",
     ".json",
+    ".toml",
     ".js",
     ".html",
     ".svg",
@@ -1058,6 +1066,9 @@ def validate_tracked_paths(paths=None) -> None:
         path = PurePosixPath(rel)
         parts = path.parts
 
+        if rel in LOCAL_ONLY_FILES:
+            violations.append(f"{rel}: local tool state must not be tracked")
+
         if path.name == ".DS_Store":
             violations.append(f"{rel}: .DS_Store must not be tracked")
 
@@ -1120,6 +1131,10 @@ def validate_tracked_paths(paths=None) -> None:
 
 def iter_text_files():
     for path in ROOT.rglob("*"):
+        # validate_tracked_paths runs first and rejects any tracked copy.
+        # Local overrides/caches are not authored publication inputs.
+        if path.relative_to(ROOT).as_posix() in LOCAL_ONLY_FILES:
+            continue
         if any(part in SKIP_DIRS for part in path.parts):
             continue
         if not path.is_file():
@@ -3222,6 +3237,19 @@ def run_self_test() -> None:
         "tracked published pair",
         lambda: validate_tracked_paths(published_paths),
     )
+    expect_pass(
+        "shared tool configuration stays eligible",
+        lambda: validate_tracked_paths([
+            ".config/commit-rules.json", ".conductor/settings.toml",
+            ".impeccable/config.json",
+        ]),
+    )
+    for local_path in (".conductor/settings.local.toml", ".impeccable/hook.cache.json"):
+        expect_fail_matching(
+            f"tracked local tool state: {local_path}",
+            lambda path=local_path: validate_tracked_paths([path]),
+            "local tool state must not be tracked",
+        )
     expect_pass(
         "privacy scan covers authored markup",
         lambda: (

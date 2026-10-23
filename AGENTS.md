@@ -1,5 +1,15 @@
 # Repository Instructions
 
+## Shared configuration and local state
+
+- Keep shared `.config/` tooling, `.conductor/settings.toml`, and intentional
+  `.impeccable/config.json` design-lint exceptions in version control.
+- Keep `.conductor/settings.local.toml` and `.impeccable/hook.cache.json` local.
+  Do not commit machine overrides, session identifiers, or generated hook state.
+- Use narrow ignore rules rather than excluding whole configuration directories.
+  When adding a local-only tool file, update the ignore rules, the validator's
+  local-only path guard, and its regression coverage together.
+
 ## SleepRadar release notes
 
 - Before drafting release notes, read `DESIGN.md`, the preceding published
