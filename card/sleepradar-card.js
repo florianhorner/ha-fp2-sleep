@@ -175,49 +175,8 @@ function describeFooter(code, isFresh, isStale, occupancyConfirmed) {
       "for compatibility and does not establish occupancy or wakefulness."
     );
   }
-  return (
-    "Heart rate and breathing are sensor-reported measurements. " +
-    "Sleep stage is the device's best guess."
-  );
-}
-
-function describeNow(
-  phase,
-  code,
-  hr,
-  br,
-  canShowLiveVitals,
-  isFresh,
-  isStale,
-  occupancyConfirmed
-) {
-  if (isStale) {
-    return `${phase}. Status is stale, so vitals are not shown as live.`;
-  }
-  if (!isFresh) {
-    return `${phase}. Waiting for a fresh status timestamp before showing live vitals.`;
-  }
-  if (code === 0) {
-    if (occupancyConfirmed) {
-      return "In bed. SleepRadar is not reporting a usable stage or live vitals.";
-    }
-    return "Out of bed. Heart rate and breathing are not currently measured.";
-  }
-  if (!isInBedCode(code)) {
-    return "SleepRadar cannot map this sleep state yet.";
-  }
-  const haveVitals = canShowLiveVitals && hr !== null && br !== null;
-  if (code === 1 || code === 2) {
-    if (occupancyConfirmed) {
-      return haveVitals
-        ? `In bed — stage unknown; heart ${hr} bpm, breathing ${br} br/min.`
-        : "In bed — stage unknown.";
-    }
-    return haveVitals
-      ? `Awake in bed — heart ${hr} bpm, breathing ${br} br/min.`
-      : "Awake in bed.";
-  }
-  return haveVitals ? `${phase} — heart ${hr} bpm, breathing ${br} br/min.` : `${phase}.`;
+  // The phase caption already qualifies the stage estimate.
+  return "Sensor-reported vitals";
 }
 
 function displayPhase(code, occupancyConfirmed) {
@@ -387,7 +346,9 @@ class SleepradarCard extends HTMLElement {
       : null;
 
     // Cheap re-render guard: skip DOM work if nothing relevant changed.
+    const darkMode = this._hass.themes && this._hass.themes.darkMode;
     const signatureValues = [
+      typeof darkMode === "boolean" ? darkMode : null,
       stateObj && [stateObj.state, stateObj.last_updated],
       hrObj && [hrObj.state, hrObj.last_updated],
       brObj && [brObj.state, brObj.last_updated],
@@ -476,18 +437,9 @@ class SleepradarCard extends HTMLElement {
 
     const freshness = describeFreshness(ageMs, isStale);
     const time = formatTime(stateObj.last_updated);
-    const readout = describeNow(
-      phase,
-      code,
-      hr,
-      br,
-      canShowLiveVitals,
-      isFresh,
-      isStale,
-      occupancyConfirmed
-    );
-    const badge = isStale ? "stale" : code === 0 ? "not measuring" : "";
-    const badgeClass = badge === "not measuring" ? " sr-badge-neutral" : "";
+    // Freshness already names stale data; reserve the extra badge for a
+    // distinct state instead of repeating the same warning twice.
+    const badge = !isStale && code === 0 ? "not measuring" : "";
     const phaseCaption =
       !isFresh
         ? "last reported"
@@ -502,58 +454,16 @@ class SleepradarCard extends HTMLElement {
             : "unmapped code";
     const footer = describeFooter(code, isFresh, isStale, occupancyConfirmed);
 
-    this.shadowRoot.innerHTML = this._styles() + `
-      <ha-card>
-        <div class="sr-card">
-          <div class="sr-header">
-            <div class="sr-header-left">
-              <div class="sr-eyebrow">CURRENT STATUS · ${escapeHtml(freshness)}${
-                time ? ` · ${escapeHtml(time)}` : ""
-              }</div>
-              <div class="sr-phase">${escapeHtml(phase)}
-                <span class="sr-caption">${escapeHtml(phaseCaption)}</span>
-              </div>
-            </div>
-            ${badge ? `<div class="sr-badge${badgeClass}">${badge}</div>` : ""}
-          </div>
-          <div class="sr-readout">${escapeHtml(readout)}</div>
-          <div class="sr-stats">
-            <div class="sr-stat">
-              <div class="sr-stat-label">Heart rate</div>
-              <div class="sr-stat-value">${shownHr !== null ? escapeHtml(shownHr) : "—"}
-                <span class="sr-unit">bpm</span>
-              </div>
-              <div class="sr-stat-status">${escapeHtml(
-                describeVitalStatus(
-                  code,
-                  isFresh,
-                  isStale,
-                  shownHr,
-                  occupancyConfirmed
-                )
-              )}</div>
-            </div>
-            <div class="sr-stat">
-              <div class="sr-stat-label">Breathing</div>
-              <div class="sr-stat-value">${shownBr !== null ? escapeHtml(shownBr) : "—"}
-                <span class="sr-unit">br/min</span>
-              </div>
-              <div class="sr-stat-status">${escapeHtml(
-                describeVitalStatus(
-                  code,
-                  isFresh,
-                  isStale,
-                  shownBr,
-                  occupancyConfirmed
-                )
-              )}</div>
-            </div>
-          </div>
-          <div class="sr-footer">
-            ${escapeHtml(footer)}
-          </div>
-        </div>
-      </ha-card>`;
+    // Presentation reuses the parsed code and existing freshness decision.
+    // Occupancy-blocked paths returned above and can never reach this accent.
+    const phaseKind = isFresh ? ({ 3: "rem", 4: "light", 5: "deep" }[code] || "unknown") : "unknown";
+    this._renderReadout({
+      phase, phaseCaption, phaseKind, freshness, time, badge, footer,
+      heartRate: shownHr,
+      breathing: shownBr,
+      heartStatus: describeVitalStatus(code, isFresh, isStale, shownHr, occupancyConfirmed),
+      breathingStatus: describeVitalStatus(code, isFresh, isStale, shownBr, occupancyConfirmed),
+    });
   }
 
   // The app's own explanation for why data stopped, when it published one.
@@ -608,9 +518,6 @@ class SleepradarCard extends HTMLElement {
     const health = sleepHealth || { status: "ok", note: "" };
     const phase = isUnknown ? "Occupancy unknown" : "Out of bed";
     const phaseCaption = isUnknown ? "occupancy unavailable" : "bed empty";
-    const readout = isUnknown
-      ? "Occupancy unknown. Heart rate and breathing are not shown."
-      : "Out of bed. Heart rate and breathing are not currently measured.";
     const vitalStatus = isUnknown ? "Occupancy unknown" : "Paused out of bed";
     const baseFooter = isUnknown
       ? "Heart rate and breathing are hidden because the independent bed-occupancy state is unavailable."
@@ -632,87 +539,155 @@ class SleepradarCard extends HTMLElement {
         : health.status === "missing"
           ? "no sensor data"
           : "not measuring";
-    const badgeClass = badge === "not measuring" ? " sr-badge-neutral" : "";
+    this._renderReadout({
+      phase, phaseCaption, time, badge, footer,
+      heartRate: null,
+      breathing: null,
+      heartStatus: vitalStatus,
+      breathingStatus: vitalStatus,
+    });
+  }
 
+  _renderReadout({
+    phase, phaseCaption, phaseKind = "unknown", freshness = "", time,
+    badge, footer, heartRate, breathing, heartStatus, breathingStatus,
+  }) {
+    const metrics = [
+      { label: "Heart rate", value: heartRate, unit: "bpm", status: heartStatus },
+      { label: "Breathing", value: breathing, unit: "br/min", status: breathingStatus },
+    ];
+    const badgeClass = badge === "not measuring" ? " sr-badge-neutral" : "";
     this.shadowRoot.innerHTML = this._styles() + `
       <ha-card>
-        <div class="sr-card">
+        <div class="sr-card" data-phase="${phaseKind}">
           <div class="sr-header">
             <div class="sr-header-left">
-              <div class="sr-eyebrow">CURRENT STATUS${
-                time ? ` · ${escapeHtml(time)}` : ""
-              }</div>
-              <div class="sr-phase">${escapeHtml(phase)}
-                <span class="sr-caption">${escapeHtml(phaseCaption)}</span>
-              </div>
+              <h3 class="sr-phase"><span class="sr-phase-mark" aria-hidden="true"></span>${escapeHtml(phase)}</h3>
+              <div class="sr-caption">${escapeHtml(phaseCaption)}</div>
             </div>
-            <div class="sr-badge${badgeClass}">${escapeHtml(badge)}</div>
-          </div>
-          <div class="sr-readout">${escapeHtml(readout)}</div>
-          <div class="sr-stats">
-            <div class="sr-stat">
-              <div class="sr-stat-label">Heart rate</div>
-              <div class="sr-stat-value">—
-                <span class="sr-unit">bpm</span>
-              </div>
-              <div class="sr-stat-status">${escapeHtml(vitalStatus)}</div>
-            </div>
-            <div class="sr-stat">
-              <div class="sr-stat-label">Breathing</div>
-              <div class="sr-stat-value">—
-                <span class="sr-unit">br/min</span>
-              </div>
-              <div class="sr-stat-status">${escapeHtml(vitalStatus)}</div>
+            <div class="sr-freshness">
+              ${freshness ? `<span>${escapeHtml(freshness)}</span>` : ""}
+              ${time ? `<time>${escapeHtml(time)}</time>` : ""}
+              ${badge ? `<span class="sr-badge${badgeClass}">${escapeHtml(badge)}</span>` : ""}
             </div>
           </div>
-          <div class="sr-footer">
-            ${escapeHtml(footer)}
+          <div class="sr-stats" role="group" aria-label="Sensor-reported vital readings">
+            ${metrics.map(({ label, value, unit, status }) => `
+              <div class="sr-stat">
+                <div class="sr-stat-label">${label}</div>
+                <div class="sr-stat-value">${value !== null ? escapeHtml(value) : "—"}
+                  <span class="sr-unit">${unit}</span>
+                </div>
+                ${status && status !== "Live now" ? `<div class="sr-stat-status">${escapeHtml(status)}</div>` : ""}
+              </div>`).join("")}
           </div>
+          <div class="sr-footer">${escapeHtml(footer)}</div>
         </div>
       </ha-card>`;
   }
 
   _styles() {
+    // HA's dashboard mode may differ from the operating-system preference.
+    // Missing theme metadata falls back to the inherited primary text color.
+    const mode = this._hass && this._hass.themes && this._hass.themes.darkMode;
+    const dark = mode === true;
+    const inks = typeof mode !== "boolean"
+      ? { deep: "var(--sr-text)", light: "var(--sr-text)", rem: "var(--sr-text)" }
+      : dark
+        ? { deep: "#9bb9ff", light: "#8ec4ff", rem: "#f4c773" }
+        : { deep: "#2758d8", light: "#216dd8", rem: "#925600" };
     return `<style>
-      ha-card { padding: 16px; }
-      .sr-card { display: flex; flex-direction: column; gap: 12px; }
-      .sr-header { display: flex; justify-content: space-between; align-items: flex-start; }
-      .sr-eyebrow {
-        font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase;
-        color: var(--secondary-text-color);
+      :host {
+        display: block;
+        --sr-text: var(--primary-text-color, ${dark ? "#e8e8ea" : "#202936"});
+        --sr-muted: var(--secondary-text-color, ${dark ? "#abb2be" : "#4c596b"});
+        --sr-border: var(--divider-color, ${dark ? "#2b2d31" : "#dce1e8"});
+        --sr-blue: ${dark ? "#5aa2ff" : "#216dd8"};
+        --sr-heart: ${dark ? "#ff4d57" : "#bd3041"};
+        font-family: var(--paper-font-body1_-_font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+        letter-spacing: 0;
       }
+      ha-card {
+        padding: 0; overflow: hidden; border-radius: 8px;
+        color: var(--sr-text);
+        background: var(--ha-card-background, var(--card-background-color, ${dark ? "#1b1c1e" : "#ffffff"}));
+      }
+      .sr-card {
+        --sr-phase-ink: var(--sr-text); --sr-phase-rail: var(--sr-border);
+        display: flex; flex-direction: column;
+      }
+      .sr-card[data-phase="deep"] {
+        --sr-phase-ink: var(--sleepradar-deep-color, ${inks.deep});
+        --sr-phase-rail: #2758d8;
+      }
+      .sr-card[data-phase="light"] {
+        --sr-phase-ink: var(--sleepradar-light-color, ${inks.light});
+        --sr-phase-rail: var(--sr-blue);
+      }
+      .sr-card[data-phase="rem"] {
+        --sr-phase-ink: var(--sleepradar-rem-color, ${inks.rem});
+        --sr-phase-rail: #f5a623;
+      }
+      .sr-header {
+        display: flex; justify-content: space-between; align-items: flex-start;
+        flex-wrap: wrap; gap: 10px; padding: 15px 16px 12px;
+        border-top: 2px solid var(--sr-phase-rail);
+      }
+      .sr-header-left { min-width: 0; flex: 1 1 160px; }
       .sr-phase {
-        font-size: 1.4rem; font-weight: 600; color: var(--primary-text-color);
-        margin-top: 2px;
+        margin: 0; font-size: 1.375rem; font-weight: 600; line-height: 1.25;
+        color: var(--sr-phase-ink); overflow-wrap: anywhere;
+      }
+      .sr-phase-mark {
+        display: inline-block; width: 10px; height: 10px; box-sizing: border-box;
+        margin-inline-end: 9px; vertical-align: 2px; border-radius: 50%;
+        background: currentColor; border: 2px solid currentColor;
+      }
+      [data-phase="light"] .sr-phase-mark { background: transparent; }
+      [data-phase="rem"] .sr-phase-mark { border-radius: 1px; transform: rotate(45deg); }
+      [data-phase="unknown"] .sr-phase-mark {
+        height: 2px; border: 0; border-radius: 0; vertical-align: 6px;
       }
       .sr-caption {
-        font-size: 0.8rem; font-weight: 400; color: var(--secondary-text-color);
-        margin-left: 6px;
+        margin: 5px 0 0 19px; font-size: 0.8125rem; line-height: 1.4;
+        color: var(--sr-muted); overflow-wrap: anywhere;
       }
-      .sr-badge {
-        font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em;
-        color: var(--warning-color, #f0ad4e); border: 1px solid var(--warning-color, #f0ad4e);
-        border-radius: 4px; padding: 2px 6px; height: fit-content;
+      .sr-freshness {
+        display: flex; flex-direction: column; align-items: flex-end;
+        padding-top: 1px; font-size: 0.75rem; line-height: 1.5;
+        color: var(--sr-muted); font-variant-numeric: tabular-nums;
       }
-      .sr-badge-neutral {
-        color: var(--secondary-text-color);
-        border-color: var(--divider-color);
+      .sr-badge { font-weight: 600; }
+      .sr-badge-neutral { font-weight: 400; }
+      .sr-stats {
+        display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 16px; margin: 14px 16px 12px;
       }
-      .sr-readout { color: var(--primary-text-color); }
-      .sr-stats { display: flex; gap: 12px; }
-      .sr-stat {
-        flex: 1; border: 1px solid var(--divider-color); border-radius: 8px;
-        padding: 10px 12px;
+      .sr-stat { min-width: 0; }
+      .sr-stat + .sr-stat { padding-inline-start: 16px; border-inline-start: 1px solid var(--sr-border); }
+      .sr-stat-label {
+        display: flex; align-items: center; gap: 5px;
+        font-size: 0.8125rem; line-height: 1.4; color: var(--sr-muted);
       }
-      .sr-stat-label { font-size: 0.8rem; color: var(--secondary-text-color); }
-      .sr-stat-value { font-size: 1.4rem; font-weight: 600; color: var(--primary-text-color); }
-      .sr-unit { font-size: 0.85rem; font-weight: 400; color: var(--secondary-text-color); }
-      .sr-stat-status {
-        font-size: 0.75rem; color: var(--secondary-text-color); margin-top: 2px;
+      .sr-stat-label::before {
+        content: ""; width: 5px; height: 5px; border-radius: 50%;
+        flex: 0 0 auto; background: var(--sr-heart);
       }
-      .sr-footer { font-size: 0.75rem; color: var(--secondary-text-color); }
-      .sr-empty-title { font-weight: 600; color: var(--primary-text-color); margin-bottom: 6px; }
-      .sr-empty-body { font-size: 0.85rem; color: var(--secondary-text-color); }
+      .sr-stat + .sr-stat .sr-stat-label::before { background: var(--sr-blue); }
+      .sr-stat-value {
+        display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px;
+        margin-top: 5px; font-size: 2rem; font-weight: 600; line-height: 1.15;
+        font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+      }
+      .sr-unit { font-size: 0.8125rem; font-weight: 400; line-height: 1.4; color: var(--sr-muted); }
+      .sr-stat-status { margin-top: 5px; font-size: 0.75rem; line-height: 1.4; color: var(--sr-muted); }
+      .sr-footer {
+        margin-inline: 16px; padding: 8px 0 10px; border-top: 1px solid var(--sr-border);
+        font-size: 0.75rem; line-height: 1.4; color: var(--sr-muted); overflow-wrap: anywhere;
+      }
+      .sr-empty { padding: 16px; }
+      .sr-empty-title { font-weight: 600; margin-bottom: 6px; }
+      .sr-empty-body { font-size: 0.85rem; line-height: 1.5; overflow-wrap: anywhere; }
     </style>`;
   }
 }

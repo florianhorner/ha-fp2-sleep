@@ -7,8 +7,8 @@ Consumed as a GitHub Action (ha-app-docs-lint) or run directly.
 
 Markdown-aware: it matches rendered prose, not raw markdown source. Fenced code (by
 fence type), inline code, markdown link/image URL targets, link brackets, and HTML
-comments/tags are stripped before phrase matching, so badge URLs and code blocks never
-false-positive. CHANGELOG files are excluded (stale phrases live there as legitimate
+comments/tags are stripped before phrase matching. Literal examples and URL targets
+are outside these prose checks. CHANGELOG files are excluded (stale phrases live there as legitimate
 history). Profile checks (install badge, required section markers) are REPO-LEVEL: they
 consider all scanned docs together, and the install badge must be a My Home Assistant
 redirect link whose slug is on the known-good list — a code-fenced, commented-out, or

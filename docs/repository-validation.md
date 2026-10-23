@@ -16,7 +16,7 @@ The validator requires Python 3.11 or newer.
 | --- | --- | --- |
 | `python3 scripts/validate_repository.py` | Validate the current repository state. Stops at the first failure. | `SleepRadar package validation OK` |
 | `python3 scripts/validate_repository.py --self-test` | Exercise positive fixtures and deliberate mutations that prove validator guards still fail closed. Reports all failures together. | `SleepRadar validator self-test OK` |
-| `python3 tests/test_validate_repository_cli.py` | Test normal mode, self-test mode, help, invalid option handling, and ambient-env isolation. | `OK` (on stderr) |
+| `python3 tests/test_validate_repository_cli.py` | Test validator CLI behavior, ambient-env isolation, and Conductor setup fallback. | `OK` (on stderr) |
 | `python3 scripts/validate_repository.py --help` | Show the command-line interface without running validation. | Usage text |
 
 `--self-test` replaces normal repository validation; it does not include it.
@@ -120,15 +120,17 @@ per-job `permissions:` overrides. Treat a green validator run as evidence that
 the documented gates are present and correctly shaped, not as proof that every
 step executes or that a job holds no broader grant than intended. The open items
 are tracked in
-[TODOs](../TODOS.md#ci-workflow-validator-hardening-ship-review-2026-07-25). Separately, it requires Conductor to expose
+[TODOs](../TODOS.md#ci-workflow-validator-hardening). Separately, it requires Conductor to expose
 exactly one run command with the same gates in the same order. Unrecognized
 `scripts.run` shapes fail closed rather than being skipped, and a run entry
 carrying `args`, `options`, or `available_in` is rejected because those change
 what Conductor actually executes. Real TOML parsing prevents gate text in
 comments or unrelated strings from satisfying the Conductor check.
 
-Only `scripts.run` is validated; sibling `[scripts]` keys, including `setup`,
-are not. Extending the pin to them is tracked in
+The policy validator pins only `scripts.run`; sibling `[scripts]` keys,
+including `setup`, are not pinned. The CLI regression suite separately tests
+setup fallback behavior in isolated venvs without network access. Extending
+the policy pin to sibling keys is tracked in
 [TODOs](../TODOS.md#extend-step-validation-to-uses-steps-and-scriptssetup).
 
 Three human-facing mirrors are not parsed into the machine contract:
@@ -171,6 +173,12 @@ The repository uses several independent layers:
   authored text.
 - Prospective-path validation checks tracked files plus non-ignored new files.
   Generated `.gstack/` paths must never enter that surface.
+- Shared `.config/` tooling, `.conductor/settings.toml`, and intentional
+  `.impeccable/config.json` exceptions remain versioned and scanned. The exact
+  local-only paths `.conductor/settings.local.toml` and
+  `.impeccable/hook.cache.json` are ignored and excluded from authored-text
+  scanning. Prospective-path validation runs first and rejects either file if
+  force-added; ignoring them does not authorize tracking them.
 - Gitleaks keeps its default rules enabled. Repository-wide line-shape
   allowlists cover Aqara `appid` and `appkey` assignments plus constrained
   validator-test literals; these exceptions are not path-scoped. A separate
@@ -215,7 +223,7 @@ The poller behavior test replaces MQTT, Aqara, logging, and sleep dependencies;
 it makes no network call. Self-test coverage is intentionally separate from
 normal validation and does not claim a mutation for every normal-mode branch.
 Known lower-priority GIF-related gaps remain tracked in
-[TODOs](../TODOS.md#gif-pipeline-hardening-pre-ship-review-squad-2026-07-22).
+[TODOs](../TODOS.md#gif-pipeline-hardening).
 
 ## Troubleshooting
 
@@ -229,11 +237,12 @@ python3 --version
 
 Recreate an old venv with Python 3.11 or newer, then reinstall
 `requirements-ci.txt`. CI pins Python 3.12. The shared Conductor setup tries
-Python 3.12, 3.13, 3.11, then bare `python3` — the last fallback covers
-machines that expose a modern interpreter under no versioned name. An
-interpreter that is genuinely too old still creates the venv; the first
-validator gate in the run chain then fails here with this message, so a
-non-CI-equivalent venv never passes silently.
+Python 3.12, 3.13, 3.11, 3.14, then bare `python3` — the last fallback covers
+machines that expose a modern interpreter under no versioned name. Candidates
+older than 3.11 are skipped before creating a venv. Each attempt clears `.venv`
+so a failed attempt cannot leave stale interpreter links behind; setup accepts
+a candidate only when `.venv/bin/python` runs Python 3.11+ and imports pip.
+Rerunning setup replaces the workspace venv and reinstalls the CI requirements.
 
 ### A Conductor gate is missing, unexpected, or out of order
 

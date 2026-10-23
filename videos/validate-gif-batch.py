@@ -16,6 +16,8 @@ import sys
 import tempfile
 from typing import Any, Callable, Mapping, Sequence
 
+import yaml
+
 from quiet_proof_loops import (
     ContractError,
     ProjectSpec,
@@ -196,6 +198,44 @@ def _manifest_asset_references(html: str) -> set[str]:
     return references
 
 
+def dashboard_stage_errors(html: str, dashboard: str) -> list[str]:
+    """Keep the dashboard illustration aligned with its configured stage axis."""
+    configuration = yaml.safe_load(dashboard)
+    panels: list[dict[str, Any]] = []
+
+    def visit(value: Any) -> None:
+        if isinstance(value, dict):
+            if any(
+                isinstance(series, dict)
+                and series.get("entity") == "sensor.aqara_fp2_sleep_sleep_state"
+                for series in value.get("series", [])
+            ):
+                panels.append(value)
+            for nested in value.values():
+                visit(nested)
+        elif isinstance(value, list):
+            for nested in value:
+                visit(nested)
+
+    visit(configuration)
+    if len(panels) != 1:
+        return ["dashboard stage demonstration requires one canonical sleep-state panel"]
+    axis = panels[0].get("apex_config", {}).get("yaxis", {})
+    labels = re.findall(
+        r'\b([0-9]+)\s*:\s*"([^"\n]+) \(indicative\)"',
+        axis.get("labels", {}).get("formatter", ""),
+    )
+    expected = [label for code, label in labels if axis.get("min", 0) <= int(code) <= axis.get("max", -1)]
+    stages = re.search(r'<div\s+class="stages"\s*>(.*?)</div>', html, re.S)
+    actual = re.findall(r"<span>([^<]+)</span>", stages.group(1)) if stages else []
+    if not expected or actual != expected:
+        return [f"dashboard stage demonstration labels {actual!r} differ from configured indicative stages {expected!r}"]
+    block = _css_block(html, ".stages")
+    if block is None or not _css_property_matches(block, "grid-template-columns", f"repeat({len(expected)}, 1fr)"):
+        return ["dashboard stage demonstration must allocate one column per configured label"]
+    return []
+
+
 def _validate_html(
     project: ProjectSpec,
     html: str,
@@ -216,6 +256,13 @@ def _validate_html(
         return
     visible = _normalize_visible(parser.text)
     visible_folded = visible.casefold()
+
+    if project.project_id == "sleepradar-last-night-view":
+        try:
+            dashboard = (repository_root / "examples/dashboard-sleep.yaml").read_text(encoding="utf-8")
+            errors.extend(f"{prefix}:stages: {error}" for error in dashboard_stage_errors(html, dashboard))
+        except (OSError, ValueError, yaml.YAMLError) as exc:
+            errors.append(f"{prefix}:stages: cannot verify canonical dashboard: {exc}")
 
     language = brief["language"]
     if (
@@ -906,6 +953,20 @@ def check_published_registration(
 
 def self_test() -> None:
     """Run positive and mutation tests over the portable fixture."""
+
+    dashboard = (REPOSITORY_ROOT / "examples/dashboard-sleep.yaml").read_text(encoding="utf-8")
+    episode = (VIDEOS_ROOT / "sleepradar-last-night-view/index.html").read_text(encoding="utf-8")
+    if dashboard_stage_errors(episode, dashboard):
+        raise RuntimeError("dashboard stage demonstration rejects supported labels")
+    with_awake = episode.replace("<span>REM</span>", "<span>Awake</span><span>REM</span>")
+    if not dashboard_stage_errors(with_awake, dashboard):
+        raise RuntimeError("dashboard stage demonstration accepted an unsupported label")
+    changed_axis = dashboard.replace('5: "Deep (indicative)"', '5: "Different (indicative)"')
+    if not dashboard_stage_errors(episode, changed_axis):
+        raise RuntimeError("dashboard stage demonstration missed canonical label drift")
+    changed_columns = episode.replace("repeat(3, 1fr)", "repeat(4, 1fr)")
+    if not dashboard_stage_errors(changed_columns, dashboard):
+        raise RuntimeError("dashboard stage demonstration accepted an unsupported column")
 
     baseline_lines = ["heading", "evidence one", "evidence two", "footer"]
     moved_lines = ["new introduction", *baseline_lines]

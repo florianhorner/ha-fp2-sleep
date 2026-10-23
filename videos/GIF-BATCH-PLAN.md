@@ -1,136 +1,94 @@
-# SleepRadar GIF Batch Plan
+# SleepRadar GIF Batch Reference
 
-Updated: 2026-07-31
+This document maps GIFs 2–5 to their product claims and reproduction constraints.
+The pilot, “Same sensor. Now 5 sleep signals.”, supplies the shared visual and
+motion baseline. Each episode owns one feature, a GIF and an MP4 master.
 
-## Objective
+For new episodes, use `frame.md`, `GIF-STYLE-GUIDE.md` and
+`GIF-PRODUCTION-PLAYBOOK.md`. For this batch's additional constraints, use
+`GIF-BATCH-PLAYBOOK.md`. Episode briefs own current claim evidence; the
+historical pins below do not establish that a claim is current.
 
-Produce four additional 5–9 second vertical SleepRadar GIFs using the approved
-pilot as a locked design, motion, product-truth, verification, and handoff
-baseline. Deliver one feature per GIF, an optimized GIF plus MP4 master for
-each, and one consolidated review package.
+## Artifact map
 
-No product/API work, Home Assistant changes, publishing, commits, or deployment
-are included.
-
-This file is the historical execution record for GIFs 2–5. New episodes use
-the evergreen decision system in `frame.md`, `GIF-STYLE-GUIDE.md`, and
-`GIF-PRODUCTION-PLAYBOOK.md`; this record does not override those owners.
-
-## Status
-
-| Step | Status | Exit criterion |
+| Slot | Episode directory | Single claim |
 | --- | --- | --- |
-| Pilot: “Same sensor. Now 5 sleep signals.” | Complete — approved | User approved final GIF on 2026-07-17 |
-| Lock reusable batch system | Complete | `GIF-BATCH-PLAYBOOK.md` records visual, truth, budget, proof, and handoff rules |
-| Verify GIFs 2–5 against current product surface | Complete | All four `BRIEF.md` files cite `origin/main` at `a03399c6d72799a015c559ad0a72d4c1b6811ea3`, release `v1.2.1`, and supporting source |
-| Lock hooks and beat sheets | Complete | Four frame-zero-readable hooks and six-second shot plans are locked |
-| Author and render GIFs 2–5 | Complete | Four isolated HyperFrames `0.7.61` projects produced silent 30 fps MP4 masters and 15 fps GIFs |
-| Run final-binary QA | Complete | All artifacts pass source checks, strict composition checks, hashes, artifact-derived proof, hard budget, and loop thresholds |
-| Future render handoff | Gated | Requires a pinned source baseline and green source validation; it does not require rerendering unchanged approved binaries |
-| Refresh truth after occupancy-gate change | Complete — `5a02e00` | Claims and source references were rechecked on 2026-07-31; each managed episode pins implementation commit `5a02e00003a0d87c73ce38aa19df139baab20f42` |
+| 2 | `sleepradar-live-now-card/` | Three current readings form one honest Home Assistant readout |
+| 3 | `sleepradar-contact-free-vitals/` | Heart rate and breathing are sensor-reported measurement signals |
+| 4 | `sleepradar-honest-sleep-stages/` | Sleep stages remain visibly labelled as estimates |
+| 5 | `sleepradar-sleep-aware-lighting/` | A published state can drive a comfort automation |
 
-The 2026-07-31 work changes documentation and source-truth metadata only. It
-does not alter, rerender, republish, or claim fresh binary verification for an
-approved episode.
+Check each directory's `BRIEF.md` and `package.json` for its current source
+pin, claim and renderer version. Delivery pairs live in `assets/feature-gifs/`;
+`gif-batch-baseline-sha256.json` binds the tracked binary bytes.
 
-## Historical production gate record (2026-07-18)
+## Historical source pins
 
-- Repository baseline reconfirmed at `origin/main`
-  `a03399c6d72799a015c559ad0a72d4c1b6811ea3`, release `v1.2.1`.
-- Repository validator, validator self-test, card-state tests, batch validator,
-  and batch-validator self-test pass.
-- All four strict HyperFrames checks pass at `0`, `0.8`, `1.8`, `3.0`, `4.5`,
-  and `5.9s`, including transition samples and snapshots.
-- All GIFs are `720×1280`, 15 fps, 90 frames, six seconds, silent, and have
-  pixel-identical decoded endpoints.
-- All MP4 masters are H.264 `720×1280`, 30 fps, 180 frames, six seconds,
-  silent, and exceed endpoint SSIM `0.999000`.
-- GIFs 3–5 meet the `750 KiB` target. GIF 2 uses the allowed 64-color fallback
-  and is `932221` bytes: above the target but below the hard `1 MiB` ceiling.
-- Final-binary contact sheets and SHA-256 manifests are recorded in each
-  project's `renders/` directory and `VERIFICATION.md`.
+| Purpose | Source |
+| --- | --- |
+| Initial batch product baseline | `a03399c6d72799a015c559ad0a72d4c1b6811ea3`, release `v1.2.1` |
+| Occupancy-gate claim refresh | `5a02e00003a0d87c73ce38aa19df139baab20f42` (`5a02e00`) |
+| Initial batch renderer | HyperFrames `0.7.61` |
 
-## Locked baseline from the pilot
+A documentation-only evidence refresh does not prove a new delivery render.
+Recheck current claims against each brief's pinned implementation before
+rendering; preserve unchanged delivery binaries during unrelated migrations.
 
-- Vertical `720×1280`; 5–9 seconds; silent.
-- Reuse the approved palette, Inter typography, two-line hook hierarchy, card
-  geometry, calm motion, readable hold, and exact-return loop grammar.
+## Shared baseline
+
+- Vertical `720×1280`; six seconds within the historical `5–9s` range; silent.
+- Inter typography, a two-line hook hierarchy, restrained palette and card
+  geometry follow the pilot and the shared profile.
 - Hook visible at frame zero; motion begins by `0.8s`; payoff complete by
-  `3.0s`; payoff holds at least `1.5s`; exact opening state holds for the final
-  `0.10s`.
-- GIF target `≤750 KiB`, hard ceiling `1 MiB`; MP4 master at 30 fps.
-- GIF seam: first and last decoded frames pixel-identical.
-- MP4 seam: first/last decoded-frame SSIM `≥0.999000` plus visual confirmation.
-- Follow every truth, QA, proof, link, and handoff rule in
-  `GIF-BATCH-PLAYBOOK.md`.
+  `3.0s`; readable payoff holds at least `1.5s`; the exact opening state holds
+  for the final `0.10s`.
+- GIF: `15 fps`, 90 frames at six seconds, infinite loop. Working target
+  `≤750 KiB`; hard ceiling `1 MiB`. The historical Live Now delivery is
+  `932221` bytes using a 64-color fallback, above target and below ceiling;
+  this is not a target exception for a future render.
+- MP4: H.264, `30 fps`, 180 frames at six seconds, silent. No MP4 size ceiling
+  is defined; report actual bytes.
+- GIF first and last decoded frames must be pixel-identical. MP4 endpoint
+  SSIM must be `≥0.999000`, with a visual seam check.
+- Inspect source at `0`, `0.8`, `1.8`, `3.0`, `4.5` and `5.9s`, plus transition
+  samples. Inspect proof extracted from the final delivery binaries too.
 
-## Remaining GIFs
+## Episode constraints
 
 ### GIF 2 — Live Now card
 
-- **Single claim:** SleepRadar turns three current sensor readings into one
-  honest live Home Assistant readout.
-- **Must show:** sleep stage, heart rate, and breathing inside the real card
-  hierarchy.
-- **Must preserve:** unavailable, stale, and out-of-bed honesty.
-- **Configuration scope:** the approved empty-bed opening demonstrates the
-  legacy no-gate code-`0` label. The optional independent gate may override
-  that raw-code label and does not require rerendering this approved episode.
-- **Must not imply:** that body movement and illuminance are displayed in the
-  Live Now card, even though they remain published entities.
+Show sleep stage, heart rate and breathing in the real card hierarchy. Preserve
+unavailable, stale and out-of-bed behavior. The existing empty-bed opening uses
+the legacy no-gate code-`0` label; an optional independent gate can override
+that label. Body movement and illuminance remain published entities but are
+not displayed by this card.
 
 ### GIF 3 — Measured heart rate and breathing
 
-- **Single claim:** heart rate and breathing are sensor-reported measurement
-  signals exposed to Home Assistant without a wearable.
-- **Must show:** both values with the approved visible `measured` category and
-  restrained, non-medical language.
-- **Must not imply:** independent validation, clinical accuracy, diagnosis,
-  continuous readings while the bed is empty, or invented personal telemetry.
+Show both values with the visible `measured` category. That word identifies
+sensor-reported signals; it does not establish independent validation,
+clinical accuracy or diagnosis. Do not imply continuous readings while the
+bed is empty or depict personal telemetry.
 
-### GIF 4 — Honestly labelled sleep-stage estimates
+### GIF 4 — Sleep-stage estimates
 
-- **Single claim:** SleepRadar exposes sleep stages while clearly identifying
-  them as the sensor's estimate.
-- **Must show:** the estimate/best-guess qualifier on-screen as part of the
-  payoff, not only in supporting copy.
-- **Must not imply:** measured stage truth, medical precision, or an unshipped
-  session-summary feature.
+Keep the estimate or best-guess qualifier visible in the payoff. Do not imply
+measured stage truth, medical precision or an unshipped session summary.
 
-### GIF 5 — Sleep-aware Home Assistant automations
+### GIF 5 — Sleep-aware automations
 
-- **Single claim:** a SleepRadar state can drive a shipped, supportable comfort
-  automation in Home Assistant.
-- **Must show:** one simple input → automation → home response chain.
-- **Must not imply:** safety-critical behavior, medical monitoring, or support
-  for an automation that is not present in current examples/product docs.
+Show one supported input → automation → home response chain from current
+examples. Describe comfort or convenience, never safety-critical behavior or
+medical monitoring.
 
-## Execution sequence
+## Reproduction checks
 
-1. Refresh `origin/main` and latest release truth once, then record any shared
-   product-surface facts used across the batch.
-2. Create a `BRIEF.md` and time-coded beat sheet for each GIF. Lock all four
-   hooks before composition work begins.
-3. Author GIFs 2–5 independently against the same approved tokens and timing
-   contract. Do not redesign the shared system per GIF.
-4. Run composition checks and visual inspection before any delivery render.
-5. Render each MP4 master, derive each optimized GIF, and run final-binary QA.
-6. Generate one artifact-derived proof sheet and `VERIFICATION.md` per GIF.
-7. Serve every render and proof asset on the allocated Conductor localhost
-   port; verify HTTP 200 responses.
-8. Present one consolidated review with four rows: claim, GIF, MP4, proof,
-   specs/budget, highest uncertainty, and decision.
-9. Accept only `GO ALL` or targeted feedback in the form
-   `REDO <GIF number> <HOOK|READABILITY|ACCURACY|LOOP>`; keep approved GIFs
-   untouched while revising the named one.
-
-## Batch completion criteria
-
-- All four concepts are visually distinct but unmistakably one family.
-- Every marketed fact is current and evidenced.
-- Every GIF meets the size ceiling and exact-loop requirement.
-- Every MP4 meets the SSIM threshold and visual seam check.
-- Every handoff link resolves and every checksum is explicitly labelled
-  SHA-256.
-- No product, API, Home Assistant, global-policy, publishing, or deployment
-  changes occurred.
+1. Verify the claim against the current implementation and released behavior;
+   update the episode's source pin deliberately when evidence changes.
+2. Preserve shared tokens and timing while keeping the episode's feature
+   distinct. Run composition checks before rendering.
+3. Render the selected MP4, derive its GIF and inspect artifact-derived proof.
+   Record dimensions, rates, counts, duration, silence, bytes, SHA-256 digests
+   and endpoint metrics in the generated verification file.
+4. Check the delivery baseline digest diff. Do not rerender sibling episodes
+   merely to validate a source-contract change.

@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SleepRadar compact card preview</title>
+<style>
+  :root { color-scheme: dark; font: 16px/1.5 system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; background: #101112; color: #e8e8ea; }
+  main { max-width: 760px; margin: auto; }
+  h1 { font-size: 1.25rem; font-weight: 600; margin: 0 0 4px; }
+  p { color: #abb2be; margin: 0 0 20px; font-size: 0.875rem; }
+  .controls { display: flex; flex-wrap: wrap; align-items: end; gap: 12px 20px; margin-block: 20px; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 0.875rem; }
+  label.check { flex-direction: row; align-items: center; min-height: 44px; }
+  select { font: inherit; min-height: 44px; max-width: 100%; padding: 6px 10px; }
+  input { accent-color: #5aa2ff; }
+  .stage { display: flex; justify-content: center; padding-block: 20px; }
+  #card-container {
+    width: 100%; max-width: 440px;
+    --primary-text-color: #e8e8ea; --secondary-text-color: #abb2be;
+    --card-background-color: #1b1c1e; --divider-color: #2b2d31;
+  }
+  #card-container[data-theme="light"] {
+    --primary-text-color: #202936; --secondary-text-color: #4c596b;
+    --card-background-color: #ffffff; --divider-color: #dce1e8;
+    color-scheme: light;
+  }
+  #card-container[data-narrow="true"] { max-width: 320px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  @media (max-width: 400px) { body { padding: 12px; } }
+</style>
+<main>
+  <h1>SleepRadar compact card</h1>
+  <p>Interactive preview · synthetic readings · actual card code</p>
+  <div class="controls">
+    <label for="scenario">Sample state
+      <select id="scenario">
+        <option value="deep">Deep sleep</option>
+        <option value="light">Light sleep</option>
+        <option value="rem">REM</option>
+        <option value="out">Out of bed</option>
+        <option value="occupancy-unknown">Occupancy unknown</option>
+        <option value="stage-unknown">In bed · stage unknown</option>
+        <option value="not-measuring">In bed · not measuring</option>
+        <option value="missing-heart">Heart rate missing</option>
+        <option value="missing-breathing">Breathing missing</option>
+        <option value="stale">Stale data</option>
+        <option value="invalid-time">Freshness unknown</option>
+        <option value="unmapped">Unmapped sleep code</option>
+        <option value="missing">Missing sleep sensor</option>
+        <option value="offline">Connection problem</option>
+        <option value="empty-offline">Empty bed · connection problem</option>
+      </select>
+    </label>
+    <label for="theme">Theme
+      <select id="theme">
+        <option value="dark">Dark</option>
+        <option value="light">Light</option>
+        <option value="unknown">Inherited · no mode metadata</option>
+      </select>
+    </label>
+    <label class="check"><input id="narrow" type="checkbox">320px card</label>
+    <label class="check"><input id="large-text" type="checkbox">200% text</label>
+  </div>
+  <div class="stage"><div id="card-container" data-theme="dark">
+    <sleepradar-card></sleepradar-card>
+  </div></div>
+  <div id="announcement" class="sr-only" role="status" aria-live="polite"></div>
+</main>
+<script>
+  // Only HA's outer card shell is mocked. All readout markup, state handling,
+  // and styles are provided by the production custom element below.
+  customElements.define("ha-card", class extends HTMLElement {
+    connectedCallback() {
+      this.style.display = "block";
+      this.style.border = "1px solid var(--divider-color)";
+    }
+  });
+</script>
+<script src="../card/sleepradar-card.js"></script>
+<script>
+  const card = document.querySelector("sleepradar-card");
+  const container = document.getElementById("card-container");
+  const scenario = document.getElementById("scenario");
+  const theme = document.getElementById("theme");
+  const narrow = document.getElementById("narrow");
+  const largeText = document.getElementById("large-text");
+  const announcement = document.getElementById("announcement");
+  card.setConfig({ bed_occupancy: { entity: "binary_sensor.sample_bed" } });
+  let sampleStates;
+
+  function makeStates() {
+    const selected = scenario.value;
+    const codes = { deep: "5", light: "4", rem: "3", "stage-unknown": "1", "not-measuring": "0", unmapped: "99" };
+    const offline = selected === "offline" || selected === "empty-offline";
+    const updated = selected === "invalid-time" ? "invalid" :
+      new Date(Date.now() - (selected === "stale" ? 300000 : 0)).toISOString();
+    const entity = (state, attributes = {}) => ({ state, last_updated: updated, attributes });
+    const states = {
+      "sensor.aqara_fp2_sleep_sleep_state": entity(offline ? "unavailable" : (codes[selected] || "5")),
+      "sensor.aqara_fp2_sleep_heart_rate": entity(selected === "missing-heart" ? "unavailable" : "61"),
+      "sensor.aqara_fp2_sleep_respiration_rate": entity(selected === "missing-breathing" ? "None" : "18"),
+      "binary_sensor.sample_bed": entity(selected === "out" || selected === "empty-offline" ? "off" :
+        selected === "occupancy-unknown" ? "unavailable" : "on"),
+      "binary_sensor.aqara_fp2_sleep_connection_problem": entity(offline ? "on" : "off", {
+        cause: "SleepRadar cannot reach the Aqara cloud. Check the app log and the network connection before retrying. Example diagnostic text: <connection unavailable>.",
+      }),
+    };
+    if (selected === "missing") delete states["sensor.aqara_fp2_sleep_sleep_state"];
+    return states;
+  }
+
+  function render(refreshData = false, announce = true) {
+    if (refreshData || !sampleStates) sampleStates = makeStates();
+    container.dataset.theme = theme.value === "light" ? "light" : "dark";
+    container.dataset.narrow = String(narrow.checked);
+    document.documentElement.style.fontSize = largeText.checked ? "32px" : "16px";
+    // Theme controls deliberately reuse the exact same entities. This proves
+    // a palette switch does not depend on receiving a new sensor timestamp.
+    card.hass = {
+      states: sampleStates,
+      themes: theme.value === "unknown" ? {} : { darkMode: theme.value === "dark" },
+    };
+    if (announce) announcement.textContent = scenario.selectedOptions[0].textContent + ", " + theme.selectedOptions[0].textContent;
+  }
+  scenario.addEventListener("change", () => render(true));
+  for (const control of [theme, narrow, largeText]) control.addEventListener("change", () => render());
+  render(true);
+  // Keep live examples live. The stale fixture remains five minutes old.
+  setInterval(() => render(true, false), 30000);
+</script>
+</html>

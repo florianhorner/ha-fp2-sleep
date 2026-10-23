@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "data_origin": "constructed illustration; no recorded telemetry",
+  "heart_rate": {"average": 62, "low": 55, "high": 73},
+  "breathing_rate": {"average": 14, "low": 10, "high": 22},
+  "stage_segments": [
+    {"stage": "Light", "units": 3},
+    {"stage": "Deep", "units": 2},
+    {"stage": "Light", "units": 4},
+    {"stage": "REM", "units": 2},
+    {"stage": "Light", "units": 3},
+    {"stage": "Deep", "units": 1},
+    {"stage": "Light", "units": 2},
+    {"stage": "REM", "units": 3}
+  ]
+}

@@ -33,14 +33,14 @@ five MQTT entities you can see, automate, and build on.
 
 ## What It Looks Like
 
-**Now, live — the SleepRadar card, installed as-is:**
+**Live readings and empty-bed behavior, illustrated using the previous card layout:**
 
 <p align="center">
   <img src="assets/feature-gifs/sleepradar-live-now-card.gif" alt="Animated SleepRadar card showing current stage, heart rate, and breathing" width="360">
 </p>
 
-This is the SleepRadar Card (`card/sleepradar-card.js`). It ships with the
-repo, reads three of the five sensors (sleep stage, heart rate, breathing),
+The bundled SleepRadar Card (`card/sleepradar-card.js`) reads three of the
+five sensors (sleep stage, heart rate, breathing),
 and needs no other cards or plugins. See [The SleepRadar Card](#the-sleepradar-card).
 
 Heart rate and breathing are **sensor-reported measurements**. Here,
@@ -145,6 +145,12 @@ Do not paste a full app options dump into an issue.
 
 ## The SleepRadar Card
 
+The compact readout puts the current phase above two sensor-reported vitals.
+Fresh Deep, Light and REM stages use a filled circle, hollow circle and diamond
+alongside their names, so phase identification does not rely on color. The card
+follows Home Assistant's light/dark theme; stale or uncertain phases stay neutral.
+The stage estimate remains labeled as the sensor's best guess.
+
 1. Download `card/sleepradar-card.js` from this repository.
 2. Copy it to `/config/www/sleepradar-card.js`.
 3. Open [your dashboard resources](https://my.home-assistant.io/redirect/lovelace_resources/)
@@ -189,7 +195,7 @@ entities:
 ```
 
 If you changed `poll_interval`, set the same value on the card so the stale
-badge stays accurate:
+notice stays accurate:
 
 ```yaml
 type: custom:sleepradar-card
@@ -243,12 +249,23 @@ while still available. Omit `bed_occupancy` to preserve the legacy Aqara-only
 labels: code `0` is **Out of bed**, while codes `1` and `2` are **Awake**.
 
 The card shows "no data yet" if the sleep state sensor is missing, "not
-measuring" when the bed is empty, and a "stale" badge if readings are older
+measuring" when the bed is empty, and a stale notice if readings are older
 than three poll intervals. In those states it hides retained heart-rate and
 breathing values rather than showing stale in-bed numbers as live.
 
 The occupancy gate changes only what the card displays. It does not change the
 five MQTT entities, polling, Recorder data, or historical charts.
+
+Custom Home Assistant themes can override the phase text and marker colors with
+`sleepradar-deep-color`, `sleepradar-light-color`, and `sleepradar-rem-color` theme
+variables. Check those colors against your card background: labels still carry
+the meaning, but custom colors must remain readable. If Home Assistant provides
+no theme-mode metadata, phase text uses the inherited primary text color.
+
+For a local preview with synthetic data, open
+[`proof/compact-card-preview.html`](proof/compact-card-preview.html) from a
+checkout. It loads the actual card script and includes phase, fault, theme,
+320px-width and enlarged-text controls; it does not connect to Home Assistant.
 
 > **Entity ID note.** Home Assistant pins an entity ID on first creation and
 > does not rename it later. If you installed before v1.1.0, your entity IDs
@@ -302,7 +319,7 @@ sensor-reported data. A few starting points (see `examples/automations.yaml`):
 
 **A preview of what's coming, not a current feature:**
 
-![Planned: last-night summary with sleep duration, averaged vitals, and stage timeline](assets/last-night.png)
+![Planned dashboard preview. Heart rate, breathing rate and indicative sleep stages. Synthetic illustration.](assets/last-night.png)
 
 Today, `examples/dashboard-sleep.yaml` gives you a live "Now" card plus a
 "Last night" view that charts sleep stage, heart rate, and breathing over the
@@ -342,15 +359,13 @@ The optional `bed_occupancy` gate keeps those values out of the live card; the
 raw entities and their history remain unchanged.
 
 Sleep stage scoring is the device's best estimate, and it can be confidently
-wrong. A [sanitized incident fixture](tests/fixtures/ghost-vitals-incident.json)
-captures an approximately 2.5-hour window where an independent occupancy
-sensor stayed empty while `sleep_state` reported codes `4`, `5`, and `3` across
-300 update events. In the same window, `heart_rate` produced 301 update events:
-27 consecutive value runs (26 transitions after the initial sample), 17
-distinct values, and a 50–77 bpm range. The source uses `force_update`, so
-Recorder can store repeated events even when the sensor-reported value does not
-change. The fixture removes entity IDs and absolute timestamps. Nothing in the
-add-on can infer true occupancy from those plausible-looking FP2 values alone.
+wrong. A [synthetic regression fixture](tests/fixtures/ghost-vitals-incident.json)
+uses authored test values, not recorded sensor data: independent occupancy
+stays empty while codes `3`, `4`, and `5` accompany changing and repeated vital
+values. The card tests require every sample to hide stages and vitals. The
+source uses `force_update`, so Recorder can store repeated events even when a
+sensor-reported value does not change. Plausible-looking FP2 values alone do
+not establish true occupancy.
 
 So treat stages as indicative, and use `bed_occupancy` with an **independent**
 occupancy signal (a bed sensor, a pressure mat, a separate presence zone) as

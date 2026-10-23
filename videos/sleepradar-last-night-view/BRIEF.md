@@ -18,13 +18,11 @@ motion_verb: expand
 uncertainty: "Whether viewers understand this as a structural proof of the configured dashboard rather than proof of one real recorded night."
 truth:
   source_refs:
-    - "README.md:223-250"
-    - "examples/README.md:33-39"
+    - "examples/README.md:37-43"
     - "examples/dashboard-sleep.yaml:13-88"
     - "examples/dashboard-sleep.yaml:90-155"
-    - "TODOS.md:98-110"
-  checked_at: "2026-08-08"
-  baseline_commit: "906f6dcce80f206e624b7e205c0e54334745483b"
+  checked_at: "2026-10-22"
+  baseline_commit: "bf3cf1b6012609d71244de953a429223a1f51b95"
   release_tag: "unreleased"
   qualifiers:
     - "This is an optional dashboard example that requires one night of Recorder history."
@@ -43,6 +41,7 @@ truth:
     - "Aqara estimate"
     - "measured"
   visible_forbidden:
+    - "Awake"
     - "session duration"
     - "average"
     - "summary"
@@ -67,22 +66,23 @@ visible word “measured” names the signal category and is not an accuracy cla
 A small static SleepRadar mark-and-name lockup identifies the detached clip
 without adding another motion beat or competing with the proof hook.
 
-This is a workflow validation episode, not a replacement for the real-data
-overnight retrospective still selected in `TODOS.md`. The dashboard exists on
-the current repository baseline but remains in the Unreleased changelog
-section, so the clip does not attribute it to `v1.2.1`.
+This episode illustrates the optional dashboard's configured structure. The
+dashboard exists on the current repository baseline but remains in the
+Unreleased changelog section, so the clip does not attribute it to `v1.2.1`.
 
-Truth sources were rechecked on 2026-07-31. The front-matter baseline pins the
-implementation commit, so every repository source reference identifies
-committed evidence. This documentation-only truth refresh does not alter or
-rerender the approved binary, refresh its hashes, or claim new binary proof.
+The dashboard configuration and examples documentation were rechecked on
+2026-10-22. Their cited evidence matches the pinned main-branch baseline and
+supports the optional previous-night history view and Recorder prerequisite.
+The stage panel shows only REM, Light, and Deep, matching the configured
+indicative labels. Codes 0–2 become gaps in the dashboard; the clip does not
+assign them a stage label.
 
 ## Beat sheet
 
 | Time | Beat |
 | --- | --- |
 | 0.00–0.80s | Hold the static brand lockup, hook, compact dashboard outline, and three collapsed labelled rails. |
-| 0.80–1.45s | Expand Sleep state with Awake, REM, Light, Deep and its estimate qualifier. |
+| 0.80–1.45s | Expand Sleep state with REM, Light, Deep and its estimate qualifier. |
 | 1.45–2.10s | Expand Heart rate with the configured bpm unit and measured label. |
 | 2.10–2.75s | Expand Breathing with the configured br/min unit and measured label. |
 | 2.75–3.00s | Reveal the previous-night window and Recorder requirement. |

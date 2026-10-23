@@ -14,9 +14,9 @@
     },
     "sleepradar-last-night-view": {
       "gif_path": "assets/feature-gifs/sleepradar-last-night-view.gif",
-      "gif_sha256": "67f5ebfaf17f8c76dd5a7d7c0a1e5ba7156bf0b92541d1e4d4f240bd4ea5f196",
+      "gif_sha256": "d6d57724abe20ec579edd25dcdf93bc4e8ba93d1ade3d15377b7270e56d02804",
       "mp4_path": "assets/feature-gifs/sleepradar-last-night-view.mp4",
-      "mp4_sha256": "8b768612da101270b01860ba15426186a80d25c54fb1c4ceab39e2693e303963"
+      "mp4_sha256": "3bc524111debd6e2bbd91662eed9157b47b032dc7b4e8e43ec145c5fc06a9f60"
     },
     "sleepradar-live-now-card": {
       "gif_path": "assets/feature-gifs/sleepradar-live-now-card.gif",

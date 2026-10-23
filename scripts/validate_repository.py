@@ -35,6 +35,13 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# Shared configuration in these directories remains versioned and scanned.
+# Reject these exact local-only files even if force-added despite .gitignore.
+LOCAL_ONLY_FILES = frozenset({
+    ".conductor/settings.local.toml",
+    ".impeccable/hook.cache.json",
+})
+
 LEGACY_UNGATED_PHASES = {
     0: "Out of bed",
     1: "Awake",
@@ -100,16 +107,6 @@ EXPECTED_SLEEP_TEMPLATE_AVAILABILITY = (
     "or raw not in ['unavailable', 'unknown', 'none', none]) }}"
 )
 GHOST_VITALS_FIXTURE = "tests/fixtures/ghost-vitals-incident.json"
-GHOST_VITALS_AGGREGATES = {
-    "window_minutes": 150,
-    "sleep_state_update_events": 300,
-    "heart_rate_update_events": 301,
-    "heart_rate_value_runs": 27,
-    "heart_rate_transitions": 26,
-    "heart_rate_distinct_values": 17,
-    "heart_rate_minimum_bpm": 50,
-    "heart_rate_maximum_bpm": 77,
-}
 EXPECTED_OBJECT_IDS = {
     "aqara_fp2_sleep_heart_rate",
     "aqara_fp2_sleep_respiration_rate",
@@ -259,6 +256,8 @@ CI_KNOWN_RUN_STEPS = {
 CI_JOB_NAMES = tuple(CI_KNOWN_RUN_STEPS)
 FAVICON_SOURCE = "assets/sleepradar-mark.svg"
 FAVICON_PATH = "favicon.svg"
+DASHBOARD_PREVIEW_FIXTURE = "assets/last-night.fixture.json"
+DASHBOARD_PREVIEW_SVG = "assets/last-night.svg"
 FAVICON_VIEW_BOX = "0 0 128 128"
 SHA_PINNED_ACTION = re.compile(r"^[^@\s]+@[0-9a-f]{40}$")
 WATCHDOG_URL_PATTERN = re.compile(r"^(?:https?|tcp)://")
@@ -285,17 +284,23 @@ class ValidationError(Exception):
 
 
 PRIVATE_PATTERNS = {
-    "private HA URL": re.compile(r"ha\.horner\.io", re.IGNORECASE),
-    "mounted HA config path": re.compile(r"/Volumes/config"),
-    "local HA token path": re.compile(r"~/.ha-token"),
+    "mounted HA config path": re.compile(
+        r"/(?:Volumes|mnt|media)/(?:[^/\s]+/)*(?:config|homeassistant)(?:/|\b)"
+    ),
+    "local HA token path": re.compile(
+        r"(?:~|/(?:Users|home)/[^/\s]+)/\.(?:ha|homeassistant)[_-]token\b"
+    ),
     "context artifact path": re.compile(r"\.context/"),
-    "known private FP2 subject id": re.compile(r"lumi1\.54ef4473e530"),
     "likely Aqara subject id": re.compile(r"lumi\d?\.[0-9a-f]{10,}", re.IGNORECASE),
     "likely email address": re.compile(
         r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE
     ),
-    "private bedroom entity prefix": re.compile(
-        r"schlafzimmer|bedroom_bed_status", re.IGNORECASE
+    # Generic room vocabulary and room-qualified sleep/occupancy naming.
+    # Ordinary light and thermostat placeholders remain valid examples.
+    # Specific installation identifiers belong in the external terms file.
+    "room-specific entity or label": re.compile(
+        r"schlafzimmer|bedroom_(?:[a-z0-9]+_)*"
+        r"(?:bed|occupancy|presence|sleep)(?:_[a-z0-9]+)*\b", re.IGNORECASE
     ),
     "local German bed label": re.compile(r"\bbett\b", re.IGNORECASE),
     "likely HA token": re.compile(r"eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9"),
@@ -309,6 +314,7 @@ TEXT_SUFFIXES = {
     ".yml",
     ".txt",
     ".json",
+    ".toml",
     ".js",
     ".html",
     ".svg",
@@ -1060,6 +1066,9 @@ def validate_tracked_paths(paths=None) -> None:
         path = PurePosixPath(rel)
         parts = path.parts
 
+        if rel in LOCAL_ONLY_FILES:
+            violations.append(f"{rel}: local tool state must not be tracked")
+
         if path.name == ".DS_Store":
             violations.append(f"{rel}: .DS_Store must not be tracked")
 
@@ -1122,21 +1131,65 @@ def validate_tracked_paths(paths=None) -> None:
 
 def iter_text_files():
     for path in ROOT.rglob("*"):
+        # validate_tracked_paths runs first and rejects any tracked copy.
+        # Local overrides/caches are not authored publication inputs.
+        if path.relative_to(ROOT).as_posix() in LOCAL_ONLY_FILES:
+            continue
         if any(part in SKIP_DIRS for part in path.parts):
             continue
         if not path.is_file():
-            continue
-        if path == Path(__file__).resolve():
             continue
         if path.name == "Dockerfile" or path.suffix in TEXT_SUFFIXES:
             yield path
 
 
-def private_string_matches(rel: str, text: str) -> list[str]:
+def parse_private_terms(text: str) -> tuple[str, ...]:
+    """Read literal owner-maintained terms without publishing their values."""
+    try:
+        terms = json.loads(text)
+    except json.JSONDecodeError:
+        fail("private terms file must be a JSON array of nonempty strings")
+    if not isinstance(terms, list) or not terms or any(
+        not isinstance(term, str) or not term.strip() for term in terms
+    ):
+        fail("private terms file must be a nonempty JSON array of nonempty strings")
+    return tuple(dict.fromkeys(terms))
+
+
+def load_private_terms_file(path: Path) -> tuple[str, ...]:
+    # A private inventory must not become another tracked source of the terms
+    # it is meant to detect. Keep it outside this publication checkout.
+    if path.resolve().is_relative_to(ROOT):
+        fail("private terms file must be outside the repository checkout")
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        fail("private terms file could not be read as UTF-8")
+    return parse_private_terms(text)
+
+
+def private_string_matches(
+    rel: str,
+    text: str,
+    private_terms: tuple[str, ...] = (),
+    *,
+    include_generic: bool = True,
+) -> list[str]:
     matches = []
-    for label, pattern in PRIVATE_PATTERNS.items():
-        if pattern.search(text):
-            matches.append(label)
+    if include_generic:
+        for label, pattern in PRIVATE_PATTERNS.items():
+            if pattern.search(text):
+                matches.append(label)
+    # Regex-escaped punctuation is still a literal disclosure in source. Two
+    # passes also cover a regex serialized inside a JSON string. These bounded
+    # views do not decode every representation or replace publication review.
+    views = {text.casefold()}
+    unescaped = text
+    for _ in range(2):
+        unescaped = re.sub(r"\\([^\w\s])", r"\1", unescaped)
+        views.add(unescaped.casefold())
+    if any(term.casefold() in view for term in private_terms for view in views):
+        matches.append("private inventory term")
     return matches
 
 
@@ -1146,7 +1199,7 @@ def check_private_strings_in_text(rel: str, text: str) -> None:
         fail(f"{rel}: matched private strings: " + ", ".join(sorted(matches)))
 
 
-def scan_private_strings() -> None:
+def scan_private_strings(private_terms: tuple[str, ...] = ()) -> None:
     errors = []
     for path in ROOT.rglob(".env"):
         errors.append(
@@ -1155,7 +1208,12 @@ def scan_private_strings() -> None:
     for path in iter_text_files():
         rel = path.relative_to(ROOT)
         text = path.read_text(encoding="utf-8")
-        for label in private_string_matches(str(rel), text):
+        # The generic signatures are necessarily present in this validator.
+        # Owner-supplied terms still cover its complete source.
+        for label in private_string_matches(
+            str(rel), text, private_terms,
+            include_generic=path.resolve() != Path(__file__).resolve(),
+        ):
             errors.append(f"{rel}: matched {label}")
     if errors:
         fail("privacy scan failed:\n" + "\n".join(f"  - {err}" for err in errors))
@@ -1214,6 +1272,65 @@ def validate_favicon() -> None:
     if not favicon_path.is_file():
         fail(f"{FAVICON_PATH} is missing")
     check_favicon(source_path.read_bytes(), favicon_path.read_bytes())
+
+
+def check_managed_file_manifest(text: str) -> None:
+    """Keep the managed-file inventory synchronized with its local bytes."""
+    try:
+        manifest = json.loads(text)
+    except json.JSONDecodeError:
+        fail("managed-file manifest must be valid JSON")
+    files = manifest.get("files") if isinstance(manifest, dict) else None
+    if not isinstance(files, dict) or not files:
+        fail("managed-file manifest must contain a nonempty files object")
+    for name, expected in files.items():
+        if (
+            not isinstance(name, str)
+            or Path(name).is_absolute()
+            or ".." in Path(name).parts
+            or not isinstance(expected, str)
+            or re.fullmatch(r"[0-9a-f]{64}", expected) is None
+        ):
+            fail("managed-file manifest contains an invalid path or digest")
+        path = (ROOT / name).resolve()
+        if not path.is_relative_to(ROOT):
+            fail("managed-file manifest path must remain inside the repository")
+        try:
+            actual = hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError:
+            fail(f"managed file is unavailable: {name}")
+        if actual != expected:
+            fail(f"managed-file manifest digest differs: {name}")
+
+
+def validate_managed_file_manifest() -> None:
+    check_managed_file_manifest(
+        (ROOT / ".config/commit-lint/MANIFEST.json").read_text(encoding="utf-8")
+    )
+
+
+def check_dashboard_preview(fixture_text: str, svg_text: str) -> None:
+    """Bind the documentation illustration to its constructed input source."""
+    spec = importlib.util.spec_from_file_location(
+        "sleepradar_dashboard_preview", ROOT / "scripts/build_dashboard_preview.py"
+    )
+    if spec is None or spec.loader is None:
+        fail("could not load the dashboard preview builder")
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+    try:
+        expected = builder.build_svg(json.loads(fixture_text))
+    except (ValueError, KeyError, TypeError, AttributeError):
+        fail("dashboard preview fixture must contain supported constructed values")
+    if svg_text != expected:
+        fail("dashboard preview SVG differs from its constructed fixture")
+
+
+def validate_dashboard_preview() -> None:
+    check_dashboard_preview(
+        (ROOT / DASHBOARD_PREVIEW_FIXTURE).read_text(encoding="utf-8"),
+        (ROOT / DASHBOARD_PREVIEW_SVG).read_text(encoding="utf-8"),
+    )
 
 
 def validate_addon_config(config=None) -> None:
@@ -1359,7 +1476,7 @@ def validate_discovery_payloads() -> None:
                 "discovery payload missing default_entity_id (required for HA ≥2026.4)"
             )
         default_entity_ids.append(payload["default_entity_id"])
-        if "Schlafzimmer" in json.dumps(payload) or "Bett" in json.dumps(payload):
+        if private_string_matches("discovery payload", json.dumps(payload)):
             fail("discovery payload contains private/local naming")
         if payload.get("force_update") is not True:
             fail(
@@ -1521,57 +1638,51 @@ def check_ghost_vitals_evidence(fixture_text: str, readme_text: str) -> None:
         fail(f"{GHOST_VITALS_FIXTURE} must be valid JSON: {exc}")
     if not isinstance(data, dict):
         fail(f"{GHOST_VITALS_FIXTURE} root must be an object")
-    if data.get("schema_version") != 1:
-        fail(f"{GHOST_VITALS_FIXTURE} schema_version must be 1")
-    if data.get("evidence_kind") != "sanitized_aggregate":
-        fail(f"{GHOST_VITALS_FIXTURE} must remain a sanitized aggregate")
-
-    window = data.get("window")
-    if not isinstance(window, dict):
-        fail(f"{GHOST_VITALS_FIXTURE} window must be an object")
-    if (
-        window.get("approximate_duration_minutes")
-        != GHOST_VITALS_AGGREGATES["window_minutes"]
+    if data.get("schema_version") != 2:
+        fail(f"{GHOST_VITALS_FIXTURE} schema_version must be 2")
+    if data.get("evidence_kind") != "synthetic_regression":
+        fail(f"{GHOST_VITALS_FIXTURE} must remain an authored synthetic regression")
+    construction = data.get("construction")
+    if not isinstance(construction, str) or (
+        "not recorded sensor data" not in construction
     ):
-        fail(f"{GHOST_VITALS_FIXTURE} window duration drifted")
-    if window.get("absolute_timestamps_included") is not False:
-        fail(f"{GHOST_VITALS_FIXTURE} must explicitly exclude absolute timestamps")
+        fail(f"{GHOST_VITALS_FIXTURE} must state its synthetic construction")
+    if set(data) != {
+        "schema_version", "evidence_kind", "construction", "occupancy",
+        "samples", "recorder_note",
+    }:
+        fail(f"{GHOST_VITALS_FIXTURE} contains unsupported fields")
 
     occupancy = data.get("occupancy")
     if occupancy != {
         "source_kind": "independent_binary_sensor",
         "continuous_state": "empty",
     }:
-        fail(f"{GHOST_VITALS_FIXTURE} occupancy aggregate drifted: {occupancy!r}")
+        fail(f"{GHOST_VITALS_FIXTURE} occupancy must stay independently empty")
 
-    sleep_state = data.get("sleep_state")
-    if not isinstance(sleep_state, dict):
-        fail(f"{GHOST_VITALS_FIXTURE} sleep_state must be an object")
-    if sleep_state.get("reported_codes") != [4, 5, 3]:
-        fail(f"{GHOST_VITALS_FIXTURE} sleep-state sequence must be [4, 5, 3]")
-    if (
-        sleep_state.get("update_events")
-        != GHOST_VITALS_AGGREGATES["sleep_state_update_events"]
-    ):
-        fail(f"{GHOST_VITALS_FIXTURE} sleep-state event count drifted")
-    if sleep_state.get("interpretation") != "indicative_only":
-        fail(f"{GHOST_VITALS_FIXTURE} stages must remain indicative only")
-
-    heart_rate = data.get("heart_rate")
-    if not isinstance(heart_rate, dict):
-        fail(f"{GHOST_VITALS_FIXTURE} heart_rate must be an object")
-    expected_heart_rate = {
-        "update_events": GHOST_VITALS_AGGREGATES["heart_rate_update_events"],
-        "value_runs": GHOST_VITALS_AGGREGATES["heart_rate_value_runs"],
-        "transitions_after_initial_sample": GHOST_VITALS_AGGREGATES[
-            "heart_rate_transitions"
-        ],
-        "distinct_values": GHOST_VITALS_AGGREGATES["heart_rate_distinct_values"],
-        "minimum_bpm": GHOST_VITALS_AGGREGATES["heart_rate_minimum_bpm"],
-        "maximum_bpm": GHOST_VITALS_AGGREGATES["heart_rate_maximum_bpm"],
-    }
-    if heart_rate != expected_heart_rate:
-        fail(f"{GHOST_VITALS_FIXTURE} heart-rate aggregate drifted: {heart_rate!r}")
+    samples = data.get("samples")
+    if not isinstance(samples, list) or not samples:
+        fail(f"{GHOST_VITALS_FIXTURE} samples must be a nonempty list")
+    for sample in samples:
+        if not isinstance(sample, dict) or set(sample) != {
+            "sleep_state", "heart_rate_bpm", "respiration_rate_per_minute",
+        }:
+            fail(f"{GHOST_VITALS_FIXTURE} sample shape drifted")
+        if (
+            type(sample["sleep_state"]) is not int
+            or sample["sleep_state"] not in ASLEEP_CODES
+        ):
+            fail(f"{GHOST_VITALS_FIXTURE} samples must use indicative stage codes")
+        for field in ("heart_rate_bpm", "respiration_rate_per_minute"):
+            if type(sample[field]) is not int or sample[field] <= 0:
+                fail(f"{GHOST_VITALS_FIXTURE} vital samples must be positive integers")
+    if {sample["sleep_state"] for sample in samples} != ASLEEP_CODES:
+        fail(f"{GHOST_VITALS_FIXTURE} must cover every indicative stage")
+    for field in ("heart_rate_bpm", "respiration_rate_per_minute"):
+        if len({sample[field] for sample in samples}) < 2:
+            fail(f"{GHOST_VITALS_FIXTURE} must cover changing {field} values")
+    if not any(a == b for a, b in zip(samples, samples[1:])):
+        fail(f"{GHOST_VITALS_FIXTURE} must cover repeated samples")
 
     recorder_note = data.get("recorder_note")
     if not isinstance(recorder_note, str) or not (
@@ -1584,16 +1695,13 @@ def check_ghost_vitals_evidence(fixture_text: str, readme_text: str) -> None:
         r"## Sleep State Codes(.*?)(?:\n## |\Z)", readme_text, re.DOTALL
     )
     if not section:
-        fail("README.md: could not find evidence-compatible Sleep State Codes section")
+        fail("README.md: could not find Sleep State Codes section")
     evidence_text = section.group(1)
     required_tokens = [
         GHOST_VITALS_FIXTURE,
-        "300",
-        "301",
-        "27",
-        "17",
-        "50",
-        "77",
+        "synthetic regression fixture",
+        "not recorded sensor data",
+        "changing and repeated",
         "force_update",
     ]
     missing = [token for token in required_tokens if token not in evidence_text]
@@ -3048,6 +3156,8 @@ def run_self_test() -> None:
     addon_config = yaml.safe_load((ROOT / "aqara_fp2_sleep/config.yaml").read_text())
     favicon_source = (ROOT / FAVICON_SOURCE).read_bytes()
     favicon = (ROOT / FAVICON_PATH).read_bytes()
+    dashboard_preview_fixture = (ROOT / DASHBOARD_PREVIEW_FIXTURE).read_text()
+    dashboard_preview_svg = (ROOT / DASHBOARD_PREVIEW_SVG).read_text()
     entity_ids = {f"sensor.{oid}" for oid in EXPECTED_OBJECT_IDS}
     diagnostic_entity_id = "binary_sensor.aqara_fp2_sleep_connection_problem"
     published_paths = [
@@ -3057,6 +3167,43 @@ def run_self_test() -> None:
     ]
 
     expect_pass("favicon real", lambda: check_favicon(favicon_source, favicon))
+    managed_manifest = (ROOT / ".config/commit-lint/MANIFEST.json").read_text()
+    expect_pass("managed-file digests", lambda: check_managed_file_manifest(managed_manifest))
+    stale_manifest = json.loads(managed_manifest)
+    first_managed_file = next(iter(stale_manifest["files"]))
+    stale_manifest["files"][first_managed_file] = "0" * 64
+    expect_fail_matching(
+        "managed-file digest drift",
+        lambda: check_managed_file_manifest(json.dumps(stale_manifest)),
+        "digest differs",
+    )
+    expect_fail_matching(
+        "managed-file path escape",
+        lambda: check_managed_file_manifest(json.dumps({"files": {"../fixture": "0" * 64}})),
+        "invalid path or digest",
+    )
+    expect_pass(
+        "dashboard preview constructed source",
+        lambda: check_dashboard_preview(dashboard_preview_fixture, dashboard_preview_svg),
+    )
+    expect_fail(
+        "dashboard preview SVG drift",
+        lambda: check_dashboard_preview(
+            dashboard_preview_fixture,
+            dashboard_preview_svg.replace("LAST NIGHT", "SENSOR HISTORY", 1),
+        ),
+    )
+    for label, old, new in [
+        ("unsupported stage", '"stage": "Light"', '"stage": "Awake"'),
+        ("fixture drift", '"average": 62', '"average": 63'),
+        ("origin", "constructed illustration; no recorded telemetry", "recorded telemetry"),
+    ]:
+        expect_fail(
+            f"dashboard preview {label}",
+            lambda old=old, new=new: check_dashboard_preview(
+                dashboard_preview_fixture.replace(old, new, 1), dashboard_preview_svg
+            ),
+        )
     expect_pass("addon config real", lambda: validate_addon_config(addon_config))
     expect_pass(
         "addon config URL watchdog",
@@ -3083,13 +3230,26 @@ def run_self_test() -> None:
         lambda: check_recorder_entities(recorder, entity_ids, diagnostic_entity_id),
     )
     expect_pass(
-        "ghost-vitals evidence real",
+        "ghost-vitals synthetic fixture",
         lambda: check_ghost_vitals_evidence(ghost_vitals_fixture, readme),
     )
     expect_pass(
         "tracked published pair",
         lambda: validate_tracked_paths(published_paths),
     )
+    expect_pass(
+        "shared tool configuration stays eligible",
+        lambda: validate_tracked_paths([
+            ".config/commit-rules.json", ".conductor/settings.toml",
+            ".impeccable/config.json",
+        ]),
+    )
+    for local_path in (".conductor/settings.local.toml", ".impeccable/hook.cache.json"):
+        expect_fail_matching(
+            f"tracked local tool state: {local_path}",
+            lambda path=local_path: validate_tracked_paths([path]),
+            "local tool state must not be tracked",
+        )
     expect_pass(
         "privacy scan covers authored markup",
         lambda: (
@@ -3098,11 +3258,23 @@ def run_self_test() -> None:
             else fail("TEXT_SUFFIXES must include .html and .svg")
         ),
     )
+    expect_pass(
+        "private inventory scan includes validator source",
+        lambda: (
+            None
+            if Path(__file__).resolve() in iter_text_files()
+            else fail("private inventory scan excluded the validator itself")
+        ),
+    )
     expect_fail(
         "private occupancy entity",
         lambda: check_private_strings_in_text(
-            "example.md", "entity: sensor.bedroom_bed_status"
+            "example.md", "entity: sensor.fixture_bedroom_occupancy_probe"
         ),
+    )
+    expect_pass(
+        "public automation placeholders pass privacy scan",
+        lambda: check_private_strings_in_text("examples/automations.yaml", automations),
     )
     expect_pass(
         "neutral occupancy entity",
@@ -3110,6 +3282,59 @@ def run_self_test() -> None:
             "example.md", f"entity: {OCCUPANCY_ENTITY}"
         ),
     )
+    synthetic_private_terms = parse_private_terms('["fixture-site.invalid"]')
+    for label, text in [
+        ("literal", "https://fixture-site.invalid/api"),
+        ("case variant", "https://FIXTURE-SITE.INVALID/api"),
+        ("regex escaped", r"fixture\-site\.invalid"),
+        ("JSON serialized regex", json.dumps(r"fixture\-site\.invalid")),
+    ]:
+        expect_pass(
+            f"private inventory detects {label}",
+            lambda text=text: (
+                None
+                if "private inventory term" in private_string_matches(
+                    "fixture.py", text, synthetic_private_terms,
+                    include_generic=False,
+                )
+                else fail("synthetic private inventory term was missed")
+            ),
+        )
+    expect_pass(
+        "private inventory treats terms literally",
+        lambda: (
+            None
+            if not private_string_matches(
+                "fixture.py", "fixture-siteXinvalid", synthetic_private_terms,
+                include_generic=False,
+            )
+            else fail("private inventory interpreted a literal as a regex")
+        ),
+    )
+    for invalid_terms in ("not JSON", "[]", "{}", '[""]', '[" "]', '[1]'):
+        expect_fail(
+            "private inventory rejects malformed or empty input",
+            lambda invalid_terms=invalid_terms: parse_private_terms(invalid_terms),
+        )
+    expect_fail(
+        "private inventory cannot live in publication checkout",
+        lambda: load_private_terms_file(ROOT / "fixture-private-terms.json"),
+    )
+    for label, text in [
+        ("device id", "lumi1.000000000001"),
+        ("email", "fixture@example.invalid"),
+        ("context path", ".context/fixture.md"),
+        ("mounted config", "/mnt/fixture/config/configuration.yaml"),
+        ("token path", "/home/fixture/.homeassistant_token"),
+        ("bed entity", "binary_sensor.fixture_bedroom_bed_contact"),
+        ("occupancy entity", "sensor.fixture_bedroom_occupancy_probe"),
+        ("presence entity", "binary_sensor.fixture_bedroom_presence"),
+        ("sleep entity", "sensor.fixture_bedroom_sleep_stage"),
+    ]:
+        expect_fail(
+            f"generic privacy guard still rejects {label}",
+            lambda text=text: check_private_strings_in_text("fixture.md", text),
+        )
     expect_pass(
         "login failure retry loop",
         check_login_failure_falls_through_to_retry_loop,
@@ -4337,12 +4562,12 @@ def run_self_test() -> None:
         ),
     )
     expect_fail(
-        "ghost-vitals aggregate drift",
+        "ghost-vitals missing stage coverage",
         lambda: check_ghost_vitals_evidence(
             mutate(
                 ghost_vitals_fixture,
-                '"update_events": 301',
-                '"update_events": 302',
+                '"sleep_state": 3',
+                '"sleep_state": 5',
             ),
             readme,
         ),
@@ -4353,7 +4578,7 @@ def run_self_test() -> None:
             mutate(
                 ghost_vitals_fixture,
                 '"source_kind": "independent_binary_sensor"',
-                '"source_kind": "sensor.bedroom_bed_status"',
+                '"source_kind": "binary_sensor.fixture_occupancy"',
             ),
             readme,
         ),
@@ -4363,8 +4588,8 @@ def run_self_test() -> None:
         lambda: check_ghost_vitals_evidence(
             mutate(
                 ghost_vitals_fixture,
-                '"absolute_timestamps_included": false',
-                '"absolute_timestamps_included": true',
+                '"construction": "Authored',
+                '"construction": "2026-01-01 Authored',
             ),
             readme,
         ),
@@ -4385,21 +4610,21 @@ def run_self_test() -> None:
         lambda: check_ghost_vitals_evidence("[]", readme),
     )
     for label, old, new in [
-        ("schema version", '"schema_version": 1', '"schema_version": 2'),
+        ("schema version", '"schema_version": 2', '"schema_version": 1'),
         (
             "evidence kind",
-            '"evidence_kind": "sanitized_aggregate"',
+            '"evidence_kind": "synthetic_regression"',
             '"evidence_kind": "raw_export"',
         ),
         (
-            "stage interpretation",
-            '"interpretation": "indicative_only"',
-            '"interpretation": "verified_stages"',
+            "construction disclosure",
+            "not recorded sensor data",
+            "recorded sensor data",
         ),
         (
-            "code sequence",
-            '"reported_codes": [\n      4,\n      5,\n      3\n    ]',
-            '"reported_codes": [\n      3,\n      4,\n      5\n    ]',
+            "supported stage code",
+            '"sleep_state": 3',
+            '"sleep_state": 2',
         ),
         (
             "recorder note",
@@ -4418,6 +4643,34 @@ def run_self_test() -> None:
                 mutate(ghost_vitals_fixture, old, new), readme
             ),
         )
+    synthetic_data = json.loads(ghost_vitals_fixture)
+    for label, changes in [
+        ("unsupported fields", {"window_minutes": 12}),
+        ("empty samples", {"samples": []}),
+        ("non-list samples", {"samples": {}}),
+        ("non-object sample", {"samples": [None]}),
+        ("sample shape", {"samples": [{"sleep_state": 3}]}),
+        ("missing duplicate", {"samples": synthetic_data["samples"][:-1]}),
+        ("missing occupancy", {"occupancy": None}),
+    ]:
+        expect_fail(
+            f"ghost-vitals {label}",
+            lambda changes=changes: check_ghost_vitals_evidence(
+                json.dumps(dict(synthetic_data, **changes)), readme
+            ),
+        )
+    for field in ("heart_rate_bpm", "respiration_rate_per_minute"):
+        for label, value in [("constant", 12), ("invalid type", True), ("zero", 0)]:
+            samples = [
+                dict(sample, **{field: value})
+                for sample in synthetic_data["samples"]
+            ]
+            expect_fail(
+                f"ghost-vitals {field} {label}",
+                lambda samples=samples: check_ghost_vitals_evidence(
+                    json.dumps(dict(synthetic_data, samples=samples)), readme
+                ),
+            )
     for label, old, new in [
         ("independence", "not be derived from", "not be sourced from"),
         ("fail-closed wording", "fail closed", "stay available"),
@@ -4533,11 +4786,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="run validator drift checks instead of repository validation",
     )
+    parser.add_argument(
+        "--private-terms-file",
+        type=Path,
+        help=(
+            "add owner-specific literal privacy checks from a UTF-8 JSON array "
+            "outside the repository; supplied files must contain nonempty "
+            "strings and malformed or empty files fail validation; generic "
+            "privacy checks always run without this option"
+        ),
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
+    private_terms = (
+        load_private_terms_file(args.private_terms_file)
+        if args.private_terms_file is not None else ()
+    )
     if args.self_test:
         run_self_test()
         return
@@ -4548,6 +4815,8 @@ def main(argv: list[str] | None = None) -> None:
     validate_tracked_paths()
     validate_yaml()
     validate_favicon()
+    validate_managed_file_manifest()
+    validate_dashboard_preview()
     validate_addon_config()
     check_addon_permissions()
     check_failure_classification()
@@ -4565,7 +4834,7 @@ def main(argv: list[str] | None = None) -> None:
     validate_discovery_payloads()
     validate_phase_semantics()
     validate_ghost_vitals_evidence()
-    scan_private_strings()
+    scan_private_strings(private_terms)
     print("SleepRadar package validation OK")
 
 
