@@ -20,10 +20,27 @@ class MockHTMLElement {
     let html = "";
     this.shadowRoot = {
       writes: 0,
+      listeners: {},
       get innerHTML() { return html; },
       set innerHTML(value) { html = value; this.writes += 1; },
+      addEventListener(type, handler) {
+        assert.equal(this.listeners[type], undefined, `one ${type} listener per shadow root`);
+        this.listeners[type] = handler;
+      },
     };
     return this.shadowRoot;
+  }
+
+  dispatchEvent(event) {
+    (this.dispatched ||= []).push(event);
+    return true;
+  }
+}
+
+class MockCustomEvent {
+  constructor(type, init = {}) {
+    this.type = type;
+    Object.assign(this, init);
   }
 }
 
@@ -35,6 +52,7 @@ const context = {
     intervals.delete(id);
   },
   console,
+  CustomEvent: MockCustomEvent,
   customElements: {
     define(name, klass) {
       registeredElements.set(name, klass);
@@ -1552,36 +1570,40 @@ assert.doesNotMatch(markup(render({})), /data-entity=/);
 
 // A delegated click dispatches hass-more-info with the tapped entity.
 {
-  const listeners = {};
-  const dispatched = [];
-  class ProbeEvent {
-    constructor(type, init) { this.type = type; Object.assign(this, init); }
-  }
-  context.CustomEvent = ProbeEvent;
   const card = new Card();
-  card.attachShadow = function attachShadow() {
-    let html = "";
-    this.shadowRoot = {
-      get innerHTML() { return html; },
-      set innerHTML(value) { html = value; },
-      addEventListener(type, handler) { listeners[type] = handler; },
-    };
-    return this.shadowRoot;
-  };
-  card.dispatchEvent = (event) => dispatched.push(event);
   card.setConfig({});
-  card.setConfig({});
+  card.setConfig({}); // a second setConfig must not bind a second listener
   card.hass = { states: defaultStates({ sleepState: "5", updated: NOW }) };
+  const { listeners } = card.shadowRoot;
   assert.equal(typeof listeners.click, "function", "setConfig binds one click listener");
   const button = { getAttribute: () => "sensor.aqara_fp2_sleep_heart_rate" };
   listeners.click({ target: { closest: (selector) => (selector === "[data-entity]" ? button : null) } });
   listeners.click({ target: { closest: () => null } });
+  const dispatched = card.dispatched || [];
   assert.equal(dispatched.length, 1, "only a tap on a data-entity area opens more-info");
   assert.equal(dispatched[0].type, "hass-more-info");
   assert.deepEqual({ ...dispatched[0].detail }, { entityId: "sensor.aqara_fp2_sleep_heart_rate" });
   assert.equal(dispatched[0].bubbles, true);
   assert.equal(dispatched[0].composed, true, "the event must cross the shadow boundary");
-  delete context.CustomEvent;
+}
+
+// The stale-check timer must not rewrite identical markup: that would drop
+// keyboard focus and hover from the tap zones every 30 seconds.
+{
+  clockMs = RealDate.parse(NOW);
+  const card = new Card();
+  card.setConfig({});
+  card.hass = { states: defaultStates({ sleepState: "5", updated: NOW }) };
+  const writes = card.shadowRoot.writes;
+  card._lastSignature = null; // what the timer does before re-rendering
+  card._render();
+  assert.equal(card.shadowRoot.writes, writes, "an unchanged re-render leaves the DOM alone");
+  // Leaving the readout for the no-data card and coming back must repaint.
+  const states = card._hass.states;
+  card.hass = { states: {} };
+  assert.match(card.shadowRoot.innerHTML, /No data from/);
+  card.hass = { states };
+  assert.match(markup(card.shadowRoot.innerHTML), /data-phase="deep"/, "the readout returns after the no-data card");
 }
 
 // One freshness line: relative age visible, exact clock time in the tooltip.

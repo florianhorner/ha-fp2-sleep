@@ -304,31 +304,24 @@ class SleepradarCard extends HTMLElement {
       Number.isFinite(pollIntervalSeconds) && pollIntervalSeconds > 0 ? pollIntervalSeconds : 60;
     this._config = config || {};
     this._lastSignature = null;
-    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
-    // One delegated listener survives every innerHTML re-render. Buttons give
-    // Enter/Space activation for free, so click is the only event needed.
-    if (!this._clickBound && typeof this.shadowRoot.addEventListener === "function") {
-      this._clickBound = true;
+    if (!this.shadowRoot) {
+      this.attachShadow({ mode: "open" });
+      // One delegated listener survives every innerHTML re-render. Buttons
+      // give Enter/Space activation for free, so click is the only event
+      // needed. It opens Home Assistant's own more-info dialog: history, exact
+      // last-changed time and attributes for the entity behind the tapped area.
       this.shadowRoot.addEventListener("click", (event) => {
-        const target = event.target && event.target.closest
-          ? event.target.closest("[data-entity]")
-          : null;
-        if (target) this._openMoreInfo(target.getAttribute("data-entity"));
+        const target = event.target.closest("[data-entity]");
+        if (!target) return;
+        this.dispatchEvent(
+          new CustomEvent("hass-more-info", {
+            bubbles: true,
+            composed: true,
+            detail: { entityId: target.getAttribute("data-entity") },
+          })
+        );
       });
     }
-  }
-
-  // Home Assistant's own more-info dialog: history, exact last-changed time
-  // and attributes for the entity behind the tapped area.
-  _openMoreInfo(entityId) {
-    if (!entityId || typeof this.dispatchEvent !== "function") return;
-    this.dispatchEvent(
-      new CustomEvent("hass-more-info", {
-        bubbles: true,
-        composed: true,
-        detail: { entityId },
-      })
-    );
   }
 
   set hass(hass) {
@@ -436,6 +429,7 @@ class SleepradarCard extends HTMLElement {
               not rename them later if you change mqtt_node_id or upgrade the
               app — check Developer Tools &gt; States for the real id and
               set it with this card's entities: option (see README).`;
+      this._lastHtml = null;
       this.shadowRoot.innerHTML = this._styles() + `
         <ha-card>
           <div class="sr-empty">
@@ -607,34 +601,29 @@ class SleepradarCard extends HTMLElement {
     // A <time> element only when the timestamp is real; "Freshness unknown"
     // stays plain text.
     const freshnessMs = parseTimestampMs(freshnessIso);
-    const freshnessTag = Number.isNaN(freshnessMs)
-      ? "<span>"
-      : `<time datetime="${escapeHtml(new Date(freshnessMs).toISOString())}"` +
-        `${time ? ` title="${escapeHtml(time)}"` : ""}>`;
-    const freshnessClose = Number.isNaN(freshnessMs) ? "</span>" : "</time>";
-    const icon = (path) =>
-      `<svg class="sr-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${path}"/></svg>`;
-    const hit = (entity, content) =>
-      entity
-        ? `<button class="sr-hit" type="button" data-entity="${escapeHtml(entity)}">${content}</button>`
-        : content;
-    this.shadowRoot.innerHTML = this._styles() + `
+    const freshnessHtml = !freshness
+      ? ""
+      : Number.isNaN(freshnessMs)
+        ? `<span>${escapeHtml(freshness)}</span>`
+        : `<time datetime="${escapeHtml(new Date(freshnessMs).toISOString())}"` +
+          `${time ? ` title="${escapeHtml(time)}"` : ""}>${escapeHtml(freshness)}</time>`;
+    const html = this._styles() + `
       <ha-card>
         <div class="sr-card" data-phase="${phaseKind}">
           <div class="sr-header">
             <div class="sr-header-left sr-zone">
-              <h3 class="sr-phase">${hit(phaseEntity, `<span class="sr-phase-mark" aria-hidden="true"></span>${escapeHtml(phase)}`)}</h3>
+              <h3 class="sr-phase">${tapTarget(phaseEntity, `<span class="sr-phase-mark" aria-hidden="true"></span>${escapeHtml(phase)}`)}</h3>
               <div class="sr-caption">${escapeHtml(phaseCaption)}</div>
             </div>
             <div class="sr-freshness">
-              ${freshness ? `${freshnessTag}${escapeHtml(freshness)}${freshnessClose}` : ""}
+              ${freshnessHtml}
               ${badge ? `<span class="sr-badge${badgeClass}">${escapeHtml(badge)}</span>` : ""}
             </div>
           </div>
           <div class="sr-stats" role="group" aria-label="Sensor-reported vital readings">
-            ${metrics.map(({ label, value, unit, status, icon: path, entity }) => `
+            ${metrics.map(({ label, value, unit, status, icon, entity }) => `
               <div class="sr-stat sr-zone">
-                <div class="sr-stat-label">${icon(path)}${hit(entity, label)}</div>
+                <div class="sr-stat-label">${svgIcon(icon)}${tapTarget(entity, label)}</div>
                 <div class="sr-stat-value">${value !== null ? escapeHtml(value) : "—"}
                   <span class="sr-unit">${unit}</span>
                 </div>
@@ -644,6 +633,13 @@ class SleepradarCard extends HTMLElement {
           ${footer ? `<div class="sr-footer">${escapeHtml(footer)}</div>` : ""}
         </div>
       </ha-card>`;
+    // The 30 s stale check re-renders on a timer. Rewriting identical markup
+    // would drop keyboard focus and hover from the tap zones for nothing.
+    // Compared against our own last string: reading innerHTML back returns
+    // the browser's re-serialization, which never matches the source.
+    if (html === this._lastHtml) return;
+    this._lastHtml = html;
+    this.shadowRoot.innerHTML = html;
   }
 
   _styles() {
@@ -663,7 +659,6 @@ class SleepradarCard extends HTMLElement {
         --sr-muted: var(--secondary-text-color, ${dark ? "#abb2be" : "#4c596b"});
         --sr-border: var(--divider-color, ${dark ? "#2b2d31" : "#dce1e8"});
         --sr-blue: ${dark ? "#5aa2ff" : "#216dd8"};
-        --sr-focus: var(--primary-color, var(--sr-blue));
         font-family: var(--paper-font-body1_-_font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
         letter-spacing: 0;
       }
@@ -758,7 +753,7 @@ class SleepradarCard extends HTMLElement {
       }
       .sr-stat + .sr-stat .sr-hit::after { inset-inline-start: 8px; }
       .sr-hit:focus { outline: none; }
-      .sr-hit:focus-visible::after { outline: 2px solid var(--sr-focus); outline-offset: 0; }
+      .sr-hit:focus-visible::after { outline: 2px solid var(--primary-color, var(--sr-blue)); outline-offset: 0; }
       .sr-hit:active::after { background: color-mix(in srgb, var(--sr-text) 10%, transparent); }
       @media (hover: hover) {
         .sr-hit:hover::after { background: color-mix(in srgb, var(--sr-text) 6%, transparent); }
@@ -798,6 +793,18 @@ const ICON_HEART =
   "M7.5,4A5.5,5.5 0 0,0 2,9.5C2,10 2.09,10.5 2.22,11H6.3L7.57,7.63C7.87,6.83 9.05,6.75 9.43,7.63L11.5,13L12.09,11.58C12.22,11.25 12.57,11 13,11H21.78C21.91,10.5 22,10 22,9.5A5.5,5.5 0 0,0 16.5,4C14.64,4 13,4.93 12,6.34C11,4.93 9.36,4 7.5,4V4M3,12.5A1,1 0 0,0 2,13.5A1,1 0 0,0 3,14.5H5.44L11,20C12,20.9 12,20.9 13,20L18.56,14.5H21A1,1 0 0,0 22,13.5A1,1 0 0,0 21,12.5H13.4L12.47,14.8C12.07,15.81 10.92,15.67 10.55,14.83L8.5,9.5L7.54,11.83C7.39,12.21 7.05,12.5 6.6,12.5H3Z";
 const ICON_LUNGS =
   "M15.47 3.11C15 2.85 14.37 3.05 14.11 3.54C14.04 3.68 14 3.84 14 4V6.59L13.29 5.88C13.1 5.69 13 5.44 13 5.18V1H11V5.17C11 5.44 10.9 5.69 10.71 5.88L10 6.59V4C10 3.44 9.54 3 9 3C8.83 3 8.67 3.04 8.53 3.11C4.72 5 2 9.97 2 15.77C2 17.67 2.33 19.55 3 21.32C3.19 21.85 3.76 22.13 4.29 21.94C4.34 21.92 4.39 21.9 4.44 21.87L9.5 19.07C9.81 18.9 10 18.56 10 18.19V9.41L11.3 8.12C11.69 7.73 12.32 7.73 12.71 8.12L14 9.42V18.2C14 18.56 14.21 18.9 14.5 19.08L19.58 21.88C20.07 22.14 20.68 21.96 20.94 21.46C20.96 21.42 21 21.37 21 21.32C21.67 19.55 22 17.67 22 15.77C22 9.97 19.29 5 15.47 3.11Z";
+
+function svgIcon(path) {
+  return `<svg class="sr-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${path}"/></svg>`;
+}
+
+// Wraps a label in a button that opens the entity's more-info dialog; plain
+// text when there is no entity to open.
+function tapTarget(entity, content) {
+  return entity
+    ? `<button class="sr-hit" type="button" data-entity="${escapeHtml(entity)}">${content}</button>`
+    : content;
+}
 
 customElements.define("sleepradar-card", SleepradarCard);
 
