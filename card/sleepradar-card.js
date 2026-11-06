@@ -639,7 +639,16 @@ class SleepradarCard extends HTMLElement {
     // the browser's re-serialization, which never matches the source.
     if (html === this._lastHtml) return;
     this._lastHtml = html;
+    // The age text changes every minute, so a real rewrite still happens
+    // regularly. Put focus back on the same tap zone so keyboard users stay put.
+    const focused = this.shadowRoot.activeElement;
+    const focusedEntity = focused ? focused.getAttribute("data-entity") : null;
     this.shadowRoot.innerHTML = html;
+    if (focusedEntity) {
+      const next = [...this.shadowRoot.querySelectorAll("[data-entity]")]
+        .find((element) => element.getAttribute("data-entity") === focusedEntity);
+      if (next) next.focus();
+    }
   }
 
   _styles() {

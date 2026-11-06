@@ -21,11 +21,21 @@ class MockHTMLElement {
     this.shadowRoot = {
       writes: 0,
       listeners: {},
+      activeElement: null,
       get innerHTML() { return html; },
-      set innerHTML(value) { html = value; this.writes += 1; },
+      set innerHTML(value) { html = value; this.writes += 1; this.activeElement = null; },
       addEventListener(type, handler) {
         assert.equal(this.listeners[type], undefined, `one ${type} listener per shadow root`);
         this.listeners[type] = handler;
+      },
+      // Tap zones in document order, rebuilt from the markup like a browser.
+      querySelectorAll(selector) {
+        assert.equal(selector, "[data-entity]");
+        const root = this;
+        return [...html.matchAll(/data-entity="([^"]*)"/g)].map((match) => ({
+          getAttribute: () => match[1],
+          focus() { root.activeElement = this; },
+        }));
       },
     };
     return this.shadowRoot;
@@ -1604,6 +1614,29 @@ assert.doesNotMatch(markup(render({})), /data-entity=/);
   assert.match(card.shadowRoot.innerHTML, /No data from/);
   card.hass = { states };
   assert.match(markup(card.shadowRoot.innerHTML), /data-phase="deep"/, "the readout returns after the no-data card");
+}
+
+// A real rewrite (the age text ticks over each minute) keeps focus on the same
+// tap zone instead of dropping it to the page.
+{
+  clockMs = RealDate.parse(NOW);
+  const card = new Card();
+  card.setConfig({});
+  card.hass = { states: defaultStates({ sleepState: "5", updated: NOW }) };
+  const [, heart] = card.shadowRoot.querySelectorAll("[data-entity]");
+  heart.focus();
+  const writes = card.shadowRoot.writes;
+  clockMs += 120000;
+  card._lastSignature = null;
+  card._render();
+  assert.equal(card.shadowRoot.writes, writes + 1, "the changed age text is written");
+  assert.notStrictEqual(card.shadowRoot.activeElement, heart, "focus moved to the new element");
+  assert.equal(
+    card.shadowRoot.activeElement.getAttribute("data-entity"),
+    "sensor.aqara_fp2_sleep_heart_rate",
+    "focus stays on the heart-rate tap zone after a rewrite"
+  );
+  clockMs = RealDate.parse(NOW);
 }
 
 // One freshness line: relative age visible, exact clock time in the tooltip.

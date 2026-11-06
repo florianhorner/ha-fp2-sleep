@@ -150,8 +150,8 @@ Fresh Deep, Light and REM stages use a filled circle, hollow circle and diamond
 alongside their names, so phase identification does not rely on color. The card
 follows Home Assistant's light/dark theme; stale or uncertain phases stay neutral.
 The stage is labeled as an estimate. Tap the phase, heart rate or breathing to
-open its Home Assistant history; the layout stacks in narrow columns and uses
-one row on wide panels.
+open its Home Assistant more-info dialog; the layout stacks in narrow columns
+and uses one row on wide panels.
 
 1. Download `card/sleepradar-card.js` from this repository.
 2. Copy it to `/config/www/sleepradar-card.js`.

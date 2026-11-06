@@ -9,7 +9,11 @@ for installation and configuration.
 ## Rendering contract
 
 - Fresh REM, Light sleep and Deep sleep use a diamond, hollow circle and filled
-  circle respectively. Keep the literal phase name and best-guess caption.
+  circle respectively. Keep the literal phase name and the "Estimated sleep
+  stage" caption; a healthy stage has no footer.
+- The phase, heart rate and breathing open their entity's more-info dialog.
+  Layout, freshness line and units follow
+  [the design language](../DESIGN.md#compact-current-readout).
 - Stale, unavailable, unmapped and occupancy-blocked states remain neutral.
   Independent occupancy gates the phase and vitals before stage rendering.
 - Retain missing-value, freshness, compatibility and connection explanations.
@@ -41,7 +45,7 @@ block in [CONTRIBUTING.md](../CONTRIBUTING.md#local-setup).
 
 | Scenario | Required result |
 | --- | --- |
-| Fresh REM, Light and Deep | Correct phase category, labeled values and units, one best-guess caption |
+| Fresh REM, Light and Deep | Correct phase category, labeled values and units, one "Estimated sleep stage" caption |
 | Empty or unknown occupancy | Neutral output; retained phase and vitals suppressed; gate explanation preserved |
 | Occupied code 0; codes 1 and 2 | Existing in-bed labels and unverified-code caveats preserved |
 | Stale, future, missing or invalid timestamp | Vitals hidden, neutral phase, explicit freshness caveat |
