@@ -166,17 +166,17 @@ function describeFooter(code, isFresh, isStale, occupancyConfirmed) {
   if (code === 1 || code === 2) {
     if (occupancyConfirmed) {
       return (
-        "Heart rate and breathing are sensor-reported. Occupancy is confirmed, " +
-        "but this sleep-state code does not establish a wake or stage label."
+        "Someone is in bed, but this sleep-state code does not say whether " +
+        "they are awake or asleep."
       );
     }
     return (
-      "Heart rate and breathing are sensor-reported. The Awake label is kept " +
-      "for compatibility and does not establish occupancy or wakefulness."
+      "Awake does not confirm that someone is in bed."
     );
   }
-  // The phase caption already qualifies the stage estimate.
-  return "Sensor-reported vitals";
+  // A healthy stage needs no footer: the phase caption already says the
+  // stage is estimated.
+  return "";
 }
 
 function displayPhase(code, occupancyConfirmed) {
@@ -305,6 +305,30 @@ class SleepradarCard extends HTMLElement {
     this._config = config || {};
     this._lastSignature = null;
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+    // One delegated listener survives every innerHTML re-render. Buttons give
+    // Enter/Space activation for free, so click is the only event needed.
+    if (!this._clickBound && typeof this.shadowRoot.addEventListener === "function") {
+      this._clickBound = true;
+      this.shadowRoot.addEventListener("click", (event) => {
+        const target = event.target && event.target.closest
+          ? event.target.closest("[data-entity]")
+          : null;
+        if (target) this._openMoreInfo(target.getAttribute("data-entity"));
+      });
+    }
+  }
+
+  // Home Assistant's own more-info dialog: history, exact last-changed time
+  // and attributes for the entity behind the tapped area.
+  _openMoreInfo(entityId) {
+    if (!entityId || typeof this.dispatchEvent !== "function") return;
+    this.dispatchEvent(
+      new CustomEvent("hass-more-info", {
+        bubbles: true,
+        composed: true,
+        detail: { entityId },
+      })
+    );
   }
 
   set hass(hass) {
@@ -329,6 +353,12 @@ class SleepradarCard extends HTMLElement {
 
   getCardSize() {
     return 3;
+  }
+
+  // Sections view: a full section by default, never narrower than half of
+  // one. Rows are left to HA so caveat text can grow the card.
+  getGridOptions() {
+    return { columns: 12, min_columns: 6 };
   }
 
   static getStubConfig() {
@@ -442,16 +472,16 @@ class SleepradarCard extends HTMLElement {
     const badge = !isStale && code === 0 ? "not measuring" : "";
     const phaseCaption =
       !isFresh
-        ? "last reported"
+        ? "Last reported"
         : occupancyConfirmed && code === 0
-          ? "occupancy confirmed"
+          ? "Occupancy confirmed"
           : code === 0
-          ? "bed empty"
+          ? "Bed empty"
           : occupancyConfirmed && (code === 1 || code === 2)
-            ? "unverified sleep code"
+            ? "Unverified sleep code"
           : isInBedCode(code)
-            ? "the sensor's best guess"
-            : "unmapped code";
+            ? "Estimated sleep stage"
+            : "Unmapped code";
     const footer = describeFooter(code, isFresh, isStale, occupancyConfirmed);
 
     // Presentation reuses the parsed code and existing freshness decision.
@@ -459,6 +489,8 @@ class SleepradarCard extends HTMLElement {
     const phaseKind = isFresh ? ({ 3: "rem", 4: "light", 5: "deep" }[code] || "unknown") : "unknown";
     this._renderReadout({
       phase, phaseCaption, phaseKind, freshness, time, badge, footer,
+      freshnessIso: stateObj.last_updated,
+      phaseEntity: this._entityIds.sleep_state,
       heartRate: shownHr,
       breathing: shownBr,
       heartStatus: describeVitalStatus(code, isFresh, isStale, shownHr, occupancyConfirmed),
@@ -517,7 +549,7 @@ class SleepradarCard extends HTMLElement {
   _renderOccupancyBlocked(isUnknown, occupancyObj, sleepHealth) {
     const health = sleepHealth || { status: "ok", note: "" };
     const phase = isUnknown ? "Occupancy unknown" : "Out of bed";
-    const phaseCaption = isUnknown ? "occupancy unavailable" : "bed empty";
+    const phaseCaption = isUnknown ? "Occupancy unavailable" : "Bed empty";
     const vitalStatus = isUnknown ? "Occupancy unknown" : "Paused out of bed";
     const baseFooter = isUnknown
       ? "Heart rate and breathing are hidden because the independent bed-occupancy state is unavailable."
@@ -528,7 +560,9 @@ class SleepradarCard extends HTMLElement {
         "Heart rate and breathing are hidden because the independent " +
         "bed-occupancy sensor is not reporting an occupied state.";
     const footer = health.note ? `${baseFooter} ${health.note}` : baseFooter;
-    const time = formatTime(occupancyObj && occupancyObj.last_updated);
+    const occupancyTime = formatTime(occupancyObj && occupancyObj.last_updated);
+    // One freshness line: when the occupancy state began, as clock time.
+    const freshness = occupancyTime ? `Since ${occupancyTime}` : "";
     // An empty bed is expected and stays calm; a broken gate or a dead
     // sleep-state feed is a fault and must not wear the same neutral badge.
     // Each badge carries its own word, so the state never depends on hue alone.
@@ -540,7 +574,11 @@ class SleepradarCard extends HTMLElement {
           ? "no sensor data"
           : "not measuring";
     this._renderReadout({
-      phase, phaseCaption, time, badge, footer,
+      phase, phaseCaption, freshness, badge, footer,
+      freshnessIso: occupancyObj && occupancyObj.last_updated,
+      // The heading reports the occupancy gate, so its history is the one
+      // that explains it.
+      phaseEntity: this._bedOccupancy.entity,
       heartRate: null,
       breathing: null,
       heartStatus: vitalStatus,
@@ -549,39 +587,61 @@ class SleepradarCard extends HTMLElement {
   }
 
   _renderReadout({
-    phase, phaseCaption, phaseKind = "unknown", freshness = "", time,
-    badge, footer, heartRate, breathing, heartStatus, breathingStatus,
+    phase, phaseCaption, phaseKind = "unknown", freshness = "", time = "",
+    freshnessIso = "", phaseEntity = "", badge, footer, heartRate, breathing,
+    heartStatus, breathingStatus,
   }) {
     const metrics = [
-      { label: "Heart rate", value: heartRate, unit: "bpm", status: heartStatus },
-      { label: "Breathing", value: breathing, unit: "br/min", status: breathingStatus },
+      {
+        label: "Heart rate", value: heartRate, unit: "bpm", status: heartStatus,
+        icon: ICON_HEART, entity: this._entityIds.heart_rate,
+      },
+      {
+        label: "Breathing", value: breathing, unit: "breaths/min", status: breathingStatus,
+        icon: ICON_LUNGS, entity: this._entityIds.respiration_rate,
+      },
     ];
     const badgeClass = badge === "not measuring" ? " sr-badge-neutral" : "";
+    // One freshness line. The exact clock time sits in the tooltip and in the
+    // entity's more-info dialog rather than competing with the relative age.
+    // A <time> element only when the timestamp is real; "Freshness unknown"
+    // stays plain text.
+    const freshnessMs = parseTimestampMs(freshnessIso);
+    const freshnessTag = Number.isNaN(freshnessMs)
+      ? "<span>"
+      : `<time datetime="${escapeHtml(new Date(freshnessMs).toISOString())}"` +
+        `${time ? ` title="${escapeHtml(time)}"` : ""}>`;
+    const freshnessClose = Number.isNaN(freshnessMs) ? "</span>" : "</time>";
+    const icon = (path) =>
+      `<svg class="sr-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${path}"/></svg>`;
+    const hit = (entity, content) =>
+      entity
+        ? `<button class="sr-hit" type="button" data-entity="${escapeHtml(entity)}">${content}</button>`
+        : content;
     this.shadowRoot.innerHTML = this._styles() + `
       <ha-card>
         <div class="sr-card" data-phase="${phaseKind}">
           <div class="sr-header">
-            <div class="sr-header-left">
-              <h3 class="sr-phase"><span class="sr-phase-mark" aria-hidden="true"></span>${escapeHtml(phase)}</h3>
+            <div class="sr-header-left sr-zone">
+              <h3 class="sr-phase">${hit(phaseEntity, `<span class="sr-phase-mark" aria-hidden="true"></span>${escapeHtml(phase)}`)}</h3>
               <div class="sr-caption">${escapeHtml(phaseCaption)}</div>
             </div>
             <div class="sr-freshness">
-              ${freshness ? `<span>${escapeHtml(freshness)}</span>` : ""}
-              ${time ? `<time>${escapeHtml(time)}</time>` : ""}
+              ${freshness ? `${freshnessTag}${escapeHtml(freshness)}${freshnessClose}` : ""}
               ${badge ? `<span class="sr-badge${badgeClass}">${escapeHtml(badge)}</span>` : ""}
             </div>
           </div>
           <div class="sr-stats" role="group" aria-label="Sensor-reported vital readings">
-            ${metrics.map(({ label, value, unit, status }) => `
-              <div class="sr-stat">
-                <div class="sr-stat-label">${label}</div>
+            ${metrics.map(({ label, value, unit, status, icon: path, entity }) => `
+              <div class="sr-stat sr-zone">
+                <div class="sr-stat-label">${icon(path)}${hit(entity, label)}</div>
                 <div class="sr-stat-value">${value !== null ? escapeHtml(value) : "—"}
                   <span class="sr-unit">${unit}</span>
                 </div>
                 ${status && status !== "Live now" ? `<div class="sr-stat-status">${escapeHtml(status)}</div>` : ""}
               </div>`).join("")}
           </div>
-          <div class="sr-footer">${escapeHtml(footer)}</div>
+          ${footer ? `<div class="sr-footer">${escapeHtml(footer)}</div>` : ""}
         </div>
       </ha-card>`;
   }
@@ -603,7 +663,7 @@ class SleepradarCard extends HTMLElement {
         --sr-muted: var(--secondary-text-color, ${dark ? "#abb2be" : "#4c596b"});
         --sr-border: var(--divider-color, ${dark ? "#2b2d31" : "#dce1e8"});
         --sr-blue: ${dark ? "#5aa2ff" : "#216dd8"};
-        --sr-heart: ${dark ? "#ff4d57" : "#bd3041"};
+        --sr-focus: var(--primary-color, var(--sr-blue));
         font-family: var(--paper-font-body1_-_font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
         letter-spacing: 0;
       }
@@ -611,10 +671,13 @@ class SleepradarCard extends HTMLElement {
         padding: 0; overflow: hidden; border-radius: 8px;
         color: var(--sr-text);
         background: var(--ha-card-background, var(--card-background-color, ${dark ? "#1b1c1e" : "#ffffff"}));
+        display: block; container: sleepradar / inline-size;
       }
       .sr-card {
         --sr-phase-ink: var(--sr-text); --sr-phase-rail: var(--sr-border);
         display: flex; flex-direction: column;
+        border-top: 2px solid var(--sr-phase-rail);
+        padding: 15px 16px 14px;
       }
       .sr-card[data-phase="deep"] {
         --sr-phase-ink: var(--sleepradar-deep-color, ${inks.deep});
@@ -630,8 +693,7 @@ class SleepradarCard extends HTMLElement {
       }
       .sr-header {
         display: flex; justify-content: space-between; align-items: flex-start;
-        flex-wrap: wrap; gap: 10px; padding: 15px 16px 12px;
-        border-top: 2px solid var(--sr-phase-rail);
+        flex-wrap: wrap; gap: 6px 12px;
       }
       .sr-header-left { min-width: 0; flex: 1 1 160px; }
       .sr-phase {
@@ -639,51 +701,88 @@ class SleepradarCard extends HTMLElement {
         color: var(--sr-phase-ink); overflow-wrap: anywhere;
       }
       .sr-phase-mark {
-        display: inline-block; width: 10px; height: 10px; box-sizing: border-box;
-        margin-inline-end: 9px; vertical-align: 2px; border-radius: 50%;
-        background: currentColor; border: 2px solid currentColor;
+        /* em-sized so the shape cue grows with large text, not only colour */
+        display: inline-block; width: 0.455em; height: 0.455em; box-sizing: border-box;
+        margin-inline-end: 0.41em; vertical-align: 0.09em; border-radius: 50%;
+        background: currentColor; border: max(2px, 0.09em) solid currentColor;
       }
       [data-phase="light"] .sr-phase-mark { background: transparent; }
       [data-phase="rem"] .sr-phase-mark { border-radius: 1px; transform: rotate(45deg); }
       [data-phase="unknown"] .sr-phase-mark {
-        height: 2px; border: 0; border-radius: 0; vertical-align: 6px;
+        height: max(2px, 0.09em); border: 0; border-radius: 0; vertical-align: 0.27em;
       }
       .sr-caption {
-        margin: 5px 0 0 19px; font-size: 0.8125rem; line-height: 1.4;
+        margin: 4px 0 0 1.1875rem; font-size: 0.8125rem; line-height: 1.4;
         color: var(--sr-muted); overflow-wrap: anywhere;
       }
       .sr-freshness {
-        display: flex; flex-direction: column; align-items: flex-end;
-        padding-top: 1px; font-size: 0.75rem; line-height: 1.5;
+        display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+        padding-top: 3px; font-size: 0.75rem; line-height: 1.4;
         color: var(--sr-muted); font-variant-numeric: tabular-nums;
       }
       .sr-badge { font-weight: 600; }
       .sr-badge-neutral { font-weight: 400; }
       .sr-stats {
         display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-        gap: 16px; margin: 14px 16px 12px;
+        gap: 16px; margin-top: 16px;
       }
       .sr-stat { min-width: 0; }
       .sr-stat + .sr-stat { padding-inline-start: 16px; border-inline-start: 1px solid var(--sr-border); }
       .sr-stat-label {
-        display: flex; align-items: center; gap: 5px;
+        display: flex; align-items: center; gap: 6px;
         font-size: 0.8125rem; line-height: 1.4; color: var(--sr-muted);
       }
-      .sr-stat-label::before {
-        content: ""; width: 5px; height: 5px; border-radius: 50%;
-        flex: 0 0 auto; background: var(--sr-heart);
-      }
-      .sr-stat + .sr-stat .sr-stat-label::before { background: var(--sr-blue); }
+      .sr-icon { width: 1.1em; height: 1.1em; flex: 0 0 auto; fill: currentColor; opacity: 0.85; }
       .sr-stat-value {
-        display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px;
-        margin-top: 5px; font-size: 2rem; font-weight: 600; line-height: 1.15;
+        display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 6px;
+        margin-top: 4px; font-size: 2rem; font-weight: 600; line-height: 1.15;
         font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
       }
       .sr-unit { font-size: 0.8125rem; font-weight: 400; line-height: 1.4; color: var(--sr-muted); }
-      .sr-stat-status { margin-top: 5px; font-size: 0.75rem; line-height: 1.4; color: var(--sr-muted); }
+      .sr-stat-status { margin-top: 4px; font-size: 0.75rem; line-height: 1.4; color: var(--sr-muted); }
       .sr-footer {
-        margin-inline: 16px; padding: 8px 0 10px; border-top: 1px solid var(--sr-border);
-        font-size: 0.75rem; line-height: 1.4; color: var(--sr-muted); overflow-wrap: anywhere;
+        margin-top: 12px; font-size: 0.75rem; line-height: 1.45;
+        color: var(--sr-muted); overflow-wrap: anywhere; max-width: 60ch;
+      }
+      /* Each zone opens its entity. The button keeps native focus and
+         keyboard activation; its ::after stretches the hit area over the zone. */
+      .sr-zone { position: relative; }
+      .sr-hit {
+        font: inherit; color: inherit; letter-spacing: inherit; text-align: inherit;
+        background: none; border: 0; padding: 0; margin: 0; cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .sr-hit::after {
+        content: ""; position: absolute; inset: -6px -8px; border-radius: 8px;
+        transition: background-color 140ms cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .sr-stat + .sr-stat .sr-hit::after { inset-inline-start: 8px; }
+      .sr-hit:focus { outline: none; }
+      .sr-hit:focus-visible::after { outline: 2px solid var(--sr-focus); outline-offset: 0; }
+      .sr-hit:active::after { background: color-mix(in srgb, var(--sr-text) 10%, transparent); }
+      @media (hover: hover) {
+        .sr-hit:hover::after { background: color-mix(in srgb, var(--sr-text) 6%, transparent); }
+      }
+      @media (prefers-reduced-motion: reduce) { .sr-hit::after { transition: none; } }
+      /* Narrow columns (half-width sections, small masonry columns) and large
+         text. rem keeps the breakpoints tied to the user's text size. */
+      @container sleepradar (max-width: 16rem) {
+        .sr-freshness { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+        .sr-stats { grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 14px; }
+        .sr-stat + .sr-stat {
+          padding-inline-start: 0; border-inline-start: 0;
+          padding-top: 12px; border-top: 1px solid var(--sr-border);
+        }
+        .sr-stat + .sr-stat .sr-hit::after { inset-inline-start: -8px; inset-block-start: 6px; }
+      }
+      /* Wide panels and full-width sections: phase and vitals share one row. */
+      @container sleepradar (min-width: 35rem) {
+        .sr-card {
+          display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+          column-gap: 24px; align-items: center;
+        }
+        .sr-stats { margin-top: 0; }
+        .sr-footer { grid-column: 1 / -1; }
       }
       .sr-empty { padding: 16px; }
       .sr-empty-title { font-weight: 600; margin-bottom: 6px; }
@@ -691,6 +790,14 @@ class SleepradarCard extends HTMLElement {
     </style>`;
   }
 }
+
+// Metric icons: mdiHeartPulse and mdiLungs from Material Design Icons
+// (@mdi/js 7.4.47, Apache-2.0, https://pictogrammers.com), the family Home
+// Assistant itself uses. Inlined so the card keeps zero dependencies.
+const ICON_HEART =
+  "M7.5,4A5.5,5.5 0 0,0 2,9.5C2,10 2.09,10.5 2.22,11H6.3L7.57,7.63C7.87,6.83 9.05,6.75 9.43,7.63L11.5,13L12.09,11.58C12.22,11.25 12.57,11 13,11H21.78C21.91,10.5 22,10 22,9.5A5.5,5.5 0 0,0 16.5,4C14.64,4 13,4.93 12,6.34C11,4.93 9.36,4 7.5,4V4M3,12.5A1,1 0 0,0 2,13.5A1,1 0 0,0 3,14.5H5.44L11,20C12,20.9 12,20.9 13,20L18.56,14.5H21A1,1 0 0,0 22,13.5A1,1 0 0,0 21,12.5H13.4L12.47,14.8C12.07,15.81 10.92,15.67 10.55,14.83L8.5,9.5L7.54,11.83C7.39,12.21 7.05,12.5 6.6,12.5H3Z";
+const ICON_LUNGS =
+  "M15.47 3.11C15 2.85 14.37 3.05 14.11 3.54C14.04 3.68 14 3.84 14 4V6.59L13.29 5.88C13.1 5.69 13 5.44 13 5.18V1H11V5.17C11 5.44 10.9 5.69 10.71 5.88L10 6.59V4C10 3.44 9.54 3 9 3C8.83 3 8.67 3.04 8.53 3.11C4.72 5 2 9.97 2 15.77C2 17.67 2.33 19.55 3 21.32C3.19 21.85 3.76 22.13 4.29 21.94C4.34 21.92 4.39 21.9 4.44 21.87L9.5 19.07C9.81 18.9 10 18.56 10 18.19V9.41L11.3 8.12C11.69 7.73 12.32 7.73 12.71 8.12L14 9.42V18.2C14 18.56 14.21 18.9 14.5 19.08L19.58 21.88C20.07 22.14 20.68 21.96 20.94 21.46C20.96 21.42 21 21.37 21 21.32C21.67 19.55 22 17.67 22 15.77C22 9.97 19.29 5 15.47 3.11Z";
 
 customElements.define("sleepradar-card", SleepradarCard);
 

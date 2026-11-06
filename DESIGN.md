@@ -33,7 +33,7 @@ low-glare, compact, scan-first, and useful at 02:14.
 | Muted text | `#9a9da3` | Timestamps, caveats, and supporting copy |
 | Radar blue | `#5aa2ff` | Primary accent, sleep state, breathing |
 | Deep blue | `#2758d8` | Deep-sleep timeline segments |
-| Heart red | `#ff4d57` | Heart rate and awake alerts |
+| Heart red | `#ff4d57` | Labelled warnings in timeline charts only; never a healthy-reading marker |
 | REM amber | `#f5a623` | REM timeline segments |
 | Unknown gray | `#747982` | Unavailable, out-of-bed, or uncertain states |
 
@@ -47,17 +47,31 @@ numbers can be bold. Keep letter spacing at `0`.
 - The primary hierarchy is: current phase, measured vitals, then caveats.
 - Timeline colors should remain categorical. Do not use smooth gradients for
   sleep stages because they imply precision the device does not provide.
-- Copy should be short enough to read in passing. Prefer "the sensor's best
-  guess" over clinical or overconfident wording.
+- Copy should be short enough to read in passing. State uncertainty once and
+  plainly ("Estimated sleep stage") rather than with clinical, overconfident or
+  apologetic wording.
 
 ### Compact current readout
 
 Use a neutral surface with crisp phase accents, not tinted header fills. The
 phase heading is 22px, tabular vital values are 32px, and supporting text is
 12–13px at the default 16px root size. Text scales with the user's settings.
-The header has a 2px phase rail; the vitals share two columns with a quiet
-divider, and provenance sits below an inset separator. Let long labels and
-diagnostics wrap at narrow widths.
+The card has a 2px phase rail along its top edge; the vitals share two columns
+with a quiet divider and carry muted heart-pulse and lungs icons (Material Design
+Icons, the family Home Assistant uses). Units are spelled out: `bpm` and
+`breaths/min`. The header shows one freshness line ("Updated just now",
+"Stale 5 min ago", "Since 22:06"); the exact clock time is the tooltip and lives
+in the entity's more-info dialog.
+
+The layout follows the card's own width, measured in `rem` so large text counts
+as narrow: below 16rem the vitals stack, from 35rem the phase and vitals share
+one row. In the sections view the card defaults to a full section and never
+goes below half of one. Let long labels and diagnostics wrap.
+
+The phase and each vital are buttons that open Home Assistant's more-info dialog
+for their entity (the phase opens the occupancy gate when that gate is what the
+heading reports). Each hit area covers its whole zone, with a quiet hover tint
+and a visible focus ring; there is no tap target on the no-data card.
 
 | Current phase | Non-color cue | Light-theme ink | Dark-theme ink |
 | --- | --- | --- | --- |
@@ -75,9 +89,9 @@ dividers inherit Home Assistant theme variables. A theme switch must redraw
 even if sensor readings are unchanged; missing mode metadata uses inherited text.
 
 Only a fresh valid stage gets a phase accent. Preserve independent occupancy,
-stale-feed, missing-value and diagnostic safeguards. Show the best-guess caption
-once beside the phase and use a short sensor-reported-vitals footer for healthy
-stages. Keep caveats in fault and compatibility states. Do not repeat healthy
+stale-feed, missing-value and diagnostic safeguards. Show the "Estimated sleep stage"
+caption once beside the phase and no footer for healthy stages. Keep short,
+plain caveats in fault and compatibility states. Do not repeat healthy
 values in a narrative sentence or add duplicate Live now labels.
 
 ## Logo

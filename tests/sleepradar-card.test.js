@@ -67,19 +67,26 @@ function render(states, config = {}) {
 
 // Read rendered semantics, excluding selectors in the style element. Otherwise
 // a data-phase selector could make an inactive phase appear to pass a test.
+// Decorative icon geometry is dropped too: path coordinates are not readings.
 function markup(html) {
-  return html.replace(/<style>[\s\S]*?<\/style>/g, "");
+  return html
+    .replace(/<style>[\s\S]*?<\/style>/g, "")
+    .replace(/<svg\b[^>]*aria-hidden="true"[^>]*>[\s\S]*?<\/svg>/g, "<svg-icon>");
 }
 
 function heading(html) {
-  const match = markup(html).match(/<h3\b[^>]*><span\b[^>]*><\/span>([^<]*)<\/h3>/);
+  const match = markup(html).match(
+    /<h3\b[^>]*>(?:<button\b[^>]*>)?<span\b[^>]*><\/span>([^<]*)(?:<\/button>)?<\/h3>/
+  );
   assert.ok(match, "a readout must have a semantic phase heading");
   return match[1].trim();
 }
 
 function metric(html, label) {
-  const blocks = [...markup(html).matchAll(/<div class="sr-stat">([\s\S]*?)(?=<div class="sr-stat">|<div class="sr-footer">)/g)];
-  const block = blocks.find((match) => match[1].includes(`>${label}</div>`));
+  const blocks = [...markup(html).matchAll(
+    /<div class="sr-stat(?: [^"]*)?">([\s\S]*?)(?=<div class="sr-stat(?: [^"]*)?">|<div class="sr-footer">|<\/ha-card>)/g
+  )];
+  const block = blocks.find((match) => match[1].includes(`>${label}</`));
   assert.ok(block, `the ${label} metric must be labeled`);
   return block[1];
 }
@@ -316,7 +323,7 @@ assert.doesNotMatch(
 );
 assert.doesNotMatch(
   freshOutOfBed,
-  />11\s*<span class="sr-unit">br\/min<\/span>/,
+  />11\s*<span class="sr-unit">breaths\/min<\/span>/,
   "out-of-bed card must not render retained breathing as live"
 );
 
@@ -329,7 +336,7 @@ const freshInBed = render(
 assert.match(freshInBed, /REM/);
 assert.doesNotMatch(freshInBed, /Live now/);
 assert.match(freshInBed, />54\s*<span class="sr-unit">bpm<\/span>/);
-assert.match(freshInBed, />11\s*<span class="sr-unit">br\/min<\/span>/);
+assert.match(freshInBed, />11\s*<span class="sr-unit">breaths\/min<\/span>/);
 
 const noOccupancyConfig = render(
   defaultStates({
@@ -340,9 +347,9 @@ const noOccupancyConfig = render(
   })
 );
 assert.equal(heading(noOccupancyConfig), "Awake");
-assert.match(noOccupancyConfig, /Awake label is kept for compatibility/);
+assert.match(noOccupancyConfig, /Awake does not confirm that someone is in bed\./);
 assert.match(noOccupancyConfig, />69\s*<span class="sr-unit">bpm<\/span>/);
-assert.match(noOccupancyConfig, />21\s*<span class="sr-unit">br\/min<\/span>/);
+assert.match(noOccupancyConfig, />21\s*<span class="sr-unit">breaths\/min<\/span>/);
 
 const ghostVitalsBlocked = render(
   withOccupancy(
@@ -438,11 +445,11 @@ const occupiedCodeTwo = render(
   occupancyConfig
 );
 assert.equal(heading(occupiedCodeTwo), "In bed — stage unknown");
-assert.match(occupiedCodeTwo, /does not establish a wake or stage label/);
-assert.match(occupiedCodeTwo, /unverified sleep code/);
+assert.match(occupiedCodeTwo, /does not say whether they are awake or asleep/);
+assert.match(occupiedCodeTwo, /Unverified sleep code/);
 assert.doesNotMatch(occupiedCodeTwo, /Awake/);
 assert.match(occupiedCodeTwo, />69\s*<span class="sr-unit">bpm<\/span>/);
-assert.match(occupiedCodeTwo, />21\s*<span class="sr-unit">br\/min<\/span>/);
+assert.match(occupiedCodeTwo, />21\s*<span class="sr-unit">breaths\/min<\/span>/);
 
 const occupiedWithOldGateTimestamp = render(
   withOccupancy(
@@ -463,7 +470,7 @@ assert.equal(
   "occupancy availability/state is trusted without imposing an age timeout"
 );
 assert.match(occupiedWithOldGateTimestamp, />69\s*<span class="sr-unit">bpm<\/span>/);
-assert.match(occupiedWithOldGateTimestamp, />21\s*<span class="sr-unit">br\/min<\/span>/);
+assert.match(occupiedWithOldGateTimestamp, />21\s*<span class="sr-unit">breaths\/min<\/span>/);
 
 const occupiedCodeOne = render(
   withOccupancy(
@@ -478,10 +485,10 @@ const occupiedCodeOne = render(
   occupancyConfig
 );
 assert.equal(heading(occupiedCodeOne), "In bed — stage unknown");
-assert.match(occupiedCodeOne, /does not establish a wake or stage label/);
+assert.match(occupiedCodeOne, /does not say whether they are awake or asleep/);
 assert.doesNotMatch(occupiedCodeOne, /Awake/);
 assert.match(occupiedCodeOne, />68\s*<span class="sr-unit">bpm<\/span>/);
-assert.match(occupiedCodeOne, />20\s*<span class="sr-unit">br\/min<\/span>/);
+assert.match(occupiedCodeOne, />20\s*<span class="sr-unit">breaths\/min<\/span>/);
 
 const occupiedCodeZero = render(
   withOccupancy(
@@ -496,7 +503,7 @@ const occupiedCodeZero = render(
   occupancyConfig
 );
 assert.equal(heading(occupiedCodeZero), "In bed");
-assert.match(occupiedCodeZero, /occupancy confirmed/);
+assert.match(occupiedCodeZero, /Occupancy confirmed/);
 assert.match(occupiedCodeZero, /sr-badge sr-badge-neutral">not measuring/);
 assert.match(occupiedCodeZero, /not reporting a usable stage or live vitals/);
 assert.doesNotMatch(occupiedCodeZero, /Out of bed/);
@@ -559,7 +566,7 @@ for (const unavailableState of ["unavailable", "unknown", "None", "none", ""]) {
     `occupancy state ${JSON.stringify(unavailableState)} must fail closed`
   );
   assert.doesNotMatch(unavailableOccupancy, />69\s*<span class="sr-unit">bpm<\/span>/);
-  assert.doesNotMatch(unavailableOccupancy, />21\s*<span class="sr-unit">br\/min<\/span>/);
+  assert.doesNotMatch(unavailableOccupancy, />21\s*<span class="sr-unit">breaths\/min<\/span>/);
 }
 
 const invalidOccupancy = render(
@@ -618,7 +625,7 @@ const defaultOnOccupancy = render(
   }
 );
 assert.match(defaultOnOccupancy, />54\s*<span class="sr-unit">bpm<\/span>/);
-assert.match(defaultOnOccupancy, />11\s*<span class="sr-unit">br\/min<\/span>/);
+assert.match(defaultOnOccupancy, />11\s*<span class="sr-unit">breaths\/min<\/span>/);
 
 const defaultOffOccupancy = render(
   {
@@ -686,7 +693,7 @@ const staleOccupied = render(
 );
 assert.match(staleOccupied, /stale/);
 assert.doesNotMatch(staleOccupied, />54\s*<span class="sr-unit">bpm<\/span>/);
-assert.doesNotMatch(staleOccupied, />11\s*<span class="sr-unit">br\/min<\/span>/);
+assert.doesNotMatch(staleOccupied, />11\s*<span class="sr-unit">breaths\/min<\/span>/);
 
 const staleInBed = render(
   defaultStates({
@@ -703,7 +710,7 @@ assert.doesNotMatch(
 );
 assert.doesNotMatch(
   staleInBed,
-  />11\s*<span class="sr-unit">br\/min<\/span>/,
+  />11\s*<span class="sr-unit">breaths\/min<\/span>/,
   "stale card must not render retained breathing as live"
 );
 
@@ -714,7 +721,7 @@ const staleOutOfBed = render(
   })
 );
 assert.match(staleOutOfBed, /stale/);
-assert.match(staleOutOfBed, /last reported/);
+assert.match(staleOutOfBed, /Last reported/);
 assert.match(staleOutOfBed, /Status stale/);
 assert.match(staleOutOfBed, /Status is stale/);
 assert.match(staleOutOfBed, /Stale 4 min ago/);
@@ -729,7 +736,7 @@ const freshUnknownCode = render(
   })
 );
 assert.match(freshUnknownCode, /Unknown/);
-assert.match(freshUnknownCode, /unmapped code/);
+assert.match(freshUnknownCode, /Unmapped code/);
 assert.match(freshUnknownCode, /mapped in-bed sleep state/);
 assert.doesNotMatch(freshUnknownCode, /measured directly by the sensor/);
 assert.doesNotMatch(
@@ -752,7 +759,7 @@ assert.doesNotMatch(
 );
 assert.doesNotMatch(
   futureDatedInBed,
-  />11\s*<span class="sr-unit">br\/min<\/span>/,
+  />11\s*<span class="sr-unit">breaths\/min<\/span>/,
   "unknown freshness must not render retained breathing as live"
 );
 
@@ -833,7 +840,7 @@ function withInvertedGate(state) {
 }
 const invertedOccupied = render(withInvertedGate("off"), invertedGateConfig);
 assert.match(invertedOccupied, />98765\s*<span class="sr-unit">bpm<\/span>/);
-assert.match(invertedOccupied, />87654\s*<span class="sr-unit">br\/min<\/span>/);
+assert.match(invertedOccupied, />87654\s*<span class="sr-unit">breaths\/min<\/span>/);
 assert.doesNotMatch(invertedOccupied, /Occupancy unknown/);
 const invertedEmpty = render(withInvertedGate("on"), invertedGateConfig);
 assert.match(invertedEmpty, /Out of bed/);
@@ -920,7 +927,7 @@ for (const unmappedState of ["9", "3-bad", "-1"]) {
     "Unknown",
     `gated unmapped state ${unmappedState} must render as Unknown`
   );
-  assert.match(gatedUnmapped, /unmapped code/);
+  assert.match(gatedUnmapped, /Unmapped code/);
   assert.match(gatedUnmapped, /mapped in-bed sleep state before showing live vitals/);
   assert.doesNotMatch(
     gatedUnmapped,
@@ -970,7 +977,7 @@ const gatedFutureDated = render(
   occupancyConfig
 );
 assert.match(gatedFutureDated, /Freshness unknown/);
-assert.match(gatedFutureDated, /last reported/);
+assert.match(gatedFutureDated, /Last reported/);
 assertValuesHidden(
   gatedFutureDated,
   ["98765", "87654"],
@@ -1012,24 +1019,25 @@ for (const [gatedCode, gatedLabel, phaseKind] of [
   assert.match(markup(gatedStage), new RegExp(`data-phase="${phaseKind}"`));
   assert.match(
     markup(gatedStage),
-    /<h3[^>]*><span class="sr-phase-mark" aria-hidden="true"><\/span>/,
+    /<h3[^>]*><button[^>]*><span class="sr-phase-mark" aria-hidden="true"><\/span>/,
     "the redundant shape is decorative; assistive technology reads the literal phase name"
   );
-  assert.equal((gatedStage.match(/the sensor's best guess/g) || []).length, 1);
-  assert.match(gatedStage, /class="sr-caption">the sensor's best guess<\/div>/);
-  assert.match(gatedStage, /Sensor-reported vitals/);
+  assert.equal((gatedStage.match(/Estimated sleep stage/g) || []).length, 1);
+  assert.match(gatedStage, /class="sr-caption">Estimated sleep stage<\/div>/);
+  assert.doesNotMatch(markup(gatedStage), /sr-footer/, "a healthy stage needs no footer");
   assert.doesNotMatch(gatedStage, /Live now/);
   assert.match(gatedStage, />54\s*<span class="sr-unit">bpm<\/span>/);
-  assert.match(gatedStage, />11\s*<span class="sr-unit">br\/min<\/span>/);
+  assert.match(gatedStage, />11\s*<span class="sr-unit">breaths\/min<\/span>/);
 }
 
-// Compact provenance must still distinguish sensor-reported vitals from the
-// estimated stage, without repeating the estimate in the footer.
+// The estimate is qualified exactly once, beside the phase. A healthy stage
+// carries no footer; the vitals group keeps its sensor-reported name.
 const ungatedDeepSleep = render(
   defaultStates({ sleepState: "5", updated: "2026-07-03T08:00:00.000Z" })
 );
-assert.match(ungatedDeepSleep, /Sensor-reported vitals/);
-assert.equal((ungatedDeepSleep.match(/the sensor's best guess/g) || []).length, 1);
+assert.doesNotMatch(markup(ungatedDeepSleep), /sr-footer|Sensor-reported vitals</);
+assert.match(markup(ungatedDeepSleep), /aria-label="Sensor-reported vital readings"/);
+assert.equal((ungatedDeepSleep.match(/Estimated sleep stage/g) || []).length, 1);
 assert.doesNotMatch(
   ungatedDeepSleep,
   /measured directly by the sensor/,
@@ -1050,14 +1058,14 @@ assert.doesNotMatch(
   "a stale gated card must show stale freshness, not a not-measuring badge"
 );
 assert.equal(heading(gatedStaleCodeZero), "In bed");
-assert.match(gatedStaleCodeZero, /last reported/);
+assert.match(gatedStaleCodeZero, /Last reported/);
 assert.doesNotMatch(gatedStaleCodeZero, /Out of bed/);
 
 // --- Blocked-card header contract -----------------------------------------
 
 assert.doesNotMatch(
   missingOccupancy,
-  /<time>/,
+  /<time\b/,
   "a missing gate entity leaves the blocked header without a timestamp segment"
 );
 assert.doesNotMatch(
@@ -1067,7 +1075,7 @@ assert.doesNotMatch(
 );
 const gateTime = new RealDate("2026-07-03T08:00:00.000Z")
   .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-assert.ok(ghostVitalsBlocked.includes(`<time>${gateTime}</time>`));
+assert.match(markup(ghostVitalsBlocked), new RegExp(`<time datetime="[^"]+">Since ${gateTime}</time>`));
 assert.doesNotMatch(ghostVitalsBlocked, /CURRENT STATUS/);
 
 // --- Gate recovery and the cheap re-render guard ---------------------------
@@ -1314,9 +1322,9 @@ for (const [code, label, category] of [
   assert.match(markup(html), new RegExp(`data-phase="${category}"`));
   assert.equal((markup(html).match(/class="sr-phase-mark" aria-hidden="true"/g) || []).length, 1);
   assert.match(markup(html), /role="group" aria-label="Sensor-reported vital readings"/);
-  assert.equal((html.match(/the sensor's best guess/g) || []).length, 1);
+  assert.equal((html.match(/Estimated sleep stage/g) || []).length, 1);
   assert.match(metric(html, "Heart rate"), />54\s*<span class="sr-unit">bpm<\/span>/);
-  assert.match(metric(html, "Breathing"), />11\s*<span class="sr-unit">br\/min<\/span>/);
+  assert.match(metric(html, "Breathing"), />11\s*<span class="sr-unit">breaths\/min<\/span>/);
   assert.doesNotMatch(markup(html), /Live now|CURRENT STATUS|class="sr-readout"/);
 }
 
@@ -1348,7 +1356,7 @@ for (const malformedCode of ["3-bad", "3.5", "5oops", "-1"]) {
   const html = render(defaultStates({ sleepState: malformedCode, updated: NOW }));
   assert.equal(heading(html), "Unknown");
   assertNeutral(html, `malformed code ${malformedCode} must remain neutral`);
-  assert.match(html, /unmapped code/);
+  assert.match(html, /Unmapped code/);
   assertValuesHidden(html, ["54", "11"], `malformed code ${malformedCode}`);
 }
 
@@ -1367,7 +1375,7 @@ const missingVitalCases = [
   ["nonfinite", { state: "Infinity" }],
 ];
 for (const [key, label, otherLabel, healthyValue, healthyUnit] of [
-  ["heart_rate", "Heart rate", "Breathing", "11", "br/min"],
+  ["heart_rate", "Heart rate", "Breathing", "11", "breaths/min"],
   ["respiration_rate", "Breathing", "Heart rate", "54", "bpm"],
 ]) {
   for (const [caseName, entity] of missingVitalCases) {
@@ -1410,11 +1418,11 @@ for (const timestamp of [undefined, null, 0, "", "not-a-date"]) {
     const message = `timestamp ${String(timestamp)}, occupancy ${gated ? "confirmed" : "not configured"}`;
     assertNeutral(html, message);
     assert.equal(heading(html), "Deep sleep", message);
-    assert.match(html, /class="sr-caption">last reported<\/div>/, message);
+    assert.match(html, /class="sr-caption">Last reported<\/div>/, message);
     assert.match(html, /Freshness unknown/, message);
     assert.match(html, /fresh sleep-state timestamp before showing live vitals/, message);
     assert.equal((html.match(/class="sr-stat-status">Freshness unknown/g) || []).length, 2, message);
-    assert.doesNotMatch(markup(html), /<time>|the sensor's best guess/, message);
+    assert.doesNotMatch(markup(html), /<time\b|Estimated sleep stage/, message);
     assertValuesHidden(html, ["98765", "87654"], message);
   }
 }
@@ -1477,10 +1485,10 @@ for (const pollIntervalSeconds of [60, 20]) {
   advanceClock(30000);
   assert.strictEqual(card._hass, hass, "the clock transition must not rely on a new hass object");
   assertNeutral(card.shadowRoot.innerHTML, "an elapsed stale timer retires the phase accent");
-  assert.match(card.shadowRoot.innerHTML, /class="sr-caption">last reported<\/div>/);
+  assert.match(card.shadowRoot.innerHTML, /class="sr-caption">Last reported<\/div>/);
   assert.match(card.shadowRoot.innerHTML, /Status stale/);
   assert.match(card.shadowRoot.innerHTML, /Status is stale\. Check the app and MQTT/);
-  assert.doesNotMatch(markup(card.shadowRoot.innerHTML), /the sensor's best guess|class="sr-badge">stale/);
+  assert.doesNotMatch(markup(card.shadowRoot.innerHTML), /Estimated sleep stage|class="sr-badge">stale/);
   assertValuesHidden(card.shadowRoot.innerHTML, ["54", "11"], "timer-driven stale transition");
 
   card.disconnectedCallback();
@@ -1496,3 +1504,105 @@ for (const pollIntervalSeconds of [60, 20]) {
   assert.equal(intervals.size, 0, "the replacement timer is also cleaned up");
 }
 clockMs = RealDate.parse(NOW);
+
+// --- Refinement: tap targets, freshness line, neutral metric markers -------
+
+// Each readout area is a real button naming its entity, so taps, Enter and
+// Space all reach Home Assistant's more-info dialog for that entity.
+{
+  const html = markup(render(defaultStates({ sleepState: "5", updated: NOW })));
+  const targets = [...html.matchAll(/<button class="sr-hit" type="button" data-entity="([^"]+)">/g)]
+    .map((match) => match[1]);
+  assert.deepEqual(targets, [
+    "sensor.aqara_fp2_sleep_sleep_state",
+    "sensor.aqara_fp2_sleep_heart_rate",
+    "sensor.aqara_fp2_sleep_respiration_rate",
+  ]);
+  assert.match(html, /<button[^>]*>Heart rate<\/button>/, "the metric label names its button");
+}
+
+// Entity overrides flow into the tap targets.
+{
+  const html = markup(render(
+    {
+      "sensor.bed_stage": { state: "4", last_updated: NOW },
+      "sensor.bed_hr": { state: "58", last_updated: NOW },
+      "sensor.bed_rr": { state: "13", last_updated: NOW },
+    },
+    { entities: { sleep_state: "sensor.bed_stage", heart_rate: "sensor.bed_hr", respiration_rate: "sensor.bed_rr" } }
+  ));
+  for (const id of ["sensor.bed_stage", "sensor.bed_hr", "sensor.bed_rr"]) {
+    assert.match(html, new RegExp(`data-entity="${id.replace(".", "\\.")}"`));
+  }
+}
+
+// The blocked card's heading reports the gate, so it opens the gate entity.
+{
+  const html = markup(render(
+    withOccupancy(defaultStates({ sleepState: "5", updated: NOW }), "Leer"),
+    occupancyConfig
+  ));
+  const phaseButton = html.match(/<h3\b[^>]*><button[^>]*data-entity="([^"]+)"/);
+  assert.ok(phaseButton, "the blocked heading is tappable");
+  assert.equal(phaseButton[1], occupancyConfig.bed_occupancy.entity);
+}
+
+// The no-data card has nothing to open.
+assert.doesNotMatch(markup(render({})), /data-entity=/);
+
+// A delegated click dispatches hass-more-info with the tapped entity.
+{
+  const listeners = {};
+  const dispatched = [];
+  class ProbeEvent {
+    constructor(type, init) { this.type = type; Object.assign(this, init); }
+  }
+  context.CustomEvent = ProbeEvent;
+  const card = new Card();
+  card.attachShadow = function attachShadow() {
+    let html = "";
+    this.shadowRoot = {
+      get innerHTML() { return html; },
+      set innerHTML(value) { html = value; },
+      addEventListener(type, handler) { listeners[type] = handler; },
+    };
+    return this.shadowRoot;
+  };
+  card.dispatchEvent = (event) => dispatched.push(event);
+  card.setConfig({});
+  card.setConfig({});
+  card.hass = { states: defaultStates({ sleepState: "5", updated: NOW }) };
+  assert.equal(typeof listeners.click, "function", "setConfig binds one click listener");
+  const button = { getAttribute: () => "sensor.aqara_fp2_sleep_heart_rate" };
+  listeners.click({ target: { closest: (selector) => (selector === "[data-entity]" ? button : null) } });
+  listeners.click({ target: { closest: () => null } });
+  assert.equal(dispatched.length, 1, "only a tap on a data-entity area opens more-info");
+  assert.equal(dispatched[0].type, "hass-more-info");
+  assert.deepEqual({ ...dispatched[0].detail }, { entityId: "sensor.aqara_fp2_sleep_heart_rate" });
+  assert.equal(dispatched[0].bubbles, true);
+  assert.equal(dispatched[0].composed, true, "the event must cross the shadow boundary");
+  delete context.CustomEvent;
+}
+
+// One freshness line: relative age visible, exact clock time in the tooltip.
+{
+  const html = markup(render(defaultStates({ sleepState: "5", updated: NOW })));
+  const clock = new RealDate(NOW).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  assert.match(html, new RegExp(`<time datetime="${NOW}" title="${clock}">Updated just now</time>`));
+  assert.equal((html.match(/<time\b/g) || []).length, 1, "the clock time is not a second visible line");
+}
+
+// Metric markers are decorative, neutral icons; no warning hue on a healthy reading.
+{
+  const raw = render(defaultStates({ sleepState: "5", updated: NOW }), {});
+  const html = markup(raw);
+  assert.equal((html.match(/<svg-icon>/g) || []).length, 2, "heart and lungs icons, hidden from assistive tech");
+  assert.doesNotMatch(raw, /--sr-heart|#ff4d57|#bd3041/, "red is reserved for labelled warnings");
+}
+
+// Sections view sizing.
+{
+  const card = new Card();
+  card.setConfig({});
+  assert.deepEqual({ ...card.getGridOptions() }, { columns: 12, min_columns: 6 });
+}
