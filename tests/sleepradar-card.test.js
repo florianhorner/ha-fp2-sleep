@@ -181,7 +181,7 @@ function withOccupancy(states, state, updated = "2026-07-03T08:00:00.000Z") {
 const occupancyConfig = {
   bed_occupancy: {
     entity: "sensor.example_bed_status",
-    occupied_states: ["Schlafend", "Wach"],
+    occupied_states: ["Sleeping", "Lying awake"],
   },
 };
 
@@ -220,7 +220,7 @@ assert.throws(
     new Card().setConfig({
       bed_occupancy: {
         entity: "sensor.example_bed_status",
-        occupied_states: "Wach",
+        occupied_states: "Lying awake",
       },
     }),
   /bed_occupancy\.occupied_states must be a non-empty array/
@@ -255,7 +255,7 @@ for (const reservedState of ["unknown", "unavailable", "none", "None"]) {
       new Card().setConfig({
         bed_occupancy: {
           entity: "sensor.example_bed_status",
-          occupied_states: ["Wach", reservedState],
+          occupied_states: ["Lying awake", reservedState],
         },
       }),
     /must not contain unknown, unavailable, none, or empty states/,
@@ -387,7 +387,7 @@ const ghostVitalsBlocked = render(
       respirationRate: "87654",
       updated: "2026-07-03T08:00:00.000Z",
     }),
-    "Leer"
+    "Vacant"
   ),
   occupancyConfig
 );
@@ -406,7 +406,7 @@ assertValuesHidden(
 );
 
 const emptyBedWithoutAqaraData = render(
-  withOccupancy({}, "Leer"),
+  withOccupancy({}, "Vacant"),
   occupancyConfig
 );
 assert.match(emptyBedWithoutAqaraData, /Out of bed/);
@@ -439,7 +439,7 @@ const emptyBedWithStaleAqaraData = render(
       respirationRate: "87654",
       updated: "2026-07-03T07:56:00.000Z",
     }),
-    "Leer"
+    "Vacant"
   ),
   occupancyConfig
 );
@@ -468,7 +468,7 @@ const occupiedCodeTwo = render(
       respirationRate: "21",
       updated: "2026-07-03T08:00:00.000Z",
     }),
-    "Wach"
+    "Lying awake"
   ),
   occupancyConfig
 );
@@ -487,7 +487,7 @@ const occupiedWithOldGateTimestamp = render(
       respirationRate: "21",
       updated: "2026-07-03T08:00:00.000Z",
     }),
-    "Wach",
+    "Lying awake",
     "2020-01-01T00:00:00.000Z"
   ),
   occupancyConfig
@@ -508,7 +508,7 @@ const occupiedCodeOne = render(
       respirationRate: "20",
       updated: "2026-07-03T08:00:00.000Z",
     }),
-    "Wach"
+    "Lying awake"
   ),
   occupancyConfig
 );
@@ -526,7 +526,7 @@ const occupiedCodeZero = render(
       respirationRate: "87654",
       updated: "2026-07-03T08:00:00.000Z",
     }),
-    "Wach"
+    "Lying awake"
   ),
   occupancyConfig
 );
@@ -624,7 +624,7 @@ const wrongCaseOccupancy = render(
       respirationRate: "21",
       updated: "2026-07-03T08:00:00.000Z",
     }),
-    "wach"
+    "lying awake"
   ),
   occupancyConfig
 );
@@ -683,11 +683,11 @@ signatureCard.hass = {
       sleepState: "2",
       updated: "2026-07-03T08:00:00.000Z",
     }),
-    "Wach",
+    "Lying awake",
     "2026-07-03T08:00:01.000Z"
   ),
 };
-assert.match(signatureCard._lastSignature, /Wach/);
+assert.match(signatureCard._lastSignature, /Lying awake/);
 assert.match(signatureCard._lastSignature, /2026-07-03T08:00:01\.000Z/);
 assert.match(signatureCard.shadowRoot.innerHTML, />54\s*<span class="sr-unit">bpm<\/span>/);
 
@@ -697,11 +697,11 @@ signatureCard.hass = {
       sleepState: "2",
       updated: "2026-07-03T08:00:00.000Z",
     }),
-    "Leer",
+    "Vacant",
     "2026-07-03T08:00:02.000Z"
   ),
 };
-assert.match(signatureCard._lastSignature, /Leer/);
+assert.match(signatureCard._lastSignature, /Vacant/);
 assert.match(signatureCard._lastSignature, /2026-07-03T08:00:02\.000Z/);
 assert.match(signatureCard.shadowRoot.innerHTML, /Out of bed/);
 assert.doesNotMatch(
@@ -715,7 +715,7 @@ const staleOccupied = render(
       sleepState: "3",
       updated: "2026-07-03T07:56:00.000Z",
     }),
-    "Schlafend"
+    "Sleeping"
   ),
   occupancyConfig
 );
@@ -824,7 +824,7 @@ assert.throws(
   "a padded gate entity must be trimmed before the self-reference check"
 );
 
-const mutableOccupiedStates = ["Wach"];
+const mutableOccupiedStates = ["Lying awake"];
 const mutationCard = new Card();
 mutationCard.setConfig({
   bed_occupancy: {
@@ -833,11 +833,11 @@ mutationCard.setConfig({
   },
 });
 mutableOccupiedStates.length = 0;
-mutableOccupiedStates.push("Leer");
+mutableOccupiedStates.push("Vacant");
 mutationCard.hass = {
   states: withOccupancy(
     defaultStates({ sleepState: "3", updated: "2026-07-03T08:00:00.000Z" }),
-    "Wach"
+    "Lying awake"
   ),
 };
 assert.match(
@@ -907,7 +907,7 @@ for (const sample of ghostVitalsFixture.samples) {
         respirationRate: syntheticBreathingRate,
         updated: "2026-07-03T08:00:00.000Z",
       }),
-      "Leer"
+      "Vacant"
     ),
     occupancyConfig
   );
@@ -946,7 +946,7 @@ for (const unmappedState of ["9", "3-bad", "-1"]) {
         respirationRate: "87654",
         updated: "2026-07-03T08:00:00.000Z",
       }),
-      "Wach"
+      "Lying awake"
     ),
     occupancyConfig
   );
@@ -979,7 +979,7 @@ for (const missingSleepState of [undefined, "unavailable", "None"]) {
           respirationRate: "87654",
           updated: "2026-07-03T08:00:00.000Z",
         });
-  const openGateNoData = render(withOccupancy(states, "Wach"), occupancyConfig);
+  const openGateNoData = render(withOccupancy(states, "Lying awake"), occupancyConfig);
   assert.match(
     openGateNoData,
     /No data from sensor\.aqara_fp2_sleep_sleep_state yet/,
@@ -1000,7 +1000,7 @@ const gatedFutureDated = render(
       respirationRate: "87654",
       updated: "2026-07-03T08:01:00.000Z",
     }),
-    "Wach"
+    "Lying awake"
   ),
   occupancyConfig
 );
@@ -1015,7 +1015,7 @@ assertValuesHidden(
 const gatedCodeZeroStatus = render(
   withOccupancy(
     defaultStates({ sleepState: "0", updated: "2026-07-03T08:00:00.000Z" }),
-    "Wach"
+    "Lying awake"
   ),
   occupancyConfig
 );
@@ -1035,7 +1035,7 @@ for (const [gatedCode, gatedLabel, phaseKind] of [
   const gatedStage = render(
     withOccupancy(
       defaultStates({ sleepState: gatedCode, updated: "2026-07-03T08:00:00.000Z" }),
-      "Schlafend"
+      "Sleeping"
     ),
     occupancyConfig
   );
@@ -1075,7 +1075,7 @@ assert.doesNotMatch(
 const gatedStaleCodeZero = render(
   withOccupancy(
     defaultStates({ sleepState: "0", updated: "2026-07-03T07:56:00.000Z" }),
-    "Wach"
+    "Lying awake"
   ),
   occupancyConfig
 );
@@ -1113,7 +1113,7 @@ recoveryCard.setConfig(occupancyConfig);
 recoveryCard.hass = {
   states: withOccupancy(
     defaultStates({ sleepState: "3", updated: "2026-07-03T08:00:00.000Z" }),
-    "Leer",
+    "Vacant",
     "2026-07-03T07:59:00.000Z"
   ),
 };
@@ -1121,7 +1121,7 @@ assert.match(recoveryCard.shadowRoot.innerHTML, /Out of bed/);
 recoveryCard.hass = {
   states: withOccupancy(
     defaultStates({ sleepState: "3", updated: "2026-07-03T08:00:00.000Z" }),
-    "Schlafend",
+    "Sleeping",
     "2026-07-03T08:00:05.000Z"
   ),
 };
@@ -1140,7 +1140,7 @@ const guardCard = new Card();
 guardCard.setConfig(occupancyConfig);
 const guardStates = withOccupancy(
   defaultStates({ sleepState: "3", updated: "2026-07-03T08:00:00.000Z" }),
-  "Schlafend"
+  "Sleeping"
 );
 guardCard.hass = { states: guardStates };
 guardCard.shadowRoot.innerHTML = "SENTINEL";
@@ -1153,7 +1153,7 @@ assert.equal(
 guardCard.hass = {
   states: withOccupancy(
     defaultStates({ sleepState: "3", updated: "2026-07-03T08:00:00.000Z" }),
-    "Leer"
+    "Vacant"
   ),
 };
 assert.notEqual(
@@ -1271,7 +1271,7 @@ const blockedHtml = render(
   withProblem(
     withOccupancy(
       defaultStates({ sleepState: "unavailable", updated: NOW }),
-      "Leer"
+      "Vacant"
     ),
     { cause: outageCause }
   ),
@@ -1310,7 +1310,7 @@ const staleHtml = render(
   withProblem(
     withOccupancy(
       defaultStates({ sleepState: "3", updated: staleUpdated }),
-      "Leer"
+      "Vacant"
     ),
     { cause: "SleepRadar stopped: the app is not running." }
   ),
@@ -1329,7 +1329,7 @@ assert.doesNotMatch(
 
 // Stale with no problem flagged keeps the original wording.
 const staleNoProblemHtml = render(
-  withOccupancy(defaultStates({ sleepState: "3", updated: staleUpdated }), "Leer"),
+  withOccupancy(defaultStates({ sleepState: "3", updated: staleUpdated }), "Vacant"),
   occupancyConfig
 );
 assert.match(
@@ -1441,7 +1441,7 @@ for (const timestamp of [undefined, null, 0, "", "not-a-date"]) {
     if (timestamp === undefined) {
       delete states["sensor.aqara_fp2_sleep_sleep_state"].last_updated;
     }
-    if (gated) states = withOccupancy(states, "Schlafend");
+    if (gated) states = withOccupancy(states, "Sleeping");
     const html = render(states, gated ? occupancyConfig : {});
     const message = `timestamp ${String(timestamp)}, occupancy ${gated ? "confirmed" : "not configured"}`;
     assertNeutral(html, message);
@@ -1460,7 +1460,7 @@ for (const timestamp of [undefined, null, 0, "", "not-a-date"]) {
 // invalidation; computed contrast and actual shapes are checked in the browser.
 for (const [name, states, config] of [
   ["fresh stage", defaultStates({ sleepState: "5", updated: NOW }), {}],
-  ["blocked occupancy", withOccupancy(defaultStates({ sleepState: "5", updated: NOW }), "Leer"), occupancyConfig],
+  ["blocked occupancy", withOccupancy(defaultStates({ sleepState: "5", updated: NOW }), "Vacant"), occupancyConfig],
   ["missing feed", {}, {}],
   ["reported outage", outageStates, {}],
 ]) {
@@ -1567,7 +1567,7 @@ clockMs = RealDate.parse(NOW);
 // The blocked card's heading reports the gate, so it opens the gate entity.
 {
   const html = markup(render(
-    withOccupancy(defaultStates({ sleepState: "5", updated: NOW }), "Leer"),
+    withOccupancy(defaultStates({ sleepState: "5", updated: NOW }), "Vacant"),
     occupancyConfig
   ));
   const phaseButton = html.match(/<h3\b[^>]*><button[^>]*data-entity="([^"]+)"/);
