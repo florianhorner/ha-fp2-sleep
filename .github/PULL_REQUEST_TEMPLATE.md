@@ -20,6 +20,7 @@ If a check was not run, explain why and what risk remains.
 - [ ] package: `python3 scripts/validate_repository.py`
 - [ ] validator self-test: `python3 scripts/validate_repository.py --self-test`
 - [ ] validator CLI: `python3 tests/test_validate_repository_cli.py`
+- [ ] runtime compatibility: `python3 tests/test_runtime_dependencies.py`
 - [ ] GIF sources: `python3 videos/validate-gif-batch.py`
 - [ ] GIF validator self-test: `python3 videos/validate-gif-batch.py --self-test`
 - [ ] GIF builder self-test: `python3 videos/build-gif-deliverables.py --self-test`

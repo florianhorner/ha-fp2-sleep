@@ -125,8 +125,8 @@ SLEEP_DATA_SUFFIXES = (
     "_illuminance",
 )
 EXPECTED_RUNTIME_REQUIREMENTS = [
-    "paho-mqtt==2.1.0",
-    "pycryptodome==3.23.0",
+    "paho-mqtt==2.2.0",
+    "pycryptodome==4.3.0",
 ]
 EXPECTED_CI_REQUIREMENTS = [
     "-r aqara_fp2_sleep/requirements.txt",
@@ -186,6 +186,11 @@ CONDUCTOR_GATES = (
         CONDUCTOR_CLI_TEST_COMMAND,
         "Test validator CLI",
         "test validator command-line behavior",
+    ),
+    (
+        ".venv/bin/python tests/test_runtime_dependencies.py",
+        "Test runtime dependencies",
+        "test installed runtime pins, Aqara RSA encryption, and the MQTT client",
     ),
     (
         ".venv/bin/python videos/validate-gif-batch.py",

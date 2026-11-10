@@ -17,6 +17,7 @@ The validator requires Python 3.11 or newer.
 | `python3 scripts/validate_repository.py` | Validate the current repository state. Stops at the first failure. | `SleepRadar package validation OK` |
 | `python3 scripts/validate_repository.py --self-test` | Exercise positive fixtures and deliberate mutations that prove validator guards still fail closed. Reports all failures together. | `SleepRadar validator self-test OK` |
 | `python3 tests/test_validate_repository_cli.py` | Test validator CLI behavior, ambient-env isolation, and Conductor setup fallback. | `OK` (on stderr) |
+| `python3 tests/test_runtime_dependencies.py` | Check installed versions, strict pin guards, Aqara RSA login encryption, and real MQTT packets with an offline socket-pair broker. | `OK` (on stderr) |
 | `python3 scripts/validate_repository.py --help` | Show the command-line interface without running validation. | Usage text |
 
 `--self-test` replaces normal repository validation; it does not include it.
@@ -45,6 +46,18 @@ runner. Normal mode covers these domains:
 | Examples | Optional YAML uses placeholders for foreign entity IDs while the intentionally pre-wired SleepRadar files keep only canonical entities. |
 | MQTT discovery and card entities | The app publishes the expected five discovery entities, includes `force_update: true`, avoids local naming, and stays aligned with card defaults and Recorder examples. |
 | Sleep semantics | Phase labels stay synchronized across the card, README, sleep template, and dashboard; in-bed sets align between the card and template, asleep codes remain constrained in the template, and Recorder entity IDs stay canonical. |
+
+Runtime dependency updates must change `aqara_fp2_sleep/requirements.txt` and
+`EXPECTED_RUNTIME_REQUIREMENTS` together. Keep the independent exact allowlist:
+deriving it from the requirements file would allow unreviewed dependency drift.
+The runtime test runs in a separate process with installed dependencies. It
+checks the real Aqara public key, decrypts synthetic login ciphertext to verify
+the UTF-8/MD5/PKCS#1 v1.5 path, and checks MQTT VERSION2 construction, TLS
+configuration, CONNECT credentials/will, QoS/retain flags, PUBACKs, and shutdown.
+Its socket pair is a scripted protocol peer, not a complete MQTT broker; it
+proves neither Aqara acceptance nor a production TLS handshake. HTTP and
+external socket creation are blocked. CI runs this under Python 3.12; repeat it
+under Python 3.13 for the add-on runtime. The Docker build remains separate.
 
 The validator imports the poller with local dependency stubs to inspect MQTT
 payloads and failure messages. It does not connect to Aqara, MQTT, or Home
