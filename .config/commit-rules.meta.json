@@ -7,6 +7,26 @@
       "path": "/trailers/policy/fork_strip_rationale",
       "kind": "documentation",
       "reason": "Describe trailer handling in terms of retained contributor attribution and test evidence."
+    },
+    {
+      "path": "/subject/version_prefix/rationale",
+      "kind": "documentation",
+      "reason": "Describe the optional version prefix without naming a specific tool."
+    },
+    {
+      "path": "/banned_patterns/subject_only/1/fix_hint",
+      "kind": "documentation",
+      "reason": "Describe the four-component form without naming a specific tool."
+    },
+    {
+      "path": "/trailers/metadata/Skill-Run/description",
+      "kind": "documentation",
+      "reason": "Describe the trailer without naming a specific tool."
+    },
+    {
+      "path": "/error_format/rationale",
+      "kind": "documentation",
+      "reason": "Drop an internal design-review reference."
     }
   ]
 }
