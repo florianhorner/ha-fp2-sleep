@@ -55,6 +55,9 @@ jobs:
       - name: Test validator CLI
         run: python3 tests/test_validate_repository_cli.py
 
+      - name: Test runtime dependencies
+        run: python3 tests/test_runtime_dependencies.py
+
       - name: Validate GIF sources
         run: python3 videos/validate-gif-batch.py
 
