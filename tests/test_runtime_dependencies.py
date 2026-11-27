@@ -6,7 +6,6 @@ packet encoding, acknowledgements, and the MQTT network loop remain real.
 """
 
 from base64 import b64decode
-import hashlib
 import importlib.metadata
 import importlib.util
 import json
@@ -59,14 +58,14 @@ class RuntimeDependenciesTest(unittest.TestCase):
         self.assertIs(self.poller.PKCS1_v1_5.new, PKCS1_v1_5.new)
 
     def test_requirement_guard_rejects_partial_updates_and_drift(self):
-        accepted = "paho-mqtt==2.2.0\npycryptodome==4.3.0\n"
+        accepted = "paho-mqtt==2.2.0\npycryptodome==4.5.0\n"
         rejected = (
             "paho-mqtt==2.1.0\npycryptodome==3.23.0\n",
             "paho-mqtt==2.2.0\npycryptodome==3.23.0\n",
-            "paho-mqtt==2.1.0\npycryptodome==4.3.0\n",
+            "paho-mqtt==2.1.0\npycryptodome==4.5.0\n",
             accepted.replace("==2.2.0", ">=2.2.0"),
-            accepted.replace("==4.3.0", ">=4.3.0"),
-            "pycryptodome==4.3.0\n",
+            accepted.replace("==4.5.0", ">=4.5.0"),
+            "pycryptodome==4.5.0\n",
             "paho-mqtt==2.2.0\n",
             accepted + "paho-mqtt==2.2.0\n",
             accepted + "unexpected-package==1.0.0\n",
@@ -116,12 +115,18 @@ class RuntimeDependenciesTest(unittest.TestCase):
         key = RSA.generate(1024)
         self.poller.PUBKEY = key.public_key().export_key().decode("ascii")
         self.poller.USER = "synthetic-account"
-        for password in ("", "synthetic-password", "Grüße-月"):
+        # Known UTF-8 login digest vectors, verified independently with OpenSSL.
+        cases = (
+            ("", b"d41d8cd98f00b204e9800998ecf8427e"),
+            ("synthetic-password", b"6ee7966bfda254813a6a475e009f6780"),
+            ("Grüße-月", b"5863c88e626c91757e54390fbc2238bd"),
+        )
+        for password, expected_digest in cases:
             with self.subTest(password=password):
                 self.poller.PASSWORD = password
                 ciphertext = self.login_payload(self.poller.Aqara("EU"))
                 plaintext = PKCS1_v1_5.new(key).decrypt(ciphertext, b"invalid-padding")
-                self.assertEqual(plaintext, hashlib.md5(password.encode("utf-8")).hexdigest().encode("ascii"))
+                self.assertEqual(plaintext, expected_digest)
 
     def test_mqtt_tls_configuration(self):
         self.poller.MQTT_SSL = True

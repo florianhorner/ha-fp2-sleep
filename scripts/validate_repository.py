@@ -126,7 +126,7 @@ SLEEP_DATA_SUFFIXES = (
 )
 EXPECTED_RUNTIME_REQUIREMENTS = [
     "paho-mqtt==2.2.0",
-    "pycryptodome==4.3.0",
+    "pycryptodome==4.5.0",
 ]
 EXPECTED_CI_REQUIREMENTS = [
     "-r aqara_fp2_sleep/requirements.txt",
