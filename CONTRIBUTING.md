@@ -90,6 +90,7 @@ yamllint -c .yamllint .
 python3 scripts/validate_repository.py
 python3 scripts/validate_repository.py --self-test
 python3 tests/test_validate_repository_cli.py
+python3 tests/test_runtime_dependencies.py
 python3 videos/validate-gif-batch.py
 python3 videos/validate-gif-batch.py --self-test
 python3 videos/build-gif-deliverables.py --self-test
